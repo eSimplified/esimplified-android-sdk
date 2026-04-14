@@ -1,5 +1,7 @@
 package io.esimplified.sdk.repository.impl
 
+import io.esimplified.sdk.repository.AuthRepository
+
 import io.esimplified.sdk.model.ChangePasswordResponse
 import io.esimplified.sdk.model.CustomerChangePassword
 import io.esimplified.sdk.model.CustomerDetails

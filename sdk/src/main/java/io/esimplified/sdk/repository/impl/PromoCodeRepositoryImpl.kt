@@ -1,5 +1,7 @@
 package io.esimplified.sdk.repository.impl
 
+import io.esimplified.sdk.repository.PromoCodeRepository
+
 import io.esimplified.sdk.model.CheckoutCouponRequest
 import io.esimplified.sdk.model.CheckoutCouponResponse
 import io.esimplified.sdk.network.ApiService

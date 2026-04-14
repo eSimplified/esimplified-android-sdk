@@ -1,5 +1,7 @@
 package io.esimplified.sdk.repository.impl
 
+import io.esimplified.sdk.repository.UserRepository
+
 import io.esimplified.sdk.auth.SecureStorageProvider
 
 

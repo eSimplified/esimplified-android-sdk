@@ -1,5 +1,7 @@
 package io.esimplified.sdk.repository.impl
 
+import io.esimplified.sdk.repository.VouchersRepository
+
 import io.esimplified.sdk.model.ApiErrorResponse
 import io.esimplified.sdk.model.VoucherRedeemRequest
 import io.esimplified.sdk.model.VoucherRedeemResponse

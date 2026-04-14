@@ -1,5 +1,7 @@
 package io.esimplified.sdk.repository.impl
 
+import io.esimplified.sdk.repository.NotificationRepository
+
 import io.esimplified.sdk.model.NotificationSettings
 import io.esimplified.sdk.network.ApiService
 

@@ -1,5 +1,7 @@
 package io.esimplified.sdk.repository.impl
 
+import io.esimplified.sdk.repository.LoyaltyRepository
+
 import io.esimplified.sdk.model.KredsQuoteRequest
 import io.esimplified.sdk.model.KredsLoyaltyBalanceResponse
 import io.esimplified.sdk.model.KredsQuoteResponse

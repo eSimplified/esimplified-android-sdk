@@ -1,5 +1,7 @@
 package io.esimplified.sdk.repository.impl
 
+import io.esimplified.sdk.repository.EsimRepository
+
 import io.esimplified.sdk.model.AssignedEsim
 import io.esimplified.sdk.network.ApiService
 

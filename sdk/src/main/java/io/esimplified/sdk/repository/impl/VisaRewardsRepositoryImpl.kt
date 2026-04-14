@@ -1,5 +1,7 @@
 package io.esimplified.sdk.repository.impl
 
+import io.esimplified.sdk.repository.VisaRewardsRepository
+
 import io.esimplified.sdk.model.VisaRewardsIframeResponse
 import io.esimplified.sdk.model.VisaRewardsResponse
 import io.esimplified.sdk.network.ApiService

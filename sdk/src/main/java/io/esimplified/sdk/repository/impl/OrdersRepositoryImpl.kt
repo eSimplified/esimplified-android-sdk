@@ -1,5 +1,7 @@
 package io.esimplified.sdk.repository.impl
 
+import io.esimplified.sdk.repository.OrdersRepository
+
 import io.esimplified.sdk.model.OrderHistoryItem
 import io.esimplified.sdk.model.OrderDetail
 import io.esimplified.sdk.network.ApiService
