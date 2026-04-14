@@ -1,7 +1,10 @@
 package io.esimplified.sdk
 
-interface SdkConfig {
-    val baseUrl: String
-    val clientId: String
-    val clientSecret: String
-}
+data class SdkConfig(
+    val baseUrl: String,
+    val apiVersion: String = "v2",
+    val clientId: String,
+    val clientSecret: String,
+    val awsWafToken: String = "",
+    val enableLogging: Boolean = false,
+)
