@@ -17,7 +17,7 @@ object EsimSdk {
     internal val config: SdkConfig
         get() = _config ?: error("EsimSdk not initialized. Call EsimSdk.initialize() first.")
 
-    internal val sessionManager: SessionManager
+    val sessionManager: SessionManager
         get() = _sessionManager ?: error("EsimSdk not initialized. Call EsimSdk.initialize() first.")
 
     internal val storageProvider: SecureStorageProvider
@@ -29,12 +29,13 @@ object EsimSdk {
     fun initialize(
         context: Context,
         config: SdkConfig,
-        storageProvider: SecureStorageProvider? = null
+        storageProvider: SecureStorageProvider? = null,
+        sessionManager: SessionManager? = null
     ) {
         _context = context.applicationContext
         _config = config
         _storageProvider = storageProvider ?: DefaultSecureStorage(context.applicationContext)
-        _sessionManager = DefaultSessionManager(_storageProvider!!)
+        _sessionManager = sessionManager ?: DefaultSessionManager(_storageProvider!!)
     }
 
     fun koinModule(): Module = createSdkModule()
