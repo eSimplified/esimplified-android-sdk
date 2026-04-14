@@ -164,4 +164,4 @@ internal class SdkAuthInterceptor(
 
 // Extension function for base64 encoding
 internal fun ByteArray.encodeBase64(): String =
-    android.util.Base64.encodeToString(this, android.util.Base64.NO_WRAP)
+    java.util.Base64.getEncoder().encodeToString(this)
