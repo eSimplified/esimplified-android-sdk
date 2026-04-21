@@ -19,6 +19,7 @@ internal class SdkAuthInterceptor(
 ) : Interceptor {
 
     private val json = Json { ignoreUnknownKeys = true }
+    private val refreshLock = Any()
 
     init {
         Timber.d("SdkAuthInterceptor initialized — clientId: ${config.clientId.take(8)}..., authUrl: ${config.baseUrl}")
@@ -76,52 +77,81 @@ internal class SdkAuthInterceptor(
                     return originalResponse
                 }
 
-                if (originalResponse.code == 401) {
-                    Timber.w("Got 401 -> attempting token refresh")
+                if (originalResponse.code == 401 || originalResponse.code == 403) {
+                    Timber.w("Got ${originalResponse.code} -> attempting token refresh")
                     originalResponse.close()
 
-                    val refreshResponse = try {
-                        val refreshRequest = createRefreshRequest(authState)
-                        chain.proceed(refreshRequest)
-                    } catch (e: IOException) {
-                        // Network error during refresh (e.g. connectivity change)
-                        // Let the caller handle the network failure
-                        throw e
-                    }
+                    val originalAccessToken = authState.accessToken
 
-                    Timber.d("Refresh response: ${refreshResponse.code}")
-                    return if (refreshResponse.isSuccessful) {
-                        val tokens = parseTokenResponse(refreshResponse)
-                        refreshResponse.close()
-                        sessionManager.save(
-                            authState.copy(
-                                expires = calculateExpiration(tokens.expiresIn),
-                                accessToken = tokens.accessToken ?: "",
-                                refreshToken = tokens.refreshToken ?: ""
+                    synchronized(refreshLock) {
+                        // Check if another thread already refreshed the token
+                        val currentAuthState = sessionManager.getAuthState()
+                        if (currentAuthState is Auth.Authenticated && currentAuthState.accessToken != originalAccessToken && currentAuthState.accessToken.isNotEmpty()) {
+                            Timber.d("Token already refreshed by another thread")
+                            val newRequestBuilder = originalRequest.newBuilder()
+                            newRequestBuilder.header("authorization", "Bearer ${currentAuthState.accessToken}")
+                            newRequestBuilder.addHeader("x-auth-validation", config.awsWafToken)
+
+                            currentAuthState.user.preferredCurrency?.let { currency ->
+                                if (currency.isNotEmpty()) {
+                                    newRequestBuilder.addHeader("accept-currency", currency)
+                                }
+                            }
+                            currentAuthState.user.preferredLanguage?.let { language ->
+                                if (language.isNotEmpty()) {
+                                    newRequestBuilder.addHeader("accept-language", language)
+                                }
+                            }
+
+                            return chain.proceed(newRequestBuilder.build())
+                        }
+
+                        val refreshResponse = try {
+                            val refreshRequest = createRefreshRequest(authState)
+                            chain.proceed(refreshRequest)
+                        } catch (e: IOException) {
+                            // Network error during refresh (e.g. connectivity change)
+                            // Let the caller handle the network failure
+                            throw e
+                        }
+
+                        Timber.d("Refresh response: ${refreshResponse.code}")
+                        return if (refreshResponse.isSuccessful) {
+                            val tokens = parseTokenResponse(refreshResponse)
+                            refreshResponse.close()
+                            sessionManager.save(
+                                authState.copy(
+                                    expires = calculateExpiration(tokens.expiresIn),
+                                    accessToken = tokens.accessToken ?: "",
+                                    refreshToken = tokens.refreshToken?.takeIf { it.isNotEmpty() } ?: authState.refreshToken
+                                )
                             )
-                        )
 
-                        // Retry original request with new token
-                        val newRequestBuilder = originalRequest.newBuilder()
-                        newRequestBuilder.header("authorization", "Bearer ${tokens.accessToken}")
-                        newRequestBuilder.addHeader("x-auth-validation", config.awsWafToken)
+                            // Retry original request with new token
+                            val newRequestBuilder = originalRequest.newBuilder()
+                            newRequestBuilder.header("authorization", "Bearer ${tokens.accessToken}")
+                            newRequestBuilder.addHeader("x-auth-validation", config.awsWafToken)
 
-                        // Re-add currency and language headers for retry
-                        authState.user.preferredCurrency?.let { currency ->
-                            if (currency.isNotEmpty()) {
-                                newRequestBuilder.addHeader("accept-currency", currency)
+                            // Re-add currency and language headers for retry
+                            authState.user.preferredCurrency?.let { currency ->
+                                if (currency.isNotEmpty()) {
+                                    newRequestBuilder.addHeader("accept-currency", currency)
+                                }
                             }
-                        }
-                        authState.user.preferredLanguage?.let { language ->
-                            if (language.isNotEmpty()) {
-                                newRequestBuilder.addHeader("accept-language", language)
+                            authState.user.preferredLanguage?.let { language ->
+                                if (language.isNotEmpty()) {
+                                    newRequestBuilder.addHeader("accept-language", language)
+                                }
                             }
-                        }
 
-                        chain.proceed(newRequestBuilder.build())
-                    } else {
-                        Timber.e("Refresh failed with ${refreshResponse.code}")
-                        refreshResponse
+                            chain.proceed(newRequestBuilder.build())
+                        } else {
+                            val code = refreshResponse.code
+                            Timber.e("Refresh failed with $code")
+                            refreshResponse.close()
+                            sessionManager.save(Auth.Unauthenticated)
+                            throw IOException("Session refresh failed: $code")
+                        }
                     }
                 }
 

@@ -23,7 +23,9 @@ data class PackagePlan(
     @SerialName("supported_countries") val supportedCountries: List<SupportedCountry>,
     @SerialName("name_additional_text") val nameAdditionalText: String,
     @SerialName("discounted_price") val discountedPrice: Double? = null,
-    @SerialName("earn_percentage") val earnPercentage: Double? = null
+    @SerialName("earn_percentage") val earnPercentage: Double? = null,
+    @SerialName("data_cap") val dataCap: String? = null,
+    @SerialName("throttle_speed") val throttleSpeed: String? = null
 ) {
     val isUnlimited: Boolean = data in listOf(-1.0, -1)
     val purchasePrice: Double = discountedPrice ?: price
