@@ -36,7 +36,7 @@ class SdkAuthInterceptorTest {
         mockWebServer.start()
         fakeStorage = FakeSecureStorage()
         sessionManager = DefaultSessionManager(fakeStorage)
-        config = SdkConfig(
+        config = SdkConfig.forTesting(
             baseUrl = mockWebServer.url("/").toString().trimEnd('/'),
             clientId = "test-client",
             clientSecret = "test-secret",

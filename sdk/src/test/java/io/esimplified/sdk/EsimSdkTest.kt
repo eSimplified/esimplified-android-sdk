@@ -11,7 +11,8 @@ import org.junit.Test
 class EsimSdkTest {
 
     private val testConfig = SdkConfig(
-        baseUrl = "https://api.example.com",
+        environment = SdkEnvironment.PRODUCTION,
+        clientName = "test",
         clientId = "test-client",
         clientSecret = "test-secret"
     )
