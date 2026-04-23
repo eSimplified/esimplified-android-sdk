@@ -12,6 +12,7 @@ import io.esimplified.sdk.model.UpdateCustomerPreferencesRequest
 import io.esimplified.sdk.model.VerifyEmailRequest
 import io.esimplified.sdk.model.VerifyEmailResponse
 import io.esimplified.sdk.model.GetTokenResponse
+import io.esimplified.sdk.model.ApiErrorResponse
 import io.esimplified.sdk.model.Customer
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.auth.Auth
@@ -132,36 +133,40 @@ internal class AuthRepositoryImpl(
         providerAccountId: String,
         idToken: String
     ): Customer {
-        val response = apiService.getSignInWith(
-            email = email,
-            firstName = firstName,
-            lastName = lastName,
-            provider = "google",
-            providerAccountId = providerAccountId,
-            fullName = fullName,
-            phoneNumber = phoneNumber,
-            grantType = "client_credentials",
-            idToken = idToken,
-            sender = "android"
-        )
-
-        if (!response.error.isNullOrEmpty() || !response.detail.isNullOrEmpty()) {
-            throw Exception(response.description ?: response.detail ?: "Google sign-in failed")
-        }
-
-        val user = response.user ?: throw Exception("Google sign-in failed")
-        val accessToken = response.accessToken ?: throw Exception("Google sign-in failed")
-
-        sessionManager.save(
-            Auth.Authenticated(
-                user = user,
-                accessToken = accessToken,
-                refreshToken = response.refreshToken ?: "",
-                expires = calculateExpiration(response.expiresIn)
+        try {
+            val response = apiService.getSignInWith(
+                email = email,
+                firstName = firstName,
+                lastName = lastName,
+                provider = "google",
+                providerAccountId = providerAccountId,
+                fullName = fullName,
+                phoneNumber = phoneNumber,
+                grantType = "client_credentials",
+                idToken = idToken,
+                sender = "android"
             )
-        )
 
-        return user
+            if (!response.error.isNullOrEmpty() || !response.detail.isNullOrEmpty()) {
+                throw Exception(response.description ?: response.detail ?: "Google sign-in failed")
+            }
+
+            val user = response.user ?: throw Exception("Google sign-in failed")
+            val accessToken = response.accessToken ?: throw Exception("Google sign-in failed")
+
+            sessionManager.save(
+                Auth.Authenticated(
+                    user = user,
+                    accessToken = accessToken,
+                    refreshToken = response.refreshToken ?: "",
+                    expires = calculateExpiration(response.expiresIn)
+                )
+            )
+
+            return user
+        } catch (e: HttpException) {
+            throw Exception(parseHttpError(e) ?: "Google sign-in failed")
+        }
     }
     // endregion
 
@@ -175,36 +180,44 @@ internal class AuthRepositoryImpl(
         marketingConsent: Boolean,
         referredBy: String?
     ): ProfileResponse {
-        val response = apiService.register(
-            CustomerDetails(
-                email = email,
-                password = password,
-                firstName = firstName,
-                lastName = lastName,
-                fullName = "$firstName $lastName",
-                phoneNumber = phoneNumber,
-                marketingConsent = marketingConsent,
-                referredBy = referredBy
+        try {
+            val response = apiService.register(
+                CustomerDetails(
+                    email = email,
+                    password = password,
+                    firstName = firstName,
+                    lastName = lastName,
+                    fullName = "$firstName $lastName",
+                    phoneNumber = phoneNumber,
+                    marketingConsent = marketingConsent,
+                    referredBy = referredBy
+                )
             )
-        )
 
-        if (!response.detail.isNullOrEmpty()) {
-            throw Exception(response.detail)
+            if (!response.detail.isNullOrEmpty()) {
+                throw Exception(response.detail)
+            }
+
+            return response
+        } catch (e: HttpException) {
+            throw Exception(parseHttpError(e) ?: e.message)
         }
-
-        return response
     }
     // endregion
 
     // region Password Management
     override suspend fun forgotPassword(email: String): CustomerForgetPasswordResponse {
-        val response = apiService.forgetPassword(CustomerForgetPassword(email = email))
+        try {
+            val response = apiService.forgetPassword(CustomerForgetPassword(email = email))
 
-        if (!response.detail.isNullOrEmpty()) {
-            throw Exception(response.detail)
+            if (!response.detail.isNullOrEmpty()) {
+                throw Exception(response.detail)
+            }
+
+            return response
+        } catch (e: HttpException) {
+            throw Exception(parseHttpError(e) ?: e.message)
         }
-
-        return response
     }
 
     override suspend fun changePassword(
@@ -260,11 +273,15 @@ internal class AuthRepositoryImpl(
 
     // region Email Verification
     override suspend fun verifyEmail(email: String, token: String, orderUUID: String?): VerifyEmailResponse {
-        val response = apiService.verifyEmail(VerifyEmailRequest(email, token, orderUUID))
-        if (!response.isVerified) {
-            throw Exception(response.detail ?: "Email verification failed")
+        try {
+            val response = apiService.verifyEmail(VerifyEmailRequest(email, token, orderUUID))
+            if (!response.isVerified) {
+                throw Exception(response.detail ?: "Email verification failed")
+            }
+            return response
+        } catch (e: HttpException) {
+            throw Exception(parseHttpError(e) ?: "Email verification failed")
         }
-        return response
     }
     // endregion
 
@@ -318,47 +335,51 @@ internal class AuthRepositoryImpl(
         phoneNumber: String?,
         password: String
     ): ProfileResponse {
-        val userId = secureStorage.secureLoad(KEY_USER_ID, "")
-        val userEmail = secureStorage.secureLoad(KEY_USER_EMAIL, "")
-        val fullName = listOfNotNull(firstName, lastName).joinToString(" ")
+        try {
+            val userId = secureStorage.secureLoad(KEY_USER_ID, "")
+            val userEmail = secureStorage.secureLoad(KEY_USER_EMAIL, "")
+            val fullName = listOfNotNull(firstName, lastName).joinToString(" ")
 
-        val response = apiService.update(
-            CustomerDetails(
-                id = userId,
-                email = email,
-                firstName = firstName,
-                lastName = lastName,
-                fullName = fullName,
-                phoneNumber = phoneNumber,
-                newEmail = if (userEmail == email) null else email,
-                password = password,
-            )
-        )
-
-        if (response.detail != null) {
-            throw Exception(response.detail)
-        }
-
-        if (response.success == false || response.updated == false) {
-            throw Exception(response.detail ?: response.message ?: "Update failed")
-        }
-
-        val snapshot = sessionManager.getAuthState()
-        if (snapshot is Auth.Authenticated) {
-            sessionManager.save(
-                snapshot.copy(
-                    user = snapshot.user.copy(
-                        email = email,
-                        firstName = firstName,
-                        lastName = lastName,
-                        fullName = fullName,
-                        phoneNumber = phoneNumber,
-                    )
+            val response = apiService.update(
+                CustomerDetails(
+                    id = userId,
+                    email = email,
+                    firstName = firstName,
+                    lastName = lastName,
+                    fullName = fullName,
+                    phoneNumber = phoneNumber,
+                    newEmail = if (userEmail == email) null else email,
+                    password = password,
                 )
             )
-        }
 
-        return response
+            if (response.detail != null) {
+                throw Exception(response.detail)
+            }
+
+            if (response.success == false || response.updated == false) {
+                throw Exception(response.detail ?: response.message ?: "Update failed")
+            }
+
+            val snapshot = sessionManager.getAuthState()
+            if (snapshot is Auth.Authenticated) {
+                sessionManager.save(
+                    snapshot.copy(
+                        user = snapshot.user.copy(
+                            email = email,
+                            firstName = firstName,
+                            lastName = lastName,
+                            fullName = fullName,
+                            phoneNumber = phoneNumber,
+                        )
+                    )
+                )
+            }
+
+            return response
+        } catch (e: HttpException) {
+            throw Exception(parseHttpError(e) ?: "Update failed")
+        }
     }
     // endregion
 
@@ -371,6 +392,20 @@ internal class AuthRepositoryImpl(
     // region Private Helpers
     private fun calculateExpiration(expiresIn: Int): LocalDateTime {
         return LocalDateTime.now().plusSeconds(expiresIn.toLong())
+    }
+
+    private fun parseHttpError(e: HttpException): String? {
+        return try {
+            val errorBody = e.response()?.errorBody()?.string()
+            if (errorBody != null) {
+                val errorResponse = json.decodeFromString<ApiErrorResponse>(errorBody)
+                errorResponse.detail ?: errorResponse.message ?: errorResponse.error
+            } else {
+                null
+            }
+        } catch (_: Exception) {
+            null
+        }
     }
     // endregion
 }

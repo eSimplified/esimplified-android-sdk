@@ -37,6 +37,14 @@ internal class SdkAuthInterceptor(
         requestBuilder.header("authorization", "Basic $credentials")
         requestBuilder.addHeader("x-auth-validation", config.awsWafToken)
 
+        config.customHeadersProvider?.let { provider ->
+            try {
+                provider().forEach { (key, value) ->
+                    requestBuilder.addHeader(key, value)
+                }
+            } catch (_: Exception) { }
+        }
+
         // Add currency and language headers from authenticated user preferences if available
         if (authState is Auth.Authenticated) {
             authState.user.preferredCurrency?.let { currency ->

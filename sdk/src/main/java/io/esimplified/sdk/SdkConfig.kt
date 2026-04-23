@@ -7,4 +7,5 @@ data class SdkConfig(
     val clientSecret: String,
     val awsWafToken: String = "",
     val enableLogging: Boolean = false,
+    val customHeadersProvider: (() -> Map<String, String>)? = null,
 )
