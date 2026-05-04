@@ -15,6 +15,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.io.IOException
 import java.time.LocalDateTime
 
 class SdkAuthInterceptorTest {
@@ -210,8 +211,8 @@ class SdkAuthInterceptorTest {
         assertEquals("Bearer refreshed-token", retryRequest.getHeader("authorization"))
     }
 
-    @Test
-    fun `failed refresh returns error response`() {
+    @Test(expected = IOException::class)
+    fun `failed refresh throws IOException`() {
         sessionManager.save(createTestAuth())
 
         // 401 on original
@@ -220,12 +221,7 @@ class SdkAuthInterceptorTest {
         mockWebServer.enqueue(MockResponse().setResponseCode(400).setBody("""{"error":"invalid_grant"}"""))
 
         val request = Request.Builder().url(mockWebServer.url("/api/test")).build()
-        val response = client.newCall(request).execute()
-
-        // Should return the failed refresh response
-        assertEquals(400, response.code)
-        // Only 2 requests: original + failed refresh (no retry)
-        assertEquals(2, mockWebServer.requestCount)
+        client.newCall(request).execute()
     }
 
     @Test

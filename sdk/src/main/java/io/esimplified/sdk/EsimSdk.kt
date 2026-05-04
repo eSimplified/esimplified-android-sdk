@@ -8,23 +8,23 @@ import io.esimplified.sdk.auth.SessionManager
 import io.esimplified.sdk.di.createSdkModule
 import org.koin.core.module.Module
 
-object EsimSdk {
+object EsimplifiedSdk {
     private var _config: SdkConfig? = null
     private var _sessionManager: SessionManager? = null
     private var _storageProvider: SecureStorageProvider? = null
     private var _context: Context? = null
 
     internal val config: SdkConfig
-        get() = _config ?: error("EsimSdk not initialized. Call EsimSdk.initialize() first.")
+        get() = _config ?: error("EsimplifiedSdk not initialized. Call EsimplifiedSdk.initialize() first.")
 
     val sessionManager: SessionManager
-        get() = _sessionManager ?: error("EsimSdk not initialized. Call EsimSdk.initialize() first.")
+        get() = _sessionManager ?: error("EsimplifiedSdk not initialized. Call EsimplifiedSdk.initialize() first.")
 
     internal val storageProvider: SecureStorageProvider
-        get() = _storageProvider ?: error("EsimSdk not initialized. Call EsimSdk.initialize() first.")
+        get() = _storageProvider ?: error("EsimplifiedSdk not initialized. Call EsimplifiedSdk.initialize() first.")
 
     internal val context: Context
-        get() = _context ?: error("EsimSdk not initialized. Call EsimSdk.initialize() first.")
+        get() = _context ?: error("EsimplifiedSdk not initialized. Call EsimplifiedSdk.initialize() first.")
 
     fun initialize(
         context: Context,

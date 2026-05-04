@@ -8,7 +8,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class EsimSdkTest {
+class EsimplifiedSdkTest {
 
     private val testConfig = SdkConfig(
         environment = SdkEnvironment.PRODUCTION,
@@ -28,9 +28,9 @@ class EsimSdkTest {
 
     private fun resetField(fieldName: String) {
         try {
-            val field = EsimSdk::class.java.getDeclaredField(fieldName)
+            val field = EsimplifiedSdk::class.java.getDeclaredField(fieldName)
             field.isAccessible = true
-            field.set(EsimSdk, null)
+            field.set(EsimplifiedSdk, null)
         } catch (_: Exception) {
             // Field may not exist or not be accessible
         }
@@ -42,8 +42,8 @@ class EsimSdkTest {
         // Use reflection to call initialize without a real Context
         setPrivateFields(testConfig, fakeStorage, DefaultSessionManager(fakeStorage))
 
-        assertNotNull(EsimSdk.sessionManager)
-        assertTrue(EsimSdk.sessionManager is DefaultSessionManager)
+        assertNotNull(EsimplifiedSdk.sessionManager)
+        assertTrue(EsimplifiedSdk.sessionManager is DefaultSessionManager)
     }
 
     @Test
@@ -52,9 +52,9 @@ class EsimSdkTest {
         setPrivateFields(testConfig, fakeStorage, DefaultSessionManager(fakeStorage))
 
         // Access storageProvider via reflection since it's internal
-        val storageField = EsimSdk::class.java.getDeclaredField("_storageProvider")
+        val storageField = EsimplifiedSdk::class.java.getDeclaredField("_storageProvider")
         storageField.isAccessible = true
-        val provider = storageField.get(EsimSdk)
+        val provider = storageField.get(EsimplifiedSdk)
         assertTrue("Expected FakeSecureStorage but got ${provider?.javaClass}", provider is FakeSecureStorage)
     }
 
@@ -64,19 +64,19 @@ class EsimSdkTest {
         val customSessionManager = DefaultSessionManager(fakeStorage)
         setPrivateFields(testConfig, fakeStorage, customSessionManager)
 
-        assertTrue(EsimSdk.sessionManager === customSessionManager)
+        assertTrue(EsimplifiedSdk.sessionManager === customSessionManager)
     }
 
     @Test(expected = IllegalStateException::class)
     fun `accessing config before initialize throws error`() {
         // Do not call initialize; accessing config should throw
-        EsimSdk.config
+        EsimplifiedSdk.config
     }
 
     @Test(expected = IllegalStateException::class)
     fun `accessing sessionManager before initialize throws error`() {
         // Do not call initialize; accessing sessionManager should throw
-        EsimSdk.sessionManager
+        EsimplifiedSdk.sessionManager
     }
 
     @Test
@@ -84,12 +84,12 @@ class EsimSdkTest {
         val fakeStorage = FakeSecureStorage()
         setPrivateFields(testConfig, fakeStorage, DefaultSessionManager(fakeStorage))
 
-        val module = EsimSdk.koinModule()
+        val module = EsimplifiedSdk.koinModule()
         assertNotNull(module)
     }
 
     /**
-     * Helper to set private fields on the EsimSdk singleton directly,
+     * Helper to set private fields on the EsimplifiedSdk singleton directly,
      * bypassing the need for a real Android Context.
      */
     private fun setPrivateFields(config: SdkConfig, storage: FakeSecureStorage, sessionManager: SessionManager) {
@@ -99,8 +99,8 @@ class EsimSdkTest {
     }
 
     private fun setField(fieldName: String, value: Any?) {
-        val field = EsimSdk::class.java.getDeclaredField(fieldName)
+        val field = EsimplifiedSdk::class.java.getDeclaredField(fieldName)
         field.isAccessible = true
-        field.set(EsimSdk, value)
+        field.set(EsimplifiedSdk, value)
     }
 }

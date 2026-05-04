@@ -1,7 +1,7 @@
 package io.esimplified.sdk.di
 
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
-import io.esimplified.sdk.EsimSdk
+import io.esimplified.sdk.EsimplifiedSdk
 import io.esimplified.sdk.auth.SecureStorageProvider
 import io.esimplified.sdk.auth.SessionManager
 import io.esimplified.sdk.network.ApiService
@@ -18,8 +18,8 @@ import retrofit2.Retrofit
 import retrofit2.create
 
 internal fun createSdkModule(): Module = module {
-    single<SessionManager> { EsimSdk.sessionManager }
-    single<SecureStorageProvider> { EsimSdk.storageProvider }
+    single<SessionManager> { EsimplifiedSdk.sessionManager }
+    single<SecureStorageProvider> { EsimplifiedSdk.storageProvider }
 
     single {
         Json {
@@ -32,16 +32,16 @@ internal fun createSdkModule(): Module = module {
     single {
         SdkAuthInterceptor(
             sessionManager = get(),
-            config = EsimSdk.config,
+            config = EsimplifiedSdk.config,
         )
     }
 
     single {
         val builder = OkHttpClient.Builder()
             .addInterceptor(get<SdkAuthInterceptor>())
-            .cache(okhttp3.Cache(java.io.File(EsimSdk.context.cacheDir, "esimplified_http_cache"), 10L * 1024 * 1024))
+            .cache(okhttp3.Cache(java.io.File(EsimplifiedSdk.context.cacheDir, "esimplified_http_cache"), 10L * 1024 * 1024))
 
-        if (EsimSdk.config.enableLogging) {
+        if (EsimplifiedSdk.config.enableLogging) {
             builder.addInterceptor(HttpLoggingInterceptor().setLevel(HttpLoggingInterceptor.Level.BODY))
         }
 
@@ -51,7 +51,7 @@ internal fun createSdkModule(): Module = module {
     single {
         val json: Json = get()
         Retrofit.Builder()
-            .baseUrl(EsimSdk.config.baseUrl + "/")
+            .baseUrl(EsimplifiedSdk.config.baseUrl + "/")
             .client(get())
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
             .build()

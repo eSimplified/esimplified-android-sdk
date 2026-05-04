@@ -100,6 +100,11 @@ internal class SdkAuthInterceptor(
                             newRequestBuilder.header("authorization", "Bearer ${currentAuthState.accessToken}")
                             newRequestBuilder.addHeader("x-auth-validation", config.awsWafToken)
 
+                            config.customHeadersProvider?.let { provider ->
+                                try { provider().forEach { (key, value) -> newRequestBuilder.addHeader(key, value) } }
+                                catch (_: Exception) { }
+                            }
+
                             currentAuthState.user.preferredCurrency?.let { currency ->
                                 if (currency.isNotEmpty()) {
                                     newRequestBuilder.addHeader("accept-currency", currency)
@@ -140,6 +145,11 @@ internal class SdkAuthInterceptor(
                             newRequestBuilder.header("authorization", "Bearer ${tokens.accessToken}")
                             newRequestBuilder.addHeader("x-auth-validation", config.awsWafToken)
 
+                            config.customHeadersProvider?.let { provider ->
+                                try { provider().forEach { (key, value) -> newRequestBuilder.addHeader(key, value) } }
+                                catch (_: Exception) { }
+                            }
+
                             // Re-add currency and language headers for retry
                             authState.user.preferredCurrency?.let { currency ->
                                 if (currency.isNotEmpty()) {
@@ -177,12 +187,18 @@ internal class SdkAuthInterceptor(
             .add("refresh_token", authState.refreshToken)
             .build()
 
-        return Request.Builder()
+        val builder = Request.Builder()
             .url("${config.baseUrl}/auth/token/")
             .header("authorization", "Basic $credentials")
             .addHeader("x-auth-validation", config.awsWafToken)
             .post(formBody)
-            .build()
+
+        config.customHeadersProvider?.let { provider ->
+            try { provider().forEach { (key, value) -> builder.addHeader(key, value) } }
+            catch (_: Exception) { }
+        }
+
+        return builder.build()
     }
 
     private fun parseTokenResponse(response: Response): GetTokenResponse {

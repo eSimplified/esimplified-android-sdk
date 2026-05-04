@@ -10,6 +10,13 @@ data class KredsQuoteResponse(
     @SerialName("preferred_currency") val preferredCurrency: CurrencyObject? = null,
     @SerialName("pricing") val pricing: KredsQuotePricing,
     @SerialName("points") val points: KredsQuotePoints,
+    @SerialName("notices") val notices: List<QuoteNotice>? = null,
+)
+
+@Serializable
+data class QuoteNotice(
+    @SerialName("code") val code: String,
+    @SerialName("message") val message: String,
 )
 
 @Serializable

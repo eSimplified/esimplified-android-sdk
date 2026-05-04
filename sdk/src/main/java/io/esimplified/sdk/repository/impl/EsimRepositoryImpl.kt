@@ -17,21 +17,33 @@ internal class EsimRepositoryImpl(
     // region eSIMs
     override suspend fun getEsims(): List<AssignedEsim> {
         try {
-            val active = apiService.getCustomerEsimList(
+            return getActiveEsims() + getArchivedEsims()
+        } catch (e: HttpException) {
+            throw Exception(parseHttpError(e) ?: e.message)
+        }
+    }
+
+    override suspend fun getActiveEsims(): List<AssignedEsim> {
+        try {
+            return apiService.getCustomerEsimList(
                 getESimDetails = true,
                 getPackageDetails = true,
                 getBalanceRemaining = true,
                 showArchived = false
             ).results
+        } catch (e: HttpException) {
+            throw Exception(parseHttpError(e) ?: e.message)
+        }
+    }
 
-            val archived = apiService.getCustomerEsimList(
+    override suspend fun getArchivedEsims(): List<AssignedEsim> {
+        try {
+            return apiService.getCustomerEsimList(
                 getESimDetails = true,
                 getPackageDetails = true,
                 getBalanceRemaining = true,
                 showArchived = true
             ).results
-
-            return active + archived
         } catch (e: HttpException) {
             throw Exception(parseHttpError(e) ?: e.message)
         }
