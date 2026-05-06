@@ -35,26 +35,27 @@ internal class SdkAuthInterceptor(
 
         val requestBuilder = originalRequest.newBuilder()
         requestBuilder.header("authorization", "Basic $credentials")
-        requestBuilder.addHeader("x-auth-validation", config.awsWafToken)
+        requestBuilder.applySecurityHeaders()
 
-        config.customHeadersProvider?.let { provider ->
-            try {
-                provider().forEach { (key, value) ->
-                    requestBuilder.addHeader(key, value)
-                }
-            } catch (_: Exception) { }
+        val customHeaders = config.customHeadersProvider?.let { provider ->
+            try { provider() } catch (_: Exception) { null }
         }
+        val hasCustomCurrency = customHeaders?.containsKey("accept-currency") == true
+        val hasCustomLanguage = customHeaders?.containsKey("accept-language") == true
 
-        // Add currency and language headers from authenticated user preferences if available
         if (authState is Auth.Authenticated) {
-            authState.user.preferredCurrency?.let { currency ->
-                if (currency.isNotEmpty()) {
-                    requestBuilder.addHeader("accept-currency", currency)
+            if (!hasCustomCurrency) {
+                authState.user.preferredCurrency?.let { currency ->
+                    if (currency.isNotEmpty()) {
+                        requestBuilder.addHeader("accept-currency", currency)
+                    }
                 }
             }
-            authState.user.preferredLanguage?.let { language ->
-                if (language.isNotEmpty()) {
-                    requestBuilder.addHeader("accept-language", language)
+            if (!hasCustomLanguage) {
+                authState.user.preferredLanguage?.let { language ->
+                    if (language.isNotEmpty()) {
+                        requestBuilder.addHeader("accept-language", language)
+                    }
                 }
             }
         }
@@ -92,18 +93,12 @@ internal class SdkAuthInterceptor(
                     val originalAccessToken = authState.accessToken
 
                     synchronized(refreshLock) {
-                        // Check if another thread already refreshed the token
                         val currentAuthState = sessionManager.getAuthState()
                         if (currentAuthState is Auth.Authenticated && currentAuthState.accessToken != originalAccessToken && currentAuthState.accessToken.isNotEmpty()) {
                             Timber.d("Token already refreshed by another thread")
                             val newRequestBuilder = originalRequest.newBuilder()
                             newRequestBuilder.header("authorization", "Bearer ${currentAuthState.accessToken}")
-                            newRequestBuilder.addHeader("x-auth-validation", config.awsWafToken)
-
-                            config.customHeadersProvider?.let { provider ->
-                                try { provider().forEach { (key, value) -> newRequestBuilder.addHeader(key, value) } }
-                                catch (_: Exception) { }
-                            }
+                            newRequestBuilder.applySecurityHeaders()
 
                             currentAuthState.user.preferredCurrency?.let { currency ->
                                 if (currency.isNotEmpty()) {
@@ -123,8 +118,6 @@ internal class SdkAuthInterceptor(
                             val refreshRequest = createRefreshRequest(authState)
                             chain.proceed(refreshRequest)
                         } catch (e: IOException) {
-                            // Network error during refresh (e.g. connectivity change)
-                            // Let the caller handle the network failure
                             throw e
                         }
 
@@ -140,17 +133,10 @@ internal class SdkAuthInterceptor(
                                 )
                             )
 
-                            // Retry original request with new token
                             val newRequestBuilder = originalRequest.newBuilder()
                             newRequestBuilder.header("authorization", "Bearer ${tokens.accessToken}")
-                            newRequestBuilder.addHeader("x-auth-validation", config.awsWafToken)
+                            newRequestBuilder.applySecurityHeaders()
 
-                            config.customHeadersProvider?.let { provider ->
-                                try { provider().forEach { (key, value) -> newRequestBuilder.addHeader(key, value) } }
-                                catch (_: Exception) { }
-                            }
-
-                            // Re-add currency and language headers for retry
                             authState.user.preferredCurrency?.let { currency ->
                                 if (currency.isNotEmpty()) {
                                     newRequestBuilder.addHeader("accept-currency", currency)
@@ -178,6 +164,24 @@ internal class SdkAuthInterceptor(
         }
     }
 
+    private fun Request.Builder.applySecurityHeaders() {
+        val customHeaders = config.customHeadersProvider?.let { provider ->
+            try { provider() } catch (_: Exception) { null }
+        }
+
+        val wafToken = customHeaders?.get("x-auth-validation")
+            ?: config.awsWafToken
+        if (wafToken.isNotEmpty()) {
+            addHeader("x-auth-validation", wafToken)
+        }
+
+        customHeaders?.forEach { (key, value) ->
+            if (key != "x-auth-validation") {
+                addHeader(key, value)
+            }
+        }
+    }
+
     private fun createRefreshRequest(authState: Auth.Authenticated): Request {
         val credentials = "${config.clientId}:${config.clientSecret}".toByteArray().encodeBase64()
         val formBody = FormBody.Builder()
@@ -190,13 +194,9 @@ internal class SdkAuthInterceptor(
         val builder = Request.Builder()
             .url("${config.baseUrl}/auth/token/")
             .header("authorization", "Basic $credentials")
-            .addHeader("x-auth-validation", config.awsWafToken)
             .post(formBody)
 
-        config.customHeadersProvider?.let { provider ->
-            try { provider().forEach { (key, value) -> builder.addHeader(key, value) } }
-            catch (_: Exception) { }
-        }
+        builder.applySecurityHeaders()
 
         return builder.build()
     }
@@ -216,6 +216,5 @@ internal class SdkAuthInterceptor(
     }
 }
 
-// Extension function for base64 encoding
 internal fun ByteArray.encodeBase64(): String =
     java.util.Base64.getEncoder().encodeToString(this)
