@@ -2,7 +2,7 @@
 
 Kotlin SDK for integrating the eSIMplified eSIM platform into Android applications. Provides typed repository interfaces for authentication, eSIM management, package browsing, orders, payments, and more. All networking, authentication, and token management are handled internally -- consuming apps interact only with clean Kotlin interfaces.
 
-**Coordinates:** `io.esimplified:android-sdk:1.0.0`
+**Coordinates:** `io.github.esimplified:android-sdk:1.0.0`
 
 ## Requirements
 
@@ -12,28 +12,16 @@ Kotlin SDK for integrating the eSIMplified eSIM platform into Android applicatio
 
 ## Installation
 
-Add the Maven repository and dependency to your project:
-
-```kotlin
-// settings.gradle.kts
-repositories {
-    mavenLocal() // local development
-    maven {
-        url = uri("https://maven.pkg.github.com/esimplified/esimplified-android-sdk")
-        credentials {
-            username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")
-            password = providers.gradleProperty("gpr.token").orNull ?: System.getenv("GITHUB_TOKEN")
-        }
-    }
-}
-```
+The SDK is published to Maven Central. No extra repositories or authentication needed.
 
 ```kotlin
 // build.gradle.kts (app)
 dependencies {
-    implementation("io.esimplified:android-sdk:1.0.0")
+    implementation("io.github.esimplified:android-sdk:1.0.0")
 }
 ```
+
+Maven Central is included by default in all Gradle projects. No changes to `settings.gradle.kts` required.
 
 ## Quick Start
 
@@ -42,23 +30,29 @@ dependencies {
 Call this once in your `Application.onCreate()`:
 
 ```kotlin
-EsimSdk.initialize(
+EsimplifiedSdk.initialize(
     context = this,
     config = SdkConfig(
-        baseUrl = "https://api.example.com",
-        clientId = "your-client-id",
-        clientSecret = "your-client-secret",
+        environment = SdkEnvironment.PRODUCTION,  // or STAGING
+        clientName = "yourcompany",                // your registered brand name
+        clientId = "your-client-id",               // OAuth2 client ID
+        clientSecret = "your-client-secret",       // OAuth2 client secret
+        awsWafToken = "your-waf-token",            // AWS WAF validation token
         enableLogging = BuildConfig.DEBUG,
     )
 )
 ```
+
+The SDK constructs API URLs automatically from `clientName` and `environment`:
+- **Staging:** `https://{clientName}.stage.esimplified.io`
+- **Production:** `https://{clientName}.live.esimplified.io`
 
 ### 2. Load the Koin module
 
 ```kotlin
 startKoin {
     modules(
-        EsimSdk.koinModule(),
+        EsimplifiedSdk.koinModule(),
         // your app modules...
     )
 }
@@ -81,25 +75,41 @@ class StoreViewModel(
 }
 ```
 
+## SdkConfig
+
+```kotlin
+SdkConfig(
+    environment: SdkEnvironment,                         // STAGING or PRODUCTION
+    clientName: String,                                  // your brand name (used to build API URL)
+    apiVersion: String = "v2",                           // API version path segment
+    clientId: String,                                    // OAuth2 client ID
+    clientSecret: String,                                // OAuth2 client secret
+    awsWafToken: String = "",                            // AWS WAF validation token
+    enableLogging: Boolean = false,                      // enable OkHttp request/response logging
+    customHeadersProvider: (() -> Map<String, String>)?, // optional extra headers per request
+)
+```
+
 ## SDK Structure
 
 ```
 sdk/src/main/java/io/esimplified/sdk/
-|-- EsimSdk.kt                        # SDK entry point (initialize, koinModule)
-|-- SdkConfig.kt                       # Configuration data class
+|-- EsimplifiedSdk.kt                    # SDK entry point (initialize, koinModule)
+|-- SdkConfig.kt                          # Configuration data class
+|-- SdkEnvironment.kt                     # STAGING / PRODUCTION enum
 |-- auth/
-|   |-- Auth.kt                        # Sealed interface: Unauthenticated | Authenticated
-|   |-- SessionManager.kt              # Session state interface
-|   |-- DefaultSessionManager.kt       # Default implementation (EncryptedSharedPreferences)
-|   |-- SecureStorageProvider.kt        # Storage abstraction interface
-|   |-- DefaultSecureStorage.kt        # AES-256 EncryptedSharedPreferences implementation
-|   +-- TokenProvider.kt               # Token access/refresh interface
+|   |-- Auth.kt                           # Sealed interface: Unauthenticated | Authenticated
+|   |-- SessionManager.kt                 # Session state interface
+|   |-- DefaultSessionManager.kt          # Default implementation (EncryptedSharedPreferences)
+|   |-- SecureStorageProvider.kt           # Storage abstraction interface
+|   |-- DefaultSecureStorage.kt           # AES-256 EncryptedSharedPreferences implementation
+|   +-- TokenProvider.kt                  # Token access/refresh interface
 |-- network/
-|   |-- ApiService.kt                  # Retrofit API endpoint definitions
-|   |-- BaseResponse.kt               # Paginated response wrapper
-|   +-- SdkAuthInterceptor.kt         # OkHttp interceptor for auth + token refresh
-|-- model/                             # All API data models (see table below)
-|-- repository/                        # Public repository interfaces
+|   |-- ApiService.kt                     # Retrofit API endpoint definitions
+|   |-- BaseResponse.kt                   # Paginated response wrapper
+|   +-- SdkAuthInterceptor.kt            # OkHttp interceptor for auth + token refresh
+|-- model/                                # All API data models (see table below)
+|-- repository/                           # Public repository interfaces
 |   |-- AuthRepository.kt
 |   |-- CountryRepository.kt
 |   |-- PackagesRepository.kt
@@ -112,9 +122,9 @@ sdk/src/main/java/io/esimplified/sdk/
 |   |-- NotificationRepository.kt
 |   |-- VisaRewardsRepository.kt
 |   |-- VouchersRepository.kt
-|   +-- impl/                          # Internal implementations (not public API)
+|   +-- impl/                             # Internal implementations (not public API)
 +-- di/
-    +-- SdkModule.kt                   # Koin module wiring all dependencies
+    +-- SdkModule.kt                      # Koin module wiring all dependencies
 ```
 
 ## All Models
@@ -379,23 +389,30 @@ class MyStorage : SecureStorageProvider {
     override fun <T> save(value: T, forKey: String) { /* ... */ }
 }
 
-EsimSdk.initialize(
+EsimplifiedSdk.initialize(
     context = this,
     config = config,
     storageProvider = MyStorage()
 )
 ```
 
-## SdkConfig
+## Custom Headers
+
+You can inject additional headers into every SDK request by providing a `customHeadersProvider`:
 
 ```kotlin
-data class SdkConfig(
-    val baseUrl: String,         // API base URL (no trailing slash)
-    val apiVersion: String,      // API version path segment (default: "v2")
-    val clientId: String,        // OAuth2 client ID
-    val clientSecret: String,    // OAuth2 client secret
-    val awsWafToken: String,     // AWS WAF validation token (default: "")
-    val enableLogging: Boolean,  // Enable OkHttp request/response logging (default: false)
+EsimplifiedSdk.initialize(
+    context = this,
+    config = SdkConfig(
+        // ...
+        customHeadersProvider = {
+            mapOf(
+                "X-Firebase-AppCheck" to getAppCheckToken(),
+                "accept-currency" to selectedCurrency,
+                "accept-language" to selectedLanguage,
+            )
+        }
+    )
 )
 ```
 
@@ -403,24 +420,22 @@ data class SdkConfig(
 
 ### Making SDK Changes
 
-1. Clone the SDK repository alongside the app:
+1. Clone the SDK repository:
    ```bash
-   git clone git@github.com:eSimplified/esimplified-android-sdk.git
+   git clone https://github.com/eSimplified/esimplified-android-sdk.git
    ```
 
 2. Make your changes in the SDK source code.
 
-3. Publish to Maven Local:
+3. Publish to Maven Local for fast local iteration:
    ```bash
    cd esimplified-android-sdk
-   ./gradlew publishReleasePublicationToMavenLocal
+   ./gradlew publishToMavenLocal
    ```
 
-4. In the app project, Gradle resolves the SDK from Maven Local (configured in `settings.gradle.kts` via `mavenLocal()`). Sync Gradle and rebuild.
+4. In the app project, Gradle resolves the SDK from Maven Local first (configured via `mavenLocal()` in `settings.gradle.kts`). Sync Gradle and rebuild.
 
 5. Repeat steps 2-4 until satisfied.
-
-6. Commit and push SDK changes, then update the version if publishing a release.
 
 ### Build Commands
 
@@ -428,56 +443,58 @@ data class SdkConfig(
 # Build the SDK AAR
 ./gradlew :sdk:assembleRelease
 
-# Publish to Maven Local (for local development)
-./gradlew publishReleasePublicationToMavenLocal
+# Run tests
+./gradlew test
 
-# Clean build
-./gradlew clean :sdk:assembleRelease
+# Publish to Maven Local (for local development)
+./gradlew publishToMavenLocal
 ```
 
 ### Output Locations
 
 - AAR: `sdk/build/outputs/aar/sdk-release.aar`
-- Maven Local: `~/.m2/repository/io/esimplified/android-sdk/1.0.0/`
+- Maven Local: `~/.m2/repository/io/github/esimplified/android-sdk/{version}/`
 
-## Publishing
+## Publishing to Maven Central
 
-### Maven Local (Development)
+The SDK is published to Maven Central via CI/CD. No manual steps needed.
 
-For local development and testing:
+### Automated Publishing (CI/CD)
+
+A GitHub Actions workflow publishes automatically when you push a version tag:
+
+1. Update the version in `sdk/build.gradle.kts`:
+   ```kotlin
+   mavenPublishing {
+       coordinates("io.github.esimplified", "android-sdk", "1.1.0")  // bump version here
+   }
+   ```
+
+2. Commit and push:
+   ```bash
+   git add sdk/build.gradle.kts
+   git commit -m "chore: bump version to 1.1.0"
+   git push origin main
+   ```
+
+3. Tag and push:
+   ```bash
+   git tag v1.1.0
+   git push origin v1.1.0
+   ```
+
+CI will automatically: run tests, sign the artifact with GPG, publish to Maven Central, and create a GitHub Release.
+
+### Manual Publishing (from local machine)
+
+For local publishing (requires Sonatype credentials and GPG key in `~/.gradle/gradle.properties`):
 
 ```bash
-./gradlew publishReleasePublicationToMavenLocal
-```
+# Publish to Maven Central
+./gradlew publishAllPublicationsToMavenCentralRepository
 
-The AAR and POM are published to `~/.m2/repository/io/esimplified/android-sdk/{version}/`. The consuming app resolves it via the `mavenLocal()` repository in `settings.gradle.kts`.
-
-### GitHub Packages (Partners)
-
-For production distribution to partner apps:
-
-```bash
-GITHUB_ACTOR=your-username GITHUB_TOKEN=your-token \
-  ./gradlew publishReleasePublicationToGitHubPackagesRepository
-```
-
-Or configure credentials in `~/.gradle/gradle.properties`:
-
-```properties
-gpr.user=your-github-username
-gpr.token=your-github-personal-access-token
-```
-
-Partners add the GitHub Packages repository to their `settings.gradle.kts`:
-
-```kotlin
-maven {
-    url = uri("https://maven.pkg.github.com/esimplified/esimplified-android-sdk")
-    credentials {
-        username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")
-        password = providers.gradleProperty("gpr.token").orNull ?: System.getenv("GITHUB_TOKEN")
-    }
-}
+# Publish to Maven Local (for development)
+./gradlew publishToMavenLocal
 ```
 
 ## Versioning
@@ -488,35 +505,9 @@ The SDK follows [Semantic Versioning](https://semver.org/):
 - **MINOR** (x.1.x) -- New features (new repository methods, new model classes, new optional parameters)
 - **PATCH** (x.x.1) -- Bug fixes, internal improvements, documentation updates
 
-The version is defined in `sdk/build.gradle.kts`:
-
-```kotlin
-publishing {
-    publications {
-        register<MavenPublication>("release") {
-            groupId = "io.esimplified"
-            artifactId = "android-sdk"
-            version = "1.0.0"  // Update here
-        }
-    }
-}
-```
-
-When bumping the version:
-1. Update `version` in `sdk/build.gradle.kts`
-2. Publish to Maven Local or GitHub Packages
-3. Update the dependency version in consuming apps
-
 ## ProGuard
 
-The SDK ships consumer ProGuard rules (`consumer-rules.pro`) that are automatically applied to consuming apps during their release builds. These rules ensure:
-
-- All SDK public API classes are kept (`-keep class io.esimplified.sdk.** { *; }`)
-- Serialization annotations are preserved (`-keepattributes *Annotation*`)
-- Model class constructors and fields are kept for kotlinx.serialization
-- Retrofit and OkHttp classes are properly handled
-
-Consuming apps do not need to add any additional ProGuard rules for the SDK.
+The SDK ships consumer ProGuard rules (`consumer-rules.pro`) that are automatically applied to consuming apps during their release builds. Consuming apps do not need to add any additional ProGuard rules for the SDK.
 
 ## Tech Stack
 
@@ -547,45 +538,13 @@ main (production)
 1. Create `feature/` or `bugfix/` branch from `main`
 2. Work on branch, commit changes
 3. PR into `main`
-4. After merge, bump version in `sdk/build.gradle.kts` if publishing
-5. Tag the release on GitHub (e.g., `v1.1.0`)
-6. Publish: `./gradlew publishToMavenLocal` (dev) or `./gradlew publish` (GitHub Packages)
+4. After merge, bump version in `sdk/build.gradle.kts`
+5. Tag the release: `git tag v1.1.0 && git push origin v1.1.0`
+6. CI publishes to Maven Central automatically
 
 ### Commit Messages
 
 Use conventional commits: `feat:`, `fix:`, `chore:`, `refactor:`, `test:`, `docs:`, `build:`
-
-## Contributing
-
-1. Create a branch from `main`:
-   ```bash
-   git checkout main
-   git pull origin main
-   git checkout -b feature/YourFeatureTicketNumber
-   ```
-
-2. Make your changes and commit using conventional commit messages:
-   ```bash
-   git commit -m "feat: add new repository method"
-   ```
-
-3. Run tests before pushing:
-   ```bash
-   ./gradlew test
-   ```
-
-4. Push your branch and open a PR into `main`:
-   ```bash
-   git push -u origin feature/YourFeatureTicketNumber
-   ```
-
-5. Request a review. All PRs require at least 1 approving review before merge.
-
-7. To test SDK changes in the app:
-   ```bash
-   ./gradlew publishToMavenLocal
-   ```
-   Then rebuild the consuming app.
 
 ## License
 
