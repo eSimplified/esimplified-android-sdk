@@ -2,7 +2,7 @@ plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.serialization)
-    `maven-publish`
+    alias(libs.plugins.maven.publish)
 }
 
 android {
@@ -28,12 +28,6 @@ android {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
         }
     }
-
-    publishing {
-        singleVariant("release") {
-            withSourcesJar()
-        }
-    }
 }
 
 dependencies {
@@ -52,26 +46,34 @@ dependencies {
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
 }
 
-publishing {
-    publications {
-        register<MavenPublication>("release") {
-            groupId = "io.esimplified"
-            artifactId = "android-sdk"
-            version = "1.1.0"
-            afterEvaluate {
-                from(components["release"])
+mavenPublishing {
+    coordinates("io.github.esimplified", "android-sdk", "1.1.0")
+
+    pom {
+        name.set("eSIMplified Android SDK")
+        description.set("Android SDK for eSIM provisioning and management")
+        url.set("https://github.com/eSimplified/esimplified-android-sdk")
+
+        licenses {
+            license {
+                name.set("The Apache License, Version 2.0")
+                url.set("https://www.apache.org/licenses/LICENSE-2.0.txt")
             }
         }
-    }
-    repositories {
-        mavenLocal()
-        maven {
-            name = "GitHubPackages"
-            url = uri("https://maven.pkg.github.com/esimplified/esimplified-android-sdk")
-            credentials {
-                username = System.getenv("GITHUB_ACTOR") ?: findProperty("gpr.user") as? String ?: ""
-                password = System.getenv("GITHUB_TOKEN") ?: findProperty("gpr.token") as? String ?: ""
+        developers {
+            developer {
+                id.set("esimplified")
+                name.set("eSimplified")
+                email.set("kieranwoodrow@gmail.com")
             }
         }
+        scm {
+            connection.set("scm:git:git://github.com/eSimplified/esimplified-android-sdk.git")
+            developerConnection.set("scm:git:ssh://github.com/eSimplified/esimplified-android-sdk.git")
+            url.set("https://github.com/eSimplified/esimplified-android-sdk")
+        }
     }
+
+    publishToMavenCentral(com.vanniktech.maven.publish.SonatypeHost.CENTRAL_PORTAL)
+    signAllPublications()
 }

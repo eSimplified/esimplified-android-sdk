@@ -14,6 +14,7 @@ retrofit-serialization-converter = "1.0.0"
 timber = "5.0.1"
 koin = "4.1.1"
 security-crypto = "1.1.0-alpha06"
+maven-publish = "0.30.0"
 
 [libraries]
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
@@ -30,3 +31,4 @@ security-crypto = { module = "androidx.security:security-crypto", version.ref = 
 android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+maven-publish = { id = "com.vanniktech.maven.publish", version.ref = "maven-publish" }
