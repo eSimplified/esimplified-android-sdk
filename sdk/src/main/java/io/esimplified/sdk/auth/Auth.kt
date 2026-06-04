@@ -10,5 +10,8 @@ sealed interface Auth {
         val expires: LocalDateTime,
         val accessToken: String,
         val refreshToken: String
-    ) : Auth
+    ) : Auth {
+        val isExpired: Boolean
+            get() = LocalDateTime.now().plusMinutes(5).isAfter(expires)
+    }
 }

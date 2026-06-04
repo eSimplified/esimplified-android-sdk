@@ -130,6 +130,39 @@ class DefaultSessionManagerTest {
     }
 
     @Test
+    fun `isExpired returns true when token expires within 5 minutes`() {
+        val auth = Auth.Authenticated(
+            user = Customer("test"),
+            expires = LocalDateTime.now().plusMinutes(4),
+            accessToken = "token",
+            refreshToken = "refresh"
+        )
+        assertTrue(auth.isExpired)
+    }
+
+    @Test
+    fun `isExpired returns false when token expires after 5 minutes`() {
+        val auth = Auth.Authenticated(
+            user = Customer("test"),
+            expires = LocalDateTime.now().plusMinutes(10),
+            accessToken = "token",
+            refreshToken = "refresh"
+        )
+        assertFalse(auth.isExpired)
+    }
+
+    @Test
+    fun `isExpired returns true when token is already expired`() {
+        val auth = Auth.Authenticated(
+            user = Customer("test"),
+            expires = LocalDateTime.now().minusMinutes(1),
+            accessToken = "token",
+            refreshToken = "refresh"
+        )
+        assertTrue(auth.isExpired)
+    }
+
+    @Test
     fun `loading from storage with existing tokens restores Authenticated state`() {
         // Pre-populate storage as if a previous session was saved
         fakeStorage.secureSave("stored-access-token", DefaultSessionManager.KEY_ACCESS_TOKEN)
