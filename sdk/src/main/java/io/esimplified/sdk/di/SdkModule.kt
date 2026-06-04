@@ -38,6 +38,9 @@ internal fun createSdkModule(): Module = module {
 
     single {
         val builder = OkHttpClient.Builder()
+            .connectTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+            .writeTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
             .addInterceptor(get<SdkAuthInterceptor>())
             .cache(okhttp3.Cache(java.io.File(EsimplifiedSdk.context.cacheDir, "esimplified_http_cache"), 10L * 1024 * 1024))
 
