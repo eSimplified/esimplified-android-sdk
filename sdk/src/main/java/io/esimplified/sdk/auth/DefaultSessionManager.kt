@@ -120,4 +120,8 @@ internal class DefaultSessionManager(
     override fun getAuthState(): Auth {
         return state.value
     }
+
+    override fun onAuthenticationFailed() {
+        save(Auth.Unauthenticated)
+    }
 }
