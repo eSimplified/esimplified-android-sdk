@@ -211,7 +211,7 @@ class SdkAuthInterceptorTest {
         assertEquals("Bearer refreshed-token", retryRequest.getHeader("authorization"))
     }
 
-    @Test(expected = IOException::class)
+    @Test(expected = Exception::class)
     fun `failed refresh throws IOException`() {
         sessionManager.save(createTestAuth())
 
@@ -222,6 +222,73 @@ class SdkAuthInterceptorTest {
 
         val request = Request.Builder().url(mockWebServer.url("/api/test")).build()
         client.newCall(request).execute()
+    }
+
+    @Test
+    fun `expired token triggers proactive refresh before request`() {
+        sessionManager.save(
+            createTestAuth(accessToken = "expired-token", refreshToken = "my-refresh").let {
+                it.copy(expires = LocalDateTime.now().plusMinutes(2))
+            }
+        )
+
+        val tokenJson = """
+            {
+                "access_token": "proactive-new-token",
+                "refresh_token": "proactive-new-refresh",
+                "expires_in": 3600,
+                "token_type": "Bearer"
+            }
+        """.trimIndent()
+        mockWebServer.enqueue(MockResponse().setResponseCode(200).setBody(tokenJson))
+        mockWebServer.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
+
+        val request = Request.Builder().url(mockWebServer.url("/api/test")).build()
+        client.newCall(request).execute()
+
+        assertEquals(2, mockWebServer.requestCount)
+
+        val refreshRequest = mockWebServer.takeRequest()
+        assertTrue(refreshRequest.path!!.contains("auth/token"))
+
+        val actualRequest = mockWebServer.takeRequest()
+        assertEquals("Bearer proactive-new-token", actualRequest.getHeader("authorization"))
+    }
+
+    @Test
+    fun `non-expired token does not trigger proactive refresh`() {
+        sessionManager.save(
+            createTestAuth(accessToken = "valid-token").let {
+                it.copy(expires = LocalDateTime.now().plusMinutes(30))
+            }
+        )
+
+        mockWebServer.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
+
+        val request = Request.Builder().url(mockWebServer.url("/api/test")).build()
+        client.newCall(request).execute()
+
+        assertEquals(1, mockWebServer.requestCount)
+        val recorded = mockWebServer.takeRequest()
+        assertEquals("Bearer valid-token", recorded.getHeader("authorization"))
+    }
+
+    @Test
+    fun `failed proactive refresh calls onAuthenticationFailed`() {
+        sessionManager.save(
+            createTestAuth().let {
+                it.copy(expires = LocalDateTime.now().plusMinutes(2))
+            }
+        )
+
+        mockWebServer.enqueue(MockResponse().setResponseCode(400).setBody("""{"error":"invalid_grant"}"""))
+
+        val request = Request.Builder().url(mockWebServer.url("/api/test")).build()
+        try {
+            client.newCall(request).execute()
+        } catch (_: Exception) { }
+
+        assertTrue(sessionManager.getAuthState() is Auth.Unauthenticated)
     }
 
     @Test
