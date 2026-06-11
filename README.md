@@ -1,5 +1,11 @@
 # eSIMplified Android SDK
 
+[![CI](https://github.com/eSimplified/esimplified-android-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/eSimplified/esimplified-android-sdk/actions/workflows/ci.yml)
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.esimplified/android-sdk)](https://central.sonatype.com/artifact/io.github.esimplified/android-sdk)
+[![API](https://img.shields.io/badge/API-28%2B-brightgreen)](https://android-arsenal.com/api?level=28)
+[![Kotlin](https://img.shields.io/badge/kotlin-2.2.20-blue)](https://kotlinlang.org)
+[![License](https://img.shields.io/badge/license-Proprietary-blue)](LICENSE)
+
 Kotlin SDK for integrating the eSIMplified eSIM platform into Android applications. Provides typed repository interfaces for authentication, eSIM management, package browsing, orders, payments, and more. All networking, authentication, and token management are handled internally -- consuming apps interact only with clean Kotlin interfaces.
 
 **Coordinates:** `io.github.esimplified:android-sdk:1.0.2`
@@ -619,4 +625,6 @@ Use conventional commits: `feat:`, `fix:`, `chore:`, `refactor:`, `test:`, `docs
 
 ## License
 
-Proprietary. All rights reserved.
+Proprietary — © 2026 eSimplified Ltd. See [LICENSE](LICENSE) for the full terms.
+
+Use of the SDK requires API credentials issued by eSimplified and is governed by your commercial agreement.

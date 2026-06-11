@@ -1,0 +1,25 @@
+Copyright (c) 2026 eSimplified Ltd. All rights reserved.
+
+This software (the "Software") is proprietary to eSimplified Ltd. and is
+published on GitHub for transparency and customer integration convenience only.
+
+Use of the Software requires API credentials issued by eSimplified Ltd.
+By using the Software with credentials issued to you, you accept the terms
+of your commercial agreement with eSimplified Ltd.
+
+Without explicit written permission from eSimplified Ltd., you may NOT:
+  - Copy, fork, or redistribute the Software outside of consuming it as a
+    versioned dependency via its official distribution channels (Maven
+    Central for the Android SDK, Swift Package Manager for the iOS SDK)
+  - Modify or create derivative works
+  - Use the Software in any product, project, or service that competes
+    with eSimplified Ltd.
+  - Reverse engineer the Software for competitive purposes
+
+You MAY:
+  - View and audit the source code
+  - Report bugs or security issues to support@esimplified.io
+  - Embed unmodified versioned releases in applications that you build for
+    use with eSimplified Ltd.'s services
+
+Commercial licensing inquiries: support@esimplified.io
