@@ -14,6 +14,8 @@ data class PaymentRequest(
     @SerialName("auto_top_up") val autoTopUp: Boolean,
     @SerialName("save_payment_method") val savePaymentMethod: Boolean,
     @SerialName("loyalty_points_amount") val loyaltyPointsAmount: Double? = null,
+    @SerialName("loyalty_provider") val loyaltyProvider: String? = null,
+    @SerialName("loyalty_points_to_use") val loyaltyPointsToUse: Int? = null,
 ) {
 
     object Type {

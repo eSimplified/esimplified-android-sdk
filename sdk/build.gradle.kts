@@ -47,7 +47,7 @@ dependencies {
 }
 
 mavenPublishing {
-    coordinates("io.github.esimplified", "android-sdk", "1.0.2")
+    coordinates("io.github.esimplified", "android-sdk", "1.1.0")
 
     pom {
         name.set("eSIMplified Android SDK")
@@ -75,5 +75,7 @@ mavenPublishing {
     }
 
     publishToMavenCentral(com.vanniktech.maven.publish.SonatypeHost.CENTRAL_PORTAL, automaticRelease = true)
-    signAllPublications()
+    if (project.providers.gradleProperty("signingInMemoryKey").isPresent) {
+        signAllPublications()
+    }
 }

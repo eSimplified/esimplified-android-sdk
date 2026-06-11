@@ -6,7 +6,13 @@ import io.esimplified.sdk.model.ApiErrorResponse
 import io.esimplified.sdk.model.KredsQuoteRequest
 import io.esimplified.sdk.model.KredsLoyaltyBalanceResponse
 import io.esimplified.sdk.model.KredsQuoteResponse
+import io.esimplified.sdk.model.LoyaltyProvider
+import io.esimplified.sdk.model.MokafaaOtpInitiateRequest
+import io.esimplified.sdk.model.MokafaaOtpInitiateResponse
+import io.esimplified.sdk.model.MokafaaOtpValidateRequest
+import io.esimplified.sdk.model.MokafaaOtpValidateResponse
 import io.esimplified.sdk.network.ApiService
+import io.esimplified.sdk.network.LoyaltyApiException
 import kotlinx.serialization.json.Json
 import retrofit2.HttpException
 
@@ -30,6 +36,42 @@ internal class LoyaltyRepositoryImpl(
             return apiService.sendKredsQuote(KredsQuoteRequest(packageTypeId, loyaltyPointsAmount))
         } catch (e: HttpException) {
             throw Exception(parseHttpError(e) ?: e.message)
+        }
+    }
+    // endregion
+
+    // region Mokafaa
+    override suspend fun getMokafaaQuote(packageTypeId: Int, loyaltyPointsToUse: Int): KredsQuoteResponse {
+        try {
+            return apiService.sendKredsQuote(
+                KredsQuoteRequest(
+                    packageTypeId = packageTypeId,
+                    loyaltyProvider = LoyaltyProvider.MOKAFAA,
+                    loyaltyPointsToUse = loyaltyPointsToUse,
+                )
+            )
+        } catch (e: HttpException) {
+            throw LoyaltyApiException(e.code(), parseHttpError(e) ?: e.message)
+        }
+    }
+
+    override suspend fun initiateMokafaaOtp(purpose: String, platform: String): MokafaaOtpInitiateResponse {
+        try {
+            return apiService.initiateMokafaaOtp(MokafaaOtpInitiateRequest(purpose, platform))
+        } catch (e: HttpException) {
+            throw LoyaltyApiException(e.code(), parseHttpError(e) ?: e.message)
+        }
+    }
+
+    override suspend fun validateMokafaaOtp(
+        sessionId: String,
+        otp: String,
+        points: Int?,
+    ): MokafaaOtpValidateResponse {
+        try {
+            return apiService.validateMokafaaOtp(MokafaaOtpValidateRequest(sessionId, otp, points))
+        } catch (e: HttpException) {
+            throw LoyaltyApiException(e.code(), parseHttpError(e) ?: e.message)
         }
     }
     // endregion
