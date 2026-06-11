@@ -68,17 +68,21 @@ internal class AuthRepositoryImpl(
         val user = body.user ?: throw Exception("Login failed")
         val accessToken = body.accessToken ?: throw Exception("Login failed")
 
-        sessionManager.save(
-            Auth.Authenticated(
-                user = user,
-                accessToken = accessToken,
-                refreshToken = body.refreshToken ?: "",
-                expires = calculateExpiration(body.expiresIn)
-            )
+        val auth = Auth.Authenticated(
+            user = user,
+            accessToken = accessToken,
+            refreshToken = body.refreshToken ?: "",
+            expires = calculateExpiration(body.expiresIn)
         )
+        sessionManager.save(auth)
+
+        val enrichedUser = withLoyaltyProvider(user)
+        if (enrichedUser != user) {
+            sessionManager.save(auth.copy(user = enrichedUser))
+        }
 
         Timber.d("Login successful for: ${user.email}")
-        return user
+        return enrichedUser
     }
 
     override suspend fun loginWithRefreshToken(refreshToken: String): Customer {
@@ -111,17 +115,21 @@ internal class AuthRepositoryImpl(
         val user = body.user ?: throw Exception("Session expired")
         val accessToken = body.accessToken ?: throw Exception("Session expired")
 
-        sessionManager.save(
-            Auth.Authenticated(
-                user = user,
-                accessToken = accessToken,
-                refreshToken = body.refreshToken ?: "",
-                expires = calculateExpiration(body.expiresIn)
-            )
+        val auth = Auth.Authenticated(
+            user = user,
+            accessToken = accessToken,
+            refreshToken = body.refreshToken ?: "",
+            expires = calculateExpiration(body.expiresIn)
         )
+        sessionManager.save(auth)
+
+        val enrichedUser = withLoyaltyProvider(user)
+        if (enrichedUser != user) {
+            sessionManager.save(auth.copy(user = enrichedUser))
+        }
 
         Timber.d("Token refresh successful")
-        return user
+        return enrichedUser
     }
 
     override suspend fun signInWithGoogle(
@@ -154,16 +162,20 @@ internal class AuthRepositoryImpl(
             val user = response.user ?: throw Exception("Google sign-in failed")
             val accessToken = response.accessToken ?: throw Exception("Google sign-in failed")
 
-            sessionManager.save(
-                Auth.Authenticated(
-                    user = user,
-                    accessToken = accessToken,
-                    refreshToken = response.refreshToken ?: "",
-                    expires = calculateExpiration(response.expiresIn)
-                )
+            val auth = Auth.Authenticated(
+                user = user,
+                accessToken = accessToken,
+                refreshToken = response.refreshToken ?: "",
+                expires = calculateExpiration(response.expiresIn)
             )
+            sessionManager.save(auth)
 
-            return user
+            val enrichedUser = withLoyaltyProvider(user)
+            if (enrichedUser != user) {
+                sessionManager.save(auth.copy(user = enrichedUser))
+            }
+
+            return enrichedUser
         } catch (e: HttpException) {
             throw Exception(parseHttpError(e) ?: "Google sign-in failed")
         }
@@ -295,11 +307,21 @@ internal class AuthRepositoryImpl(
     override suspend fun getUser(): Customer? {
         val snapshot = sessionManager.getAuthState()
         if (snapshot is Auth.Authenticated) {
-            val user = apiService.getUser()
+            val user = withLoyaltyProvider(apiService.getUser())
             sessionManager.save(snapshot.copy(user = user))
             return user
         }
         return null
+    }
+
+    private suspend fun withLoyaltyProvider(user: Customer): Customer {
+        return try {
+            val preferences = apiService.getCustomerPreferences()
+            user.copy(loyaltyProvider = preferences.loyaltyProvider ?: user.loyaltyProvider)
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to fetch customer preferences for loyalty provider")
+            user
+        }
     }
 
     override suspend fun updatePreferences(

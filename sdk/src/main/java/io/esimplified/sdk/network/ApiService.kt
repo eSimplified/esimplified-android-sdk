@@ -99,6 +99,9 @@ internal interface ApiService {
     @Headers("Accept: application/json", "Content-Type: application/json")
     suspend fun update(@Body data: CustomerDetails): ProfileResponse
 
+    @GET("api/v2/customer/preferences/")
+    suspend fun getCustomerPreferences(): Customer
+
     @PATCH("api/v2/customer/preferences/")
     @Headers("Accept: application/json", "Content-Type: application/json")
     suspend fun updatePreferences(@Body data: UpdateCustomerPreferencesRequest): Customer
