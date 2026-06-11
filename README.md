@@ -2,13 +2,24 @@
 
 Kotlin SDK for integrating the eSIMplified eSIM platform into Android applications. Provides typed repository interfaces for authentication, eSIM management, package browsing, orders, payments, and more. All networking, authentication, and token management are handled internally -- consuming apps interact only with clean Kotlin interfaces.
 
-**Coordinates:** `io.github.esimplified:android-sdk:1.0.0`
+**Coordinates:** `io.github.esimplified:android-sdk:1.0.2`
 
 ## Requirements
 
 - Android `minSdk 28` (Android 9)
 - Kotlin 2.x
 - [Koin](https://insert-koin.io/) for dependency injection
+
+## Prerequisites
+
+To use the SDK you need credentials issued by eSimplified:
+
+- **`clientName`** — your registered brand identifier (used to build your API base URL)
+- **`clientId`** — your OAuth2 client ID
+- **`clientSecret`** — your OAuth2 client secret
+- **`awsWafToken`** — your AWS WAF validation token
+
+Contact eSimplified to obtain these before integrating. See [Support](#support) below.
 
 ## Installation
 
@@ -17,7 +28,7 @@ The SDK is published to Maven Central. No extra repositories or authentication n
 ```kotlin
 // build.gradle.kts (app)
 dependencies {
-    implementation("io.github.esimplified:android-sdk:1.0.0")
+    implementation("io.github.esimplified:android-sdk:1.0.2")
 }
 ```
 
@@ -73,6 +84,44 @@ class StoreViewModel(
         )
     }
 }
+```
+
+## Common Recipe — Buy an eSIM
+
+End-to-end flow for purchasing an eSIM package:
+
+```kotlin
+// 1. Browse destinations
+val countries = countryRepo.getCountries()
+
+// 2. Show packages for selected country
+val packages = packagesRepo.getPackages(Destination(code = "US"))
+
+// 3. Authenticate the customer
+authRepo.login(email = email, password = password)
+
+// 4. Create a Stripe payment intent
+val payment = paymentsRepo.getPaymentIntent(
+    PaymentRequest(
+        type = "buy",
+        iccid = null,
+        customer = customerDetails,
+        packageTypeId = packages.first().packageTypeId.toInt(),
+        paymentMethod = "stripe_intent",
+        autoTopUp = false,
+        savePaymentMethod = true,
+        loyaltyPointsAmount = null,
+    )
+)
+// payment.transaction?.uri → Stripe client secret. Confirm via Stripe Android SDK.
+
+// 5. Once Stripe confirms, fetch the order to get the eSIM QR code
+val orderUUID = payment.transaction?.orderId ?: return
+val order = ordersRepo.getOrderDetails(orderUUID = orderUUID)
+// order.qrCode / order.qrCodeImageBase64 / order.activationCode
+
+// 6. Confirm conversion tracking
+ordersRepo.trackOrder(orderUuid = orderUUID)
 ```
 
 ## SdkConfig
@@ -172,6 +221,12 @@ Every model is a `@Serializable` data class in `io.esimplified.sdk.model`.
 | `VerifyEmailRequest` | Email verification payload (email + token) |
 | `DeleteProfileResponse` | Account deletion result |
 | `GetTokenResponse` | OAuth token response (access token, refresh token, expiry) |
+| `ProfileResponse` | Registration/profile-update response (customer fields) |
+| `VerifyEmailResponse` | Email verification result |
+| `ChangePasswordResponse` | Password change/reset result |
+| `PaymentResponse` | Payment intent response (URI, order ID, ephemeral key, publishable key) |
+| `CheckoutCouponResponse` | Promo code application result (valid flag, discount, percentage) |
+| `KredsLoyaltyBalanceResponse` | Loyalty balance (total points + detail) |
 | `UserLocationResponse` | User's detected location (country, city, coordinates) |
 | `RestrictedCountry` | Country with purchase restrictions |
 | `RatingApiResponse` | App store rating data |
@@ -234,6 +289,8 @@ eSIM lifecycle management for authenticated users.
 | Method | Signature | Description |
 |---|---|---|
 | `getEsims` | `suspend fun getEsims(): List<AssignedEsim>` | Fetch all eSIMs assigned to the customer |
+| `getActiveEsims` | `suspend fun getActiveEsims(): List<AssignedEsim>` | Fetch only non-archived eSIMs |
+| `getArchivedEsims` | `suspend fun getArchivedEsims(): List<AssignedEsim>` | Fetch only archived eSIMs |
 | `getEsimByIccid` | `suspend fun getEsimByIccid(iccid: String): AssignedEsim` | Fetch a specific eSIM by ICCID |
 | `updateEsim` | `suspend fun updateEsim(iccid: String, name: String?, isAutoTopUp: Boolean?, isArchived: Boolean?)` | Update eSIM settings (name, auto top-up, archive) |
 
@@ -416,6 +473,18 @@ EsimplifiedSdk.initialize(
 )
 ```
 
+## Support
+
+For credentials, integration help, or to report a bug, contact:
+
+- **Email:** support@esimplified.io
+
+---
+
+# For Contributors
+
+The remaining sections are intended for SDK maintainers, not integrators.
+
 ## Development Workflow
 
 ### Making SDK Changes
@@ -545,6 +614,8 @@ main (production)
 ### Commit Messages
 
 Use conventional commits: `feat:`, `fix:`, `chore:`, `refactor:`, `test:`, `docs:`, `build:`
+
+---
 
 ## License
 
