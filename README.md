@@ -44,18 +44,24 @@ Maven Central is included by default in all Gradle projects. No changes to `sett
 
 ### 1. Initialize the SDK
 
-Call this once in your `Application.onCreate()`:
+Call this once in your `Application.onCreate()`.
+
+> ⚠️ **Do not ship `clientId`, `clientSecret`, or `awsWafToken` as string literals in your app code.** They're trivially extractable from a shipped APK. Fetch them at runtime from a server-controlled source — Firebase Remote Config is the recommended pattern, so you can rotate credentials without publishing a new app version.
 
 ```kotlin
+// Fetch credentials from Firebase Remote Config at launch
+val remoteConfig = Firebase.remoteConfig
+remoteConfig.fetchAndActivate().await()
+
 EsimplifiedSdk.initialize(
     context = this,
     config = SdkConfig(
-        environment = SdkEnvironment.PRODUCTION,  // or STAGING
-        clientName = "yourcompany",                // your registered brand name
-        clientId = "your-client-id",               // OAuth2 client ID
-        clientSecret = "your-client-secret",       // OAuth2 client secret
-        awsWafToken = "your-waf-token",            // AWS WAF validation token
-        enableLogging = BuildConfig.DEBUG,
+        environment = SdkEnvironment.PRODUCTION,                    // or STAGING
+        clientName = "yourcompany",                                 // your registered brand name
+        clientId = remoteConfig.getString("client_id"),             // OAuth2 client ID
+        clientSecret = remoteConfig.getString("client_secret"),     // OAuth2 client secret
+        awsWafToken = remoteConfig.getString("x_auth_validation"),  // AWS WAF validation token
+        enableLogging = BuildConfig.DEBUG,                          // never enable in production
     )
 )
 ```
@@ -63,6 +69,8 @@ EsimplifiedSdk.initialize(
 The SDK constructs API URLs automatically from `clientName` and `environment`:
 - **Staging:** `https://{clientName}.stage.esimplified.io`
 - **Production:** `https://{clientName}.live.esimplified.io`
+
+If you can't use Remote Config, fetch from your own backend at launch. Avoid persisting these values long-term on device.
 
 ### 2. Load the Koin module
 
@@ -487,98 +495,22 @@ For credentials, integration help, or to report a bug, contact:
 
 ---
 
-# For Contributors
+# Building from Source
 
-The remaining sections are intended for SDK maintainers, not integrators.
-
-## Development Workflow
-
-### Making SDK Changes
-
-1. Clone the SDK repository:
-   ```bash
-   git clone https://github.com/eSimplified/esimplified-android-sdk.git
-   ```
-
-2. Make your changes in the SDK source code.
-
-3. Publish to Maven Local for fast local iteration:
-   ```bash
-   cd esimplified-android-sdk
-   ./gradlew publishToMavenLocal
-   ```
-
-4. In the app project, Gradle resolves the SDK from Maven Local first (configured via `mavenLocal()` in `settings.gradle.kts`). Sync Gradle and rebuild.
-
-5. Repeat steps 2-4 until satisfied.
-
-### Build Commands
+If you want to verify the SDK builds cleanly or inspect the source:
 
 ```bash
-# Build the SDK AAR
+git clone https://github.com/eSimplified/esimplified-android-sdk.git
+cd esimplified-android-sdk
+
+# Compile the SDK
 ./gradlew :sdk:assembleRelease
 
 # Run tests
 ./gradlew test
-
-# Publish to Maven Local (for local development)
-./gradlew publishToMavenLocal
 ```
 
-### Output Locations
-
-- AAR: `sdk/build/outputs/aar/sdk-release.aar`
-- Maven Local: `~/.m2/repository/io/github/esimplified/android-sdk/{version}/`
-
-## Publishing to Maven Central
-
-The SDK is published to Maven Central via CI/CD. No manual steps needed.
-
-### Automated Publishing (CI/CD)
-
-A GitHub Actions workflow publishes automatically when you push a version tag:
-
-1. Update the version in `sdk/build.gradle.kts`:
-   ```kotlin
-   mavenPublishing {
-       coordinates("io.github.esimplified", "android-sdk", "1.1.0")  // bump version here
-   }
-   ```
-
-2. Commit and push:
-   ```bash
-   git add sdk/build.gradle.kts
-   git commit -m "chore: bump version to 1.1.0"
-   git push origin main
-   ```
-
-3. Tag and push:
-   ```bash
-   git tag v1.1.0
-   git push origin v1.1.0
-   ```
-
-CI will automatically: run tests, sign the artifact with GPG, publish to Maven Central, and create a GitHub Release.
-
-### Manual Publishing (from local machine)
-
-For local publishing (requires Sonatype credentials and GPG key in `~/.gradle/gradle.properties`):
-
-```bash
-# Publish to Maven Central
-./gradlew publishAllPublicationsToMavenCentralRepository
-
-# Publish to Maven Local (for development)
-./gradlew publishToMavenLocal
-```
-
-## Versioning
-
-The SDK follows [Semantic Versioning](https://semver.org/):
-
-- **MAJOR** (1.x.x) -- Breaking API changes (removed/renamed repository methods, model field changes that break deserialization)
-- **MINOR** (x.1.x) -- New features (new repository methods, new model classes, new optional parameters)
-- **PATCH** (x.x.1) -- Bug fixes, internal improvements, documentation updates
+The compiled AAR lands at `sdk/build/outputs/aar/sdk-release.aar`.
 
 ## ProGuard
 
@@ -597,31 +529,6 @@ The SDK ships consumer ProGuard rules (`consumer-rules.pro`) that are automatica
 | Timber | 5.0.1 | Logging |
 | AndroidX Security Crypto | 1.1.0-alpha06 | EncryptedSharedPreferences |
 | Android Gradle Plugin | 8.13.2 | Build tooling |
-
-## Git Workflow
-
-### Branching Model
-
-```
-main (production)
-  ├── feature/FeatureNameTicketNumber  (e.g., feature/KredsEndpoint1245)
-  └── bugfix/BugNameTicketNumber       (e.g., bugfix/QuoteResponseParsing1301)
-```
-
-### Flow
-
-1. Create `feature/` or `bugfix/` branch from `main`
-2. Work on branch, commit changes
-3. PR into `main`
-4. After merge, bump version in `sdk/build.gradle.kts`
-5. Tag the release: `git tag v1.1.0 && git push origin v1.1.0`
-6. CI publishes to Maven Central automatically
-
-### Commit Messages
-
-Use conventional commits: `feat:`, `fix:`, `chore:`, `refactor:`, `test:`, `docs:`, `build:`
-
----
 
 ## License
 
