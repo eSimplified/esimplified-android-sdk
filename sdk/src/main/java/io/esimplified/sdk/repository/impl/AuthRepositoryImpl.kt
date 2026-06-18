@@ -177,7 +177,7 @@ internal class AuthRepositoryImpl(
         firstName: String,
         lastName: String,
         phoneNumber: String,
-        marketingConsent: Boolean,
+        marketingConsent: Boolean?,
         referredBy: String?
     ): ProfileResponse {
         try {

@@ -30,7 +30,7 @@ interface AuthRepository {
         firstName: String,
         lastName: String,
         phoneNumber: String,
-        marketingConsent: Boolean,
+        marketingConsent: Boolean?,
         referredBy: String? = null
     ): ProfileResponse
     // endregion
