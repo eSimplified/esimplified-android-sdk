@@ -8,7 +8,7 @@
 
 Kotlin SDK for integrating the eSIMplified eSIM platform into Android applications. Provides typed repository interfaces for authentication, eSIM management, package browsing, orders, payments, and more. All networking, authentication, and token management are handled internally -- consuming apps interact only with clean Kotlin interfaces.
 
-**Coordinates:** `io.github.esimplified:android-sdk:1.0.4`
+**Coordinates:** `io.github.esimplified:android-sdk:1.0.5`
 
 ## Requirements
 
@@ -34,7 +34,7 @@ The SDK is published to Maven Central. No extra repositories or authentication n
 ```kotlin
 // build.gradle.kts (app)
 dependencies {
-    implementation("io.github.esimplified:android-sdk:1.0.4")
+    implementation("io.github.esimplified:android-sdk:1.0.5")
 }
 ```
 
