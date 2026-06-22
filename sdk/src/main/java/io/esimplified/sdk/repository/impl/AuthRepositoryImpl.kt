@@ -1,6 +1,7 @@
 package io.esimplified.sdk.repository.impl
 
 import io.esimplified.sdk.repository.AuthRepository
+import io.esimplified.sdk.repository.InvalidRefreshTokenException
 
 import io.esimplified.sdk.model.ChangePasswordResponse
 import io.esimplified.sdk.model.CustomerChangePassword
@@ -93,23 +94,28 @@ internal class AuthRepositoryImpl(
         if (!response.isSuccessful) {
             val errorBody = response.errorBody()?.string().orEmpty()
             Timber.e("Token refresh failed [${response.code()}]: $errorBody")
-            val message = try {
-                val errorResponse = json.decodeFromString<GetTokenResponse>(errorBody)
-                errorResponse.description ?: errorResponse.detail ?: errorResponse.error
-            } catch (_: Exception) {
-                null
-            }
-            throw Exception(message ?: "Session expired (${response.code()})")
+            sessionManager.onAuthenticationFailed()
+            throw InvalidRefreshTokenException()
         }
 
-        val body = response.body() ?: throw Exception("Session expired: empty response")
+        val body = response.body() ?: run {
+            sessionManager.onAuthenticationFailed()
+            throw InvalidRefreshTokenException()
+        }
 
         if (!body.error.isNullOrEmpty() || !body.detail.isNullOrEmpty()) {
-            throw Exception(body.description ?: body.detail ?: "Session expired")
+            sessionManager.onAuthenticationFailed()
+            throw InvalidRefreshTokenException()
         }
 
-        val user = body.user ?: throw Exception("Session expired")
-        val accessToken = body.accessToken ?: throw Exception("Session expired")
+        val user = body.user ?: run {
+            sessionManager.onAuthenticationFailed()
+            throw InvalidRefreshTokenException()
+        }
+        val accessToken = body.accessToken ?: run {
+            sessionManager.onAuthenticationFailed()
+            throw InvalidRefreshTokenException()
+        }
 
         sessionManager.save(
             Auth.Authenticated(
