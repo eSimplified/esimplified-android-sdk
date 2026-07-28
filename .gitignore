@@ -8,3 +8,9 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# AI-assistant artifacts and internal-only docs — kept locally, not for version control
+CLAUDE.md
+.claude/
+docs/superpowers/
+INTERNAL.md

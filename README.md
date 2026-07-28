@@ -1,14 +1,31 @@
 # eSIMplified Android SDK
 
+[![CI](https://github.com/eSimplified/esimplified-android-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/eSimplified/esimplified-android-sdk/actions/workflows/ci.yml)
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.esimplified/android-sdk?versionPrefix=1.0)](https://central.sonatype.com/artifact/io.github.esimplified/android-sdk)
+[![API](https://img.shields.io/badge/API-28%2B-brightgreen)](https://android-arsenal.com/api?level=28)
+[![Kotlin](https://img.shields.io/badge/kotlin-2.2.20-blue)](https://kotlinlang.org)
+[![License](https://img.shields.io/badge/license-Proprietary-blue)](LICENSE)
+
 Kotlin SDK for integrating the eSIMplified eSIM platform into Android applications. Provides typed repository interfaces for authentication, eSIM management, package browsing, orders, payments, and more. All networking, authentication, and token management are handled internally -- consuming apps interact only with clean Kotlin interfaces.
 
-**Coordinates:** `io.github.esimplified:android-sdk:1.0.0`
+**Coordinates:** `io.github.esimplified:android-sdk:1.0.5`
 
 ## Requirements
 
 - Android `minSdk 28` (Android 9)
 - Kotlin 2.x
 - [Koin](https://insert-koin.io/) for dependency injection
+
+## Prerequisites
+
+To use the SDK you need credentials issued by eSimplified:
+
+- **`clientName`** — your registered brand identifier (used to build your API base URL)
+- **`clientId`** — your OAuth2 client ID
+- **`clientSecret`** — your OAuth2 client secret
+- **`awsWafToken`** — your AWS WAF validation token
+
+Contact eSimplified to obtain these before integrating. See [Support](#support) below.
 
 ## Installation
 
@@ -17,7 +34,7 @@ The SDK is published to Maven Central. No extra repositories or authentication n
 ```kotlin
 // build.gradle.kts (app)
 dependencies {
-    implementation("io.github.esimplified:android-sdk:1.0.0")
+    implementation("io.github.esimplified:android-sdk:1.0.5")
 }
 ```
 
@@ -27,18 +44,24 @@ Maven Central is included by default in all Gradle projects. No changes to `sett
 
 ### 1. Initialize the SDK
 
-Call this once in your `Application.onCreate()`:
+Call this once in your `Application.onCreate()`.
+
+> ⚠️ **Do not ship `clientId`, `clientSecret`, or `awsWafToken` as string literals in your app code.** They're trivially extractable from a shipped APK. Fetch them at runtime from a server-controlled source — Firebase Remote Config is the recommended pattern, so you can rotate credentials without publishing a new app version.
 
 ```kotlin
+// Fetch credentials from Firebase Remote Config at launch
+val remoteConfig = Firebase.remoteConfig
+remoteConfig.fetchAndActivate().await()
+
 EsimplifiedSdk.initialize(
     context = this,
     config = SdkConfig(
-        environment = SdkEnvironment.PRODUCTION,  // or STAGING
-        clientName = "yourcompany",                // your registered brand name
-        clientId = "your-client-id",               // OAuth2 client ID
-        clientSecret = "your-client-secret",       // OAuth2 client secret
-        awsWafToken = "your-waf-token",            // AWS WAF validation token
-        enableLogging = BuildConfig.DEBUG,
+        environment = SdkEnvironment.PRODUCTION,                    // or STAGING
+        clientName = "yourcompany",                                 // your registered brand name
+        clientId = remoteConfig.getString("client_id"),             // OAuth2 client ID
+        clientSecret = remoteConfig.getString("client_secret"),     // OAuth2 client secret
+        awsWafToken = remoteConfig.getString("x_auth_validation"),  // AWS WAF validation token
+        enableLogging = BuildConfig.DEBUG,                          // never enable in production
     )
 )
 ```
@@ -46,6 +69,8 @@ EsimplifiedSdk.initialize(
 The SDK constructs API URLs automatically from `clientName` and `environment`:
 - **Staging:** `https://{clientName}.stage.esimplified.io`
 - **Production:** `https://{clientName}.live.esimplified.io`
+
+If you can't use Remote Config, fetch from your own backend at launch. Avoid persisting these values long-term on device.
 
 ### 2. Load the Koin module
 
@@ -73,6 +98,44 @@ class StoreViewModel(
         )
     }
 }
+```
+
+## Common Recipe — Buy an eSIM
+
+End-to-end flow for purchasing an eSIM package:
+
+```kotlin
+// 1. Browse destinations
+val countries = countryRepo.getCountries()
+
+// 2. Show packages for selected country
+val packages = packagesRepo.getPackages(Destination(code = "US"))
+
+// 3. Authenticate the customer
+authRepo.login(email = email, password = password)
+
+// 4. Create a Stripe payment intent
+val payment = paymentsRepo.getPaymentIntent(
+    PaymentRequest(
+        type = "buy",
+        iccid = null,
+        customer = customerDetails,
+        packageTypeId = packages.first().packageTypeId.toInt(),
+        paymentMethod = "stripe_intent",
+        autoTopUp = false,
+        savePaymentMethod = true,
+        loyaltyPointsAmount = null,
+    )
+)
+// payment.transaction?.uri → Stripe client secret. Confirm via Stripe Android SDK.
+
+// 5. Once Stripe confirms, fetch the order to get the eSIM QR code
+val orderUUID = payment.transaction?.orderId ?: return
+val order = ordersRepo.getOrderDetails(orderUUID = orderUUID)
+// order.qrCode / order.qrCodeImageBase64 / order.activationCode
+
+// 6. Confirm conversion tracking
+ordersRepo.trackOrder(orderUuid = orderUUID)
 ```
 
 ## SdkConfig
@@ -172,6 +235,12 @@ Every model is a `@Serializable` data class in `io.esimplified.sdk.model`.
 | `VerifyEmailRequest` | Email verification payload (email + token) |
 | `DeleteProfileResponse` | Account deletion result |
 | `GetTokenResponse` | OAuth token response (access token, refresh token, expiry) |
+| `ProfileResponse` | Registration/profile-update response (customer fields) |
+| `VerifyEmailResponse` | Email verification result |
+| `ChangePasswordResponse` | Password change/reset result |
+| `PaymentResponse` | Payment intent response (URI, order ID, ephemeral key, publishable key) |
+| `CheckoutCouponResponse` | Promo code application result (valid flag, discount, percentage) |
+| `KredsLoyaltyBalanceResponse` | Loyalty balance (total points + detail) |
 | `UserLocationResponse` | User's detected location (country, city, coordinates) |
 | `RestrictedCountry` | Country with purchase restrictions |
 | `RatingApiResponse` | App store rating data |
@@ -234,6 +303,8 @@ eSIM lifecycle management for authenticated users.
 | Method | Signature | Description |
 |---|---|---|
 | `getEsims` | `suspend fun getEsims(): List<AssignedEsim>` | Fetch all eSIMs assigned to the customer |
+| `getActiveEsims` | `suspend fun getActiveEsims(): List<AssignedEsim>` | Fetch only non-archived eSIMs |
+| `getArchivedEsims` | `suspend fun getArchivedEsims(): List<AssignedEsim>` | Fetch only archived eSIMs |
 | `getEsimByIccid` | `suspend fun getEsimByIccid(iccid: String): AssignedEsim` | Fetch a specific eSIM by ICCID |
 | `updateEsim` | `suspend fun updateEsim(iccid: String, name: String?, isAutoTopUp: Boolean?, isArchived: Boolean?)` | Update eSIM settings (name, auto top-up, archive) |
 
@@ -416,94 +487,30 @@ EsimplifiedSdk.initialize(
 )
 ```
 
-## Development Workflow
+## Support
 
-### Making SDK Changes
+For credentials, integration help, or to report a bug, contact:
 
-1. Clone the SDK repository:
-   ```bash
-   git clone https://github.com/eSimplified/esimplified-android-sdk.git
-   ```
+- **Email:** support@esimplified.io
 
-2. Make your changes in the SDK source code.
+---
 
-3. Publish to Maven Local for fast local iteration:
-   ```bash
-   cd esimplified-android-sdk
-   ./gradlew publishToMavenLocal
-   ```
+# Building from Source
 
-4. In the app project, Gradle resolves the SDK from Maven Local first (configured via `mavenLocal()` in `settings.gradle.kts`). Sync Gradle and rebuild.
-
-5. Repeat steps 2-4 until satisfied.
-
-### Build Commands
+If you want to verify the SDK builds cleanly or inspect the source:
 
 ```bash
-# Build the SDK AAR
+git clone https://github.com/eSimplified/esimplified-android-sdk.git
+cd esimplified-android-sdk
+
+# Compile the SDK
 ./gradlew :sdk:assembleRelease
 
 # Run tests
 ./gradlew test
-
-# Publish to Maven Local (for local development)
-./gradlew publishToMavenLocal
 ```
 
-### Output Locations
-
-- AAR: `sdk/build/outputs/aar/sdk-release.aar`
-- Maven Local: `~/.m2/repository/io/github/esimplified/android-sdk/{version}/`
-
-## Publishing to Maven Central
-
-The SDK is published to Maven Central via CI/CD. No manual steps needed.
-
-### Automated Publishing (CI/CD)
-
-A GitHub Actions workflow publishes automatically when you push a version tag:
-
-1. Update the version in `sdk/build.gradle.kts`:
-   ```kotlin
-   mavenPublishing {
-       coordinates("io.github.esimplified", "android-sdk", "1.1.0")  // bump version here
-   }
-   ```
-
-2. Commit and push:
-   ```bash
-   git add sdk/build.gradle.kts
-   git commit -m "chore: bump version to 1.1.0"
-   git push origin main
-   ```
-
-3. Tag and push:
-   ```bash
-   git tag v1.1.0
-   git push origin v1.1.0
-   ```
-
-CI will automatically: run tests, sign the artifact with GPG, publish to Maven Central, and create a GitHub Release.
-
-### Manual Publishing (from local machine)
-
-For local publishing (requires Sonatype credentials and GPG key in `~/.gradle/gradle.properties`):
-
-```bash
-# Publish to Maven Central
-./gradlew publishAllPublicationsToMavenCentralRepository
-
-# Publish to Maven Local (for development)
-./gradlew publishToMavenLocal
-```
-
-## Versioning
-
-The SDK follows [Semantic Versioning](https://semver.org/):
-
-- **MAJOR** (1.x.x) -- Breaking API changes (removed/renamed repository methods, model field changes that break deserialization)
-- **MINOR** (x.1.x) -- New features (new repository methods, new model classes, new optional parameters)
-- **PATCH** (x.x.1) -- Bug fixes, internal improvements, documentation updates
+The compiled AAR lands at `sdk/build/outputs/aar/sdk-release.aar`.
 
 ## ProGuard
 
@@ -523,29 +530,8 @@ The SDK ships consumer ProGuard rules (`consumer-rules.pro`) that are automatica
 | AndroidX Security Crypto | 1.1.0-alpha06 | EncryptedSharedPreferences |
 | Android Gradle Plugin | 8.13.2 | Build tooling |
 
-## Git Workflow
-
-### Branching Model
-
-```
-main (production)
-  ├── feature/FeatureNameTicketNumber  (e.g., feature/KredsEndpoint1245)
-  └── bugfix/BugNameTicketNumber       (e.g., bugfix/QuoteResponseParsing1301)
-```
-
-### Flow
-
-1. Create `feature/` or `bugfix/` branch from `main`
-2. Work on branch, commit changes
-3. PR into `main`
-4. After merge, bump version in `sdk/build.gradle.kts`
-5. Tag the release: `git tag v1.1.0 && git push origin v1.1.0`
-6. CI publishes to Maven Central automatically
-
-### Commit Messages
-
-Use conventional commits: `feat:`, `fix:`, `chore:`, `refactor:`, `test:`, `docs:`, `build:`
-
 ## License
 
-Proprietary. All rights reserved.
+Proprietary — © 2026 eSimplified Ltd. See [LICENSE](LICENSE) for the full terms.
+
+Use of the SDK requires API credentials issued by eSimplified and is governed by your commercial agreement.

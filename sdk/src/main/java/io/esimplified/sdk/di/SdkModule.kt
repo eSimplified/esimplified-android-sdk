@@ -5,13 +5,13 @@ import io.esimplified.sdk.EsimplifiedSdk
 import io.esimplified.sdk.auth.SecureStorageProvider
 import io.esimplified.sdk.auth.SessionManager
 import io.esimplified.sdk.network.ApiService
+import io.esimplified.sdk.network.RedactingHttpLogger
 import io.esimplified.sdk.network.SdkAuthInterceptor
 import io.esimplified.sdk.repository.*
 import io.esimplified.sdk.repository.impl.*
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
-import okhttp3.logging.HttpLoggingInterceptor
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import retrofit2.Retrofit
@@ -45,7 +45,7 @@ internal fun createSdkModule(): Module = module {
             .cache(okhttp3.Cache(java.io.File(EsimplifiedSdk.context.cacheDir, "esimplified_http_cache"), 10L * 1024 * 1024))
 
         if (EsimplifiedSdk.config.enableLogging) {
-            builder.addInterceptor(HttpLoggingInterceptor().setLevel(HttpLoggingInterceptor.Level.BODY))
+            builder.addInterceptor(RedactingHttpLogger())
         }
 
         builder.build()

@@ -8,22 +8,7 @@ import timber.log.Timber
 
 internal class DefaultSecureStorage(context: Context) : SecureStorageProvider {
 
-    private val prefs: SharedPreferences = try {
-        val masterKey = MasterKey.Builder(context)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build()
-
-        EncryptedSharedPreferences.create(
-            context,
-            "esimplified_sdk_secure_prefs",
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
-    } catch (e: Exception) {
-        Timber.e(e, "Failed to create EncryptedSharedPreferences, falling back to regular prefs")
-        context.getSharedPreferences("esimplified_sdk_secure_prefs", Context.MODE_PRIVATE)
-    }
+    private val prefs: SharedPreferences = createEncryptedPrefs(context)
 
     override fun secureLoad(key: String, default: String): String {
         return try {
@@ -87,4 +72,56 @@ internal class DefaultSecureStorage(context: Context) : SecureStorageProvider {
             Timber.e(e, "Failed to save key=$forKey")
         }
     }
+
+    private companion object {
+        const val PREFS_NAME = "esimplified_sdk_secure_prefs"
+
+        fun createEncryptedPrefs(context: Context): SharedPreferences {
+            return try {
+                buildEncryptedPrefs(context)
+            } catch (firstAttemptFailure: Exception) {
+                Timber.w(
+                    firstAttemptFailure,
+                    "EncryptedSharedPreferences init failed — wiping prefs file and retrying once"
+                )
+                context.deleteSharedPreferences(PREFS_NAME)
+                try {
+                    buildEncryptedPrefs(context)
+                } catch (retryFailure: Exception) {
+                    Timber.e(
+                        retryFailure,
+                        "EncryptedSharedPreferences still failing after wipe — refusing to fall back to plaintext"
+                    )
+                    throw SecureStorageInitException(retryFailure)
+                }
+            }
+        }
+
+        fun buildEncryptedPrefs(context: Context): SharedPreferences {
+            val masterKey = MasterKey.Builder(context)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+            return EncryptedSharedPreferences.create(
+                context,
+                PREFS_NAME,
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        }
+    }
 }
+
+/**
+ * Thrown when the SDK cannot initialise encrypted storage even after a wipe-and-retry.
+ *
+ * Consumers must handle this at SDK init by signing the user out and re-prompting for
+ * credentials. The SDK will NOT silently fall back to unencrypted storage — auth tokens
+ * and other sensitive values would otherwise be written in plaintext on the device.
+ */
+class SecureStorageInitException(cause: Throwable) : Exception(
+    "EncryptedSharedPreferences could not be initialised. " +
+        "The SDK refuses to fall back to plaintext storage. " +
+        "Sign the user out and prompt them to re-authenticate.",
+    cause,
+)
