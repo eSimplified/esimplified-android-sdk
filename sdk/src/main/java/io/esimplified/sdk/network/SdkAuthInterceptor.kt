@@ -21,6 +21,12 @@ internal class SdkAuthInterceptor(
     private val json = Json { ignoreUnknownKeys = true }
     private val refreshLock = Any()
 
+    private sealed interface RefreshOutcome {
+        data object Success : RefreshOutcome
+        data object AuthRejected : RefreshOutcome
+        data class Retryable(val cause: IOException) : RefreshOutcome
+    }
+
     init {
         Timber.d("SdkAuthInterceptor initialized — clientId: ${config.clientId.take(8)}..., authUrl: ${config.baseUrl}")
     }
@@ -39,12 +45,13 @@ internal class SdkAuthInterceptor(
             synchronized(refreshLock) {
                 authState = sessionManager.getAuthState()
                 if (authState is Auth.Authenticated && (authState as Auth.Authenticated).isExpired) {
-                    val refreshed = attemptTokenRefresh(chain, authState as Auth.Authenticated)
-                    authState = if (refreshed) {
-                        sessionManager.getAuthState()
-                    } else {
-                        sessionManager.onAuthenticationFailed()
-                        throw SdkError.AuthenticationRequired()
+                    authState = when (val outcome = attemptTokenRefresh(chain, authState as Auth.Authenticated)) {
+                        is RefreshOutcome.Success -> sessionManager.getAuthState()
+                        is RefreshOutcome.Retryable -> throw outcome.cause
+                        RefreshOutcome.AuthRejected -> {
+                            sessionManager.onAuthenticationFailed()
+                            throw SdkError.AuthenticationRequired()
+                        }
                     }
                 }
             }
@@ -103,31 +110,44 @@ internal class SdkAuthInterceptor(
                     return chain.proceed(rebuildRequest(originalRequest, currentAuthState))
                 }
 
-                val refreshed = attemptTokenRefresh(chain, authState as Auth.Authenticated)
-                if (refreshed) {
-                    val newAuthState = sessionManager.getAuthState()
-                    if (newAuthState is Auth.Authenticated) {
-                        return chain.proceed(rebuildRequest(originalRequest, newAuthState))
+                when (val outcome = attemptTokenRefresh(chain, authState as Auth.Authenticated)) {
+                    is RefreshOutcome.Success -> {
+                        val newAuthState = sessionManager.getAuthState()
+                        if (newAuthState is Auth.Authenticated) {
+                            return chain.proceed(rebuildRequest(originalRequest, newAuthState))
+                        }
+                        sessionManager.onAuthenticationFailed()
+                        throw SdkError.AuthenticationRequired()
+                    }
+                    is RefreshOutcome.Retryable -> throw outcome.cause
+                    RefreshOutcome.AuthRejected -> {
+                        sessionManager.onAuthenticationFailed()
+                        throw SdkError.AuthenticationRequired()
                     }
                 }
-
-                sessionManager.onAuthenticationFailed()
-                throw SdkError.AuthenticationRequired()
             }
         }
 
         return response
     }
 
-    private fun attemptTokenRefresh(chain: Interceptor.Chain, authState: Auth.Authenticated): Boolean {
-        return try {
-            val refreshRequest = createRefreshRequest(authState)
-            val refreshResponse = chain.proceed(refreshRequest)
-            Timber.d("Refresh response: ${refreshResponse.code}")
+    private fun attemptTokenRefresh(chain: Interceptor.Chain, authState: Auth.Authenticated): RefreshOutcome {
+        val refreshResponse = try {
+            chain.proceed(createRefreshRequest(authState))
+        } catch (networkError: IOException) {
+            Timber.e("Refresh network error: ${networkError.message}")
+            return RefreshOutcome.Retryable(networkError)
+        }
 
+        return try {
+            Timber.d("Refresh response: ${refreshResponse.code}")
             if (refreshResponse.isSuccessful) {
                 val tokens = parseTokenResponse(refreshResponse)
-                refreshResponse.close()
+                val returnedRefreshToken = tokens.refreshToken
+                val refreshTokenPresent = !returnedRefreshToken.isNullOrEmpty()
+                val refreshTokenRotated = refreshTokenPresent && returnedRefreshToken != authState.refreshToken
+                Timber.tag("RefreshTokenDiagnostic")
+                    .d("interceptor present=$refreshTokenPresent rotated=$refreshTokenRotated")
                 sessionManager.save(
                     authState.copy(
                         expires = calculateExpiration(tokens.expiresIn),
@@ -135,15 +155,16 @@ internal class SdkAuthInterceptor(
                         refreshToken = tokens.refreshToken?.takeIf { it.isNotEmpty() } ?: authState.refreshToken
                     )
                 )
-                true
+                RefreshOutcome.Success
             } else {
                 Timber.e("Refresh failed with ${refreshResponse.code}")
-                refreshResponse.close()
-                false
+                RefreshOutcome.AuthRejected
             }
-        } catch (e: IOException) {
-            Timber.e("Refresh network error: ${e.message}")
-            false
+        } catch (parseError: IOException) {
+            Timber.e("Refresh response parse error: ${parseError.message}")
+            RefreshOutcome.Retryable(parseError)
+        } finally {
+            refreshResponse.close()
         }
     }
 

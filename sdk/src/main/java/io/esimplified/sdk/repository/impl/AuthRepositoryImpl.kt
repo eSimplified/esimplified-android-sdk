@@ -35,6 +35,7 @@ internal class AuthRepositoryImpl(
     companion object {
         private const val KEY_USER_ID = "user_id"
         private const val KEY_USER_EMAIL = "email"
+        const val REFRESH_DIAGNOSTIC_TAG = "RefreshTokenDiagnostic"
     }
 
     // region Authentication
@@ -121,10 +122,16 @@ internal class AuthRepositoryImpl(
             throw InvalidRefreshTokenException()
         }
 
+        val returnedRefreshToken = body.refreshToken
+        val refreshTokenPresent = !returnedRefreshToken.isNullOrEmpty()
+        val refreshTokenRotated = refreshTokenPresent && returnedRefreshToken != refreshToken
+        Timber.tag(REFRESH_DIAGNOSTIC_TAG)
+            .d("loginWithRefreshToken present=$refreshTokenPresent rotated=$refreshTokenRotated")
+
         val auth = Auth.Authenticated(
             user = user,
             accessToken = accessToken,
-            refreshToken = body.refreshToken ?: "",
+            refreshToken = body.refreshToken?.takeIf { it.isNotEmpty() } ?: refreshToken,
             expires = calculateExpiration(body.expiresIn)
         )
         sessionManager.save(auth)
