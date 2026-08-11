@@ -27,7 +27,9 @@ data class CustomerDetails(
     @SerialName("new_email")
     val newEmail: String? = null,
     @SerialName("marketing_opt_in")
-    val marketingConsent: Boolean? = null
+    val marketingConsent: Boolean? = null,
+    @SerialName("loyalty_election")
+    val loyaltyElection: String? = null
 )
 
 @Serializable
@@ -48,6 +50,8 @@ data class ProfileResponse(
     val referral: String? = null,
     @SerialName("referral_code")
     val referralCode: String? = null,
+    @SerialName("mokafaa")
+    val mokafaa: MokafaaElection? = null,
 )
 
 @Serializable

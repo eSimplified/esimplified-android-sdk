@@ -178,6 +178,11 @@ PaymentRequest(
 |----------|-----------|---------|-------------|
 | `getLoyaltyBalance` | — | `KredsLoyaltyBalanceResponse` | Get Kreds points balance |
 | `getKredsQuote` | `packageTypeId: Int, loyaltyPointsAmount: Double` | `KredsQuoteResponse` | Get pricing quote with Kreds |
+| `getMokafaaQuote` | `packageTypeId: Int, loyaltyPointsToUse: Int` | `KredsQuoteResponse` | Get pricing quote with Mokafaa points |
+| `initiateMokafaaOtp` | `purpose: String, platform: String = "android"` | `MokafaaOtpInitiateResponse` | Start a Mokafaa OTP session (`purpose`: `enrollment` or `checkout`); countdown should be driven by `expiresAt` |
+| `validateMokafaaOtp` | `sessionId: String, otp: String, points: Int? = null` | `MokafaaOtpValidateResponse` | Validate the SMS OTP; `points` required for checkout, omitted for enrollment |
+
+Mokafaa methods throw `LoyaltyApiException(httpCode, message)` on HTTP errors — `message` is the backend error verbatim, `httpCode` lets callers branch on 400/401/503.
 
 ---
 

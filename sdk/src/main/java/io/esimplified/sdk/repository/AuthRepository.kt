@@ -31,7 +31,8 @@ interface AuthRepository {
         lastName: String,
         phoneNumber: String,
         marketingConsent: Boolean?,
-        referredBy: String? = null
+        referredBy: String? = null,
+        loyaltyElection: String? = null
     ): ProfileResponse
     // endregion
 

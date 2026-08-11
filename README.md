@@ -1,14 +1,14 @@
 # eSIMplified Android SDK
 
 [![CI](https://github.com/eSimplified/esimplified-android-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/eSimplified/esimplified-android-sdk/actions/workflows/ci.yml)
-[![Maven Central](https://img.shields.io/maven-central/v/io.github.esimplified/android-sdk?versionPrefix=1.0)](https://central.sonatype.com/artifact/io.github.esimplified/android-sdk)
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.esimplified/android-sdk)](https://central.sonatype.com/artifact/io.github.esimplified/android-sdk)
 [![API](https://img.shields.io/badge/API-28%2B-brightgreen)](https://android-arsenal.com/api?level=28)
 [![Kotlin](https://img.shields.io/badge/kotlin-2.2.20-blue)](https://kotlinlang.org)
 [![License](https://img.shields.io/badge/license-Proprietary-blue)](LICENSE)
 
 Kotlin SDK for integrating the eSIMplified eSIM platform into Android applications. Provides typed repository interfaces for authentication, eSIM management, package browsing, orders, payments, and more. All networking, authentication, and token management are handled internally -- consuming apps interact only with clean Kotlin interfaces.
 
-**Coordinates:** `io.github.esimplified:android-sdk:1.0.5`
+**Coordinates:** `io.github.esimplified:android-sdk:1.0.7`
 
 ## Requirements
 
@@ -34,7 +34,7 @@ The SDK is published to Maven Central. No extra repositories or authentication n
 ```kotlin
 // build.gradle.kts (app)
 dependencies {
-    implementation("io.github.esimplified:android-sdk:1.0.5")
+    implementation("io.github.esimplified:android-sdk:1.0.7")
 }
 ```
 
@@ -227,6 +227,13 @@ Every model is a `@Serializable` data class in `io.esimplified.sdk.model`.
 | `LoyaltyPointsDetail` | Loyalty points earned/spent on an order |
 | `KredsQuoteRequest` | Request for Kreds-to-discount quote |
 | `KredsQuoteResponse` | Quote result with pricing and points breakdown |
+| `LoyaltyProvider` | Loyalty provider constants (`kreds`, `mokafaa`) |
+| `MokafaaOtpInitiateRequest` | Mokafaa OTP initiation payload (purpose + platform) |
+| `MokafaaOtpInitiateResponse` | OTP session info (session ID, expiry, masked phone number) |
+| `MokafaaOtpValidateRequest` | OTP validation payload (session ID, OTP, points, package type) |
+| `MokafaaOtpValidateResponse` | OTP validation result (status, points redeemed) |
+| `MokafaaEnrollment` | Mokafaa enrollment state on the customer profile |
+| `MokafaaElection` | Mokafaa election flag returned on registration |
 | `VisaRewardsIframeResponse` | Visa rewards verification iframe URL and token |
 | `VisaRewardsResponse` | Visa rewards eligibility, status, and reward details |
 | `RewardActivationRequest` | Reward activation payload |
@@ -263,7 +270,7 @@ Authentication, registration, password management, profile operations, and sessi
 | `login` | `suspend fun login(email: String, password: String): Customer` | Authenticate with email/password, persist session |
 | `loginWithRefreshToken` | `suspend fun loginWithRefreshToken(refreshToken: String): Customer` | Re-authenticate using a stored refresh token |
 | `signInWithGoogle` | `suspend fun signInWithGoogle(email, firstName, lastName, fullName, phoneNumber, providerAccountId, idToken): Customer` | Authenticate via Google Sign-In |
-| `register` | `suspend fun register(email, password, firstName, lastName, phoneNumber, marketingConsent, referredBy?): ProfileResponse` | Create a new customer account |
+| `register` | `suspend fun register(email, password, firstName, lastName, phoneNumber, marketingConsent, referredBy?, loyaltyElection?): ProfileResponse` | Create a new customer account (optionally electing a loyalty provider) |
 | `forgotPassword` | `suspend fun forgotPassword(email: String): CustomerForgetPasswordResponse` | Request a password reset email |
 | `changePassword` | `suspend fun changePassword(currentPassword: String, newPassword: String): ChangePasswordResponse` | Change password for authenticated user |
 | `resetPassword` | `suspend fun resetPassword(email: String, token: String, newPassword: String): ChangePasswordResponse` | Reset password using email token |
@@ -339,12 +346,15 @@ Promotional code management.
 
 ### LoyaltyRepository
 
-Kreds loyalty program balance and quotes.
+Loyalty program balance, quotes, and Mokafaa OTP flows (enrollment and checkout burn).
 
 | Method | Signature | Description |
 |---|---|---|
-| `getLoyaltyBalance` | `suspend fun getLoyaltyBalance(): KredsLoyaltyBalanceResponse` | Fetch the customer's current Kreds balance |
+| `getLoyaltyBalance` | `suspend fun getLoyaltyBalance(): KredsLoyaltyBalanceResponse` | Fetch the customer's current loyalty balance |
 | `getKredsQuote` | `suspend fun getKredsQuote(packageTypeId: Int, loyaltyPointsAmount: Double): KredsQuoteResponse` | Get a discount quote for applying Kreds to a package |
+| `getMokafaaQuote` | `suspend fun getMokafaaQuote(packageTypeId: Int, loyaltyPointsToUse: Int): KredsQuoteResponse` | Get a discount quote for applying Mokafaa points to a package |
+| `initiateMokafaaOtp` | `suspend fun initiateMokafaaOtp(purpose: String, platform: String = "android"): MokafaaOtpInitiateResponse` | Start a Mokafaa OTP session (`purpose`: `enrollment` or `checkout`) |
+| `validateMokafaaOtp` | `suspend fun validateMokafaaOtp(sessionId: String, otp: String, points: Int? = null, packageTypeId: Int? = null): MokafaaOtpValidateResponse` | Validate the SMS OTP; `points` is required for checkout, omitted for enrollment |
 
 ### UserRepository
 

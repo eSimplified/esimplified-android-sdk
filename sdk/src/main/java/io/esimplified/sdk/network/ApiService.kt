@@ -21,6 +21,10 @@ import io.esimplified.sdk.model.GetTokenIntrospectResponse
 import io.esimplified.sdk.model.GetTokenResponse
 import io.esimplified.sdk.model.OrderHistoryItem
 import io.esimplified.sdk.model.KredsLoyaltyBalanceResponse
+import io.esimplified.sdk.model.MokafaaOtpInitiateRequest
+import io.esimplified.sdk.model.MokafaaOtpInitiateResponse
+import io.esimplified.sdk.model.MokafaaOtpValidateRequest
+import io.esimplified.sdk.model.MokafaaOtpValidateResponse
 import io.esimplified.sdk.model.Country
 import io.esimplified.sdk.model.Customer
 import io.esimplified.sdk.model.DeleteProfileResponse
@@ -94,6 +98,9 @@ internal interface ApiService {
     @PATCH("api/v2/customer/edit/")
     @Headers("Accept: application/json", "Content-Type: application/json")
     suspend fun update(@Body data: CustomerDetails): ProfileResponse
+
+    @GET("api/v2/customer/preferences/")
+    suspend fun getCustomerPreferences(): Customer
 
     @PATCH("api/v2/customer/preferences/")
     @Headers("Accept: application/json", "Content-Type: application/json")
@@ -258,4 +265,12 @@ internal interface ApiService {
     @POST("api/v2/payments/quote/")
     @Headers("Accept: application/json", "Content-Type: application/json")
     suspend fun sendKredsQuote(@Body data: io.esimplified.sdk.model.KredsQuoteRequest): io.esimplified.sdk.model.KredsQuoteResponse
+
+    @POST("api/v2/loyalty/mokafaa/otp/initiate/")
+    @Headers("Accept: application/json", "Content-Type: application/json")
+    suspend fun initiateMokafaaOtp(@Body data: MokafaaOtpInitiateRequest): MokafaaOtpInitiateResponse
+
+    @POST("api/v2/loyalty/mokafaa/otp/validate/")
+    @Headers("Accept: application/json", "Content-Type: application/json")
+    suspend fun validateMokafaaOtp(@Body data: MokafaaOtpValidateRequest): MokafaaOtpValidateResponse
 }

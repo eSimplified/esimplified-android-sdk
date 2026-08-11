@@ -18,6 +18,10 @@ data class Customer(
     @SerialName("signed_in_with_provider") val signedInWithProvider: Boolean? = null,
     @SerialName("preferred_language") val preferredLanguage: String? = null,
     @SerialName("preferred_currency") val preferredCurrency: String? = null,
+    @SerialName("loyalty_provider") val loyaltyProvider: String? = null,
+    @SerialName("mokafaa_cic_no") val mokafaaCicNo: String? = null,
+    @SerialName("mokafaa_enabled") val mokafaaEnabled: Boolean? = null,
+    @SerialName("mokafaa_enrollment") val mokafaaEnrollment: MokafaaEnrollment? = null,
 ) {
 
     companion object {
