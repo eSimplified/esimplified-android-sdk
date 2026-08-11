@@ -19,5 +19,6 @@ interface LoyaltyRepository {
         sessionId: String,
         otp: String,
         points: Int? = null,
+        packageTypeId: Int? = null,
     ): MokafaaOtpValidateResponse
 }

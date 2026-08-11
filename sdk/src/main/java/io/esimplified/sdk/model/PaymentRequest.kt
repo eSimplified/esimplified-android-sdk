@@ -46,6 +46,8 @@ data class PaymentResponse(
     /** link to payment gateway or the intent secret for stripe */
     val detail: String? = null,
     @SerialName("data") val transaction: Transaction? = null,
+    val type: String? = null,
+    val message: String? = null,
 )
 
 

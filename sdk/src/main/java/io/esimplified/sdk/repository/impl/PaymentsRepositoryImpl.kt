@@ -5,6 +5,7 @@ import io.esimplified.sdk.repository.PaymentsRepository
 import io.esimplified.sdk.model.PaymentRequest
 import io.esimplified.sdk.model.PaymentResponse
 import io.esimplified.sdk.network.ApiService
+import io.esimplified.sdk.network.PaymentApiException
 import kotlinx.serialization.json.Json
 import retrofit2.HttpException
 
@@ -24,16 +25,17 @@ internal class PaymentsRepositoryImpl(
             return response
         } catch (e: HttpException) {
             val errorBody = e.response()?.errorBody()?.string()
-            val message = if (errorBody != null) {
+            val parsed = errorBody?.let {
                 try {
-                    json.decodeFromString<PaymentResponse>(errorBody).detail
+                    json.decodeFromString<PaymentResponse>(it)
                 } catch (_: Exception) {
-                    e.message
+                    null
                 }
-            } else {
-                e.message
             }
-            throw Exception(message)
+            if (parsed?.type != null) {
+                throw PaymentApiException(e.code(), parsed.type, parsed.message ?: parsed.detail)
+            }
+            throw Exception(parsed?.detail ?: e.message)
         }
     }
     // endregion

@@ -21,6 +21,7 @@ data class Customer(
     @SerialName("loyalty_provider") val loyaltyProvider: String? = null,
     @SerialName("mokafaa_cic_no") val mokafaaCicNo: String? = null,
     @SerialName("mokafaa_enabled") val mokafaaEnabled: Boolean? = null,
+    @SerialName("mokafaa_enrollment") val mokafaaEnrollment: MokafaaEnrollment? = null,
 ) {
 
     companion object {

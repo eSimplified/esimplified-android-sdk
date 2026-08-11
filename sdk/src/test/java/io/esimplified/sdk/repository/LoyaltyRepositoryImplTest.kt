@@ -103,6 +103,78 @@ class LoyaltyRepositoryImplTest {
     }
 
     @Test
+    fun `validateMokafaaOtp sends package_type_id for checkout`() = runTest {
+        mockWebServer.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"session_id":"session-1","status":"confirmed","points_redeemed":500}"""
+            )
+        )
+
+        repository.validateMokafaaOtp(sessionId = "session-1", otp = "1234", points = 500, packageTypeId = 456)
+
+        val body = mockWebServer.takeRequest().body.readUtf8()
+        assertTrue(body.contains(""""package_type_id":456"""))
+    }
+
+    @Test
+    fun `validateMokafaaOtp omits package_type_id when not provided`() = runTest {
+        mockWebServer.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"session_id":"session-1","status":"reversed"}"""
+            )
+        )
+
+        repository.validateMokafaaOtp(sessionId = "session-1", otp = "1234")
+
+        val body = mockWebServer.takeRequest().body.readUtf8()
+        assertFalse(body.contains("package_type_id"))
+    }
+
+    @Test
+    fun `initiateMokafaaOtp parses masked phone number when present`() = runTest {
+        mockWebServer.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                {"session_id":"session-1","expires_at":"2026-06-11T10:05:00.000Z","masked_phone_number":"+966 5* *** **89"}
+                """.trimIndent()
+            )
+        )
+
+        val response = repository.initiateMokafaaOtp(MokafaaOtpInitiateRequest.Purpose.ENROLLMENT)
+
+        assertEquals("+966 5* *** **89", response.maskedPhoneNumber)
+    }
+
+    @Test
+    fun `initiateMokafaaOtp tolerates missing masked phone number`() = runTest {
+        mockWebServer.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"session_id":"session-1","expires_at":"2026-06-11T10:05:00.000Z"}"""
+            )
+        )
+
+        val response = repository.initiateMokafaaOtp(MokafaaOtpInitiateRequest.Purpose.ENROLLMENT)
+
+        assertNull(response.maskedPhoneNumber)
+    }
+
+    @Test
+    fun `mokafaa error prefers localized message over detail`() = runTest {
+        mockWebServer.enqueue(
+            MockResponse().setResponseCode(400).setBody(
+                """{"detail":"Payment request failed","message":"الرصيد غير كافٍ"}"""
+            )
+        )
+
+        try {
+            repository.validateMokafaaOtp(sessionId = "session-1", otp = "1234", points = 500)
+            fail("Expected LoyaltyApiException")
+        } catch (e: LoyaltyApiException) {
+            assertEquals("الرصيد غير كافٍ", e.message)
+        }
+    }
+
+    @Test
     fun `mokafaa 400 surfaces backend message verbatim with status code`() = runTest {
         val backendMessage = "An OTP was already sent. Please wait and try again."
         mockWebServer.enqueue(

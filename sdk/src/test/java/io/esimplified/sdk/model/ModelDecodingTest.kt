@@ -298,6 +298,50 @@ class ModelDecodingTest {
         assertEquals(true, r.success)
     }
 
+    @Test
+    fun `ProfileResponse decodes mokafaa election`() {
+        val payload = """
+            {
+                "customer_id": "c-1",
+                "email": "a@b.com",
+                "success": true,
+                "mokafaa": {"elected": true}
+            }
+        """.trimIndent()
+        val r = json.decodeFromString<ProfileResponse>(payload)
+        assertEquals(true, r.mokafaa?.elected)
+    }
+
+    @Test
+    fun `Customer decodes mokafaa_enrollment state and session expiry`() {
+        val payload = """
+            {
+                "customer_id": "u-1",
+                "mokafaa_enrollment": {"state": "pending", "session_expires_at": "2026-06-11T10:05:00.000Z"}
+            }
+        """.trimIndent()
+        val r = json.decodeFromString<Customer>(payload)
+        assertEquals(MokafaaEnrollment.State.PENDING, r.mokafaaEnrollment?.state)
+        assertEquals("2026-06-11T10:05:00.000Z", r.mokafaaEnrollment?.sessionExpiresAt)
+    }
+
+    @Test
+    fun `MokafaaEnrollment tolerates unknown state strings`() {
+        val payload = """{"customer_id": "u-1", "mokafaa_enrollment": {"state": "some_future_state"}}"""
+        val r = json.decodeFromString<Customer>(payload)
+        assertEquals("some_future_state", r.mokafaaEnrollment?.state)
+        assertNull(r.mokafaaEnrollment?.sessionExpiresAt)
+    }
+
+    @Test
+    fun `CustomerDetails serializes loyalty_election`() {
+        val body = Json.encodeToString(
+            CustomerDetails.serializer(),
+            CustomerDetails(email = "a@b.com", loyaltyElection = LoyaltyProvider.MOKAFAA)
+        )
+        assertTrue(body.contains(""""loyalty_election":"mokafaa""""))
+    }
+
     // MARK: - Loyalty
 
     @Test

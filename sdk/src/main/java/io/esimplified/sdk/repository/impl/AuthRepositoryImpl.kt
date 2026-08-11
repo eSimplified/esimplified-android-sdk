@@ -203,7 +203,8 @@ internal class AuthRepositoryImpl(
         lastName: String,
         phoneNumber: String,
         marketingConsent: Boolean?,
-        referredBy: String?
+        referredBy: String?,
+        loyaltyElection: String?
     ): ProfileResponse {
         try {
             val response = apiService.register(
@@ -215,7 +216,8 @@ internal class AuthRepositoryImpl(
                     fullName = "$firstName $lastName",
                     phoneNumber = phoneNumber,
                     marketingConsent = marketingConsent,
-                    referredBy = referredBy
+                    referredBy = referredBy,
+                    loyaltyElection = loyaltyElection
                 )
             )
 
@@ -330,7 +332,10 @@ internal class AuthRepositoryImpl(
     private suspend fun withLoyaltyProvider(user: Customer): Customer {
         return try {
             val preferences = apiService.getCustomerPreferences()
-            user.copy(loyaltyProvider = preferences.loyaltyProvider ?: user.loyaltyProvider)
+            user.copy(
+                loyaltyProvider = preferences.loyaltyProvider ?: user.loyaltyProvider,
+                mokafaaEnrollment = preferences.mokafaaEnrollment ?: user.mokafaaEnrollment,
+            )
         } catch (e: Exception) {
             Timber.e(e, "Failed to fetch customer preferences for loyalty provider")
             user
