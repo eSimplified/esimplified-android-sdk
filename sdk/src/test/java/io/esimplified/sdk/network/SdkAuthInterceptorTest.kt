@@ -9,8 +9,10 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.SocketPolicy
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -289,6 +291,61 @@ class SdkAuthInterceptorTest {
         } catch (_: Exception) { }
 
         assertTrue(sessionManager.getAuthState() is Auth.Unauthenticated)
+    }
+
+    @Test
+    fun `network failure during reactive refresh preserves session`() {
+        sessionManager.save(createTestAuth())
+
+        mockWebServer.enqueue(MockResponse().setResponseCode(401))
+        mockWebServer.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START))
+
+        val request = Request.Builder().url(mockWebServer.url("/api/test")).build()
+        val thrown = try {
+            client.newCall(request).execute()
+            null
+        } catch (error: IOException) {
+            error
+        }
+
+        assertNotNull("Expected the call to surface a network error", thrown)
+        assertFalse(
+            "Transient network failure must not be treated as an auth failure",
+            thrown is SdkError.AuthenticationRequired
+        )
+        assertTrue(
+            "Transient network failure must not log the user out",
+            sessionManager.getAuthState() is Auth.Authenticated
+        )
+    }
+
+    @Test
+    fun `network failure during proactive refresh preserves session`() {
+        sessionManager.save(
+            createTestAuth().let {
+                it.copy(expires = LocalDateTime.now().plusMinutes(2))
+            }
+        )
+
+        mockWebServer.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START))
+
+        val request = Request.Builder().url(mockWebServer.url("/api/test")).build()
+        val thrown = try {
+            client.newCall(request).execute()
+            null
+        } catch (error: IOException) {
+            error
+        }
+
+        assertNotNull("Expected the call to surface a network error", thrown)
+        assertFalse(
+            "Transient network failure must not be treated as an auth failure",
+            thrown is SdkError.AuthenticationRequired
+        )
+        assertTrue(
+            "Transient network failure must not log the user out",
+            sessionManager.getAuthState() is Auth.Authenticated
+        )
     }
 
     @Test
