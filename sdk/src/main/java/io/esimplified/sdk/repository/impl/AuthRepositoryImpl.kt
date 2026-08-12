@@ -77,11 +77,8 @@ internal class AuthRepositoryImpl(
         )
         sessionManager.save(auth)
 
-        val enrichedUser = withLoyaltyProvider(user)
-        saveUserOnCurrentSession(enrichedUser)
-
         Timber.d("Login successful for: ${user.email}")
-        return enrichedUser
+        return user
     }
 
     override suspend fun loginWithRefreshToken(refreshToken: String): Customer {
@@ -127,11 +124,8 @@ internal class AuthRepositoryImpl(
         )
         sessionManager.save(auth)
 
-        val enrichedUser = withLoyaltyProvider(user)
-        saveUserOnCurrentSession(enrichedUser)
-
         Timber.d("Token refresh successful")
-        return enrichedUser
+        return user
     }
 
     override suspend fun signInWithGoogle(
@@ -172,10 +166,7 @@ internal class AuthRepositoryImpl(
             )
             sessionManager.save(auth)
 
-            val enrichedUser = withLoyaltyProvider(user)
-            saveUserOnCurrentSession(enrichedUser)
-
-            return enrichedUser
+            return user
         } catch (e: HttpException) {
             throw Exception(parseHttpError(e) ?: "Google sign-in failed")
         }
