@@ -149,42 +149,69 @@ class AuthRepositoryImplTest {
     }
 
     @Test
-    fun `login does not clobber a refresh token rotated during user enrichment`() = runTest {
-        simulateInterceptorRotationDuringPreferencesCall(
-            """
-            {
-                "access_token": "login-access-token",
-                "refresh_token": "login-refresh-token",
-                "expires_in": 3600,
-                "user": { "customer_id": "user-123", "email": "test@example.com" }
-            }
-            """.trimIndent()
+    fun `login reads loyalty fields from the auth response without calling preferences`() = runTest {
+        mockWebServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """
+                    {
+                        "access_token": "login-access-token",
+                        "refresh_token": "login-refresh-token",
+                        "expires_in": 3600,
+                        "user": {
+                            "customer_id": "user-123",
+                            "email": "test@example.com",
+                            "loyalty_provider": "mokafaa",
+                            "mokafaa_enrollment": { "state": "completed", "session_expires_at": null }
+                        }
+                    }
+                    """.trimIndent()
+                )
         )
 
-        authRepository.login("test@example.com", "password")
+        val user = authRepository.login("test@example.com", "password")
 
-        assertEquals("interceptor-rotated-refresh-token", sessionManager.getRefreshToken())
-        assertEquals("mokafaa", (sessionManager.getAuthState() as Auth.Authenticated).user.loyaltyProvider)
+        assertEquals(1, mockWebServer.requestCount)
+        assertEquals("mokafaa", user.loyaltyProvider)
+        assertEquals("completed", user.mokafaaEnrollment?.state)
+        val savedUser = (sessionManager.getAuthState() as Auth.Authenticated).user
+        assertEquals("mokafaa", savedUser.loyaltyProvider)
+        assertEquals("completed", savedUser.mokafaaEnrollment?.state)
+        assertEquals("login-refresh-token", sessionManager.getRefreshToken())
     }
 
     @Test
-    fun `loginWithRefreshToken does not clobber a refresh token rotated during user enrichment`() = runTest {
+    fun `loginWithRefreshToken reads loyalty fields from the auth response without calling preferences`() = runTest {
         seedAuthenticatedSession(refreshToken = "original-refresh-token")
-        simulateInterceptorRotationDuringPreferencesCall(
-            """
-            {
-                "access_token": "new-access-token",
-                "refresh_token": "rotated-refresh-token",
-                "expires_in": 3600,
-                "user": { "customer_id": "user-123", "email": "test@example.com" }
-            }
-            """.trimIndent()
+        mockWebServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """
+                    {
+                        "access_token": "new-access-token",
+                        "refresh_token": "rotated-refresh-token",
+                        "expires_in": 3600,
+                        "user": {
+                            "customer_id": "user-123",
+                            "email": "test@example.com",
+                            "loyalty_provider": "mokafaa",
+                            "mokafaa_enrollment": { "state": "pending", "session_expires_at": "2026-08-12T10:00:00Z" }
+                        }
+                    }
+                    """.trimIndent()
+                )
         )
 
         authRepository.loginWithRefreshToken("original-refresh-token")
 
-        assertEquals("interceptor-rotated-refresh-token", sessionManager.getRefreshToken())
-        assertEquals("mokafaa", (sessionManager.getAuthState() as Auth.Authenticated).user.loyaltyProvider)
+        assertEquals(1, mockWebServer.requestCount)
+        assertEquals("rotated-refresh-token", sessionManager.getRefreshToken())
+        val savedUser = (sessionManager.getAuthState() as Auth.Authenticated).user
+        assertEquals("mokafaa", savedUser.loyaltyProvider)
+        assertEquals("pending", savedUser.mokafaaEnrollment?.state)
+        assertEquals("2026-08-12T10:00:00Z", savedUser.mokafaaEnrollment?.sessionExpiresAt)
     }
 
     @Test
