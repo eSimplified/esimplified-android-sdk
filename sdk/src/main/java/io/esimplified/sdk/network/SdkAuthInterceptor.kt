@@ -143,11 +143,6 @@ internal class SdkAuthInterceptor(
             Timber.d("Refresh response: ${refreshResponse.code}")
             if (refreshResponse.isSuccessful) {
                 val tokens = parseTokenResponse(refreshResponse)
-                val returnedRefreshToken = tokens.refreshToken
-                val refreshTokenPresent = !returnedRefreshToken.isNullOrEmpty()
-                val refreshTokenRotated = refreshTokenPresent && returnedRefreshToken != authState.refreshToken
-                Timber.tag("RefreshTokenDiagnostic")
-                    .d("interceptor present=$refreshTokenPresent rotated=$refreshTokenRotated")
                 sessionManager.save(
                     authState.copy(
                         expires = calculateExpiration(tokens.expiresIn),

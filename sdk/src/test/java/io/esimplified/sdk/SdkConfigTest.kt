@@ -65,6 +65,17 @@ class SdkConfigTest {
     }
 
     @Test
+    fun `testing environment resolves correct base url`() {
+        val config = SdkConfig(
+            environment = SdkEnvironment.TESTING,
+            clientName = "knowroaming",
+            clientId = "id",
+            clientSecret = "secret"
+        )
+        assertEquals("https://knowroaming.test.esimplified.io", config.baseUrl)
+    }
+
+    @Test
     fun `different client names produce different base urls`() {
         val config = SdkConfig(
             environment = SdkEnvironment.PRODUCTION,

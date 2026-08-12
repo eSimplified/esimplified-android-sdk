@@ -2,6 +2,7 @@ package io.esimplified.sdk
 
 enum class SdkEnvironment(internal val subdomain: String) {
     STAGING("stage"),
+    TESTING("test"),
     PRODUCTION("live"),
     ;
 
