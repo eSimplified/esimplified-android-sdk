@@ -71,6 +71,8 @@ The SDK constructs API URLs automatically from `clientName` and `environment`:
 - **Testing:** `https://{clientName}.test.esimplified.io`
 - **Production:** `https://{clientName}.live.esimplified.io`
 
+**About the testing environment:** functionally identical to staging, but token lifetimes are drastically shorter — access tokens expire after **120 seconds** (measured via `expires_in`), versus hours on staging/production. Because the SDK proactively refreshes any token within 5 minutes of expiry, a testing build refreshes on effectively every request. Combined with the backend's single-use refresh-token rotation, this surfaces token-refresh and session-persistence bugs in seconds that would otherwise take a day of device idle time to reproduce. Use TESTING to verify auth flows (login, biometric re-login, cold-start refresh, logout); use STAGING for everything else.
+
 If you can't use Remote Config, fetch from your own backend at launch. Avoid persisting these values long-term on device.
 
 ### 2. Load the Koin module
