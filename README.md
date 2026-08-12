@@ -8,7 +8,7 @@
 
 Kotlin SDK for integrating the eSIMplified eSIM platform into Android applications. Provides typed repository interfaces for authentication, eSIM management, package browsing, orders, payments, and more. All networking, authentication, and token management are handled internally -- consuming apps interact only with clean Kotlin interfaces.
 
-**Coordinates:** `io.github.esimplified:android-sdk:1.0.7`
+**Coordinates:** `io.github.esimplified:android-sdk:1.0.8`
 
 ## Requirements
 
@@ -34,7 +34,7 @@ The SDK is published to Maven Central. No extra repositories or authentication n
 ```kotlin
 // build.gradle.kts (app)
 dependencies {
-    implementation("io.github.esimplified:android-sdk:1.0.7")
+    implementation("io.github.esimplified:android-sdk:1.0.8")
 }
 ```
 
@@ -56,7 +56,7 @@ remoteConfig.fetchAndActivate().await()
 EsimplifiedSdk.initialize(
     context = this,
     config = SdkConfig(
-        environment = SdkEnvironment.PRODUCTION,                    // or STAGING
+        environment = SdkEnvironment.PRODUCTION,                    // or STAGING / TESTING
         clientName = "yourcompany",                                 // your registered brand name
         clientId = remoteConfig.getString("client_id"),             // OAuth2 client ID
         clientSecret = remoteConfig.getString("client_secret"),     // OAuth2 client secret
@@ -68,7 +68,10 @@ EsimplifiedSdk.initialize(
 
 The SDK constructs API URLs automatically from `clientName` and `environment`:
 - **Staging:** `https://{clientName}.stage.esimplified.io`
+- **Testing:** `https://{clientName}.test.esimplified.io`
 - **Production:** `https://{clientName}.live.esimplified.io`
+
+**About the testing environment:** functionally identical to staging, but token lifetimes are drastically shorter — access tokens expire after **120 seconds** (measured via `expires_in`), versus hours on staging/production. Because the SDK proactively refreshes any token within 5 minutes of expiry, a testing build refreshes on effectively every request. Combined with the backend's single-use refresh-token rotation, this surfaces token-refresh and session-persistence bugs in seconds that would otherwise take a day of device idle time to reproduce. Use TESTING to verify auth flows (login, biometric re-login, cold-start refresh, logout); use STAGING for everything else.
 
 If you can't use Remote Config, fetch from your own backend at launch. Avoid persisting these values long-term on device.
 
@@ -142,7 +145,7 @@ ordersRepo.trackOrder(orderUuid = orderUUID)
 
 ```kotlin
 SdkConfig(
-    environment: SdkEnvironment,                         // STAGING or PRODUCTION
+    environment: SdkEnvironment,                         // STAGING, TESTING or PRODUCTION
     clientName: String,                                  // your brand name (used to build API URL)
     apiVersion: String = "v2",                           // API version path segment
     clientId: String,                                    // OAuth2 client ID
@@ -159,7 +162,7 @@ SdkConfig(
 sdk/src/main/java/io/esimplified/sdk/
 |-- EsimplifiedSdk.kt                    # SDK entry point (initialize, koinModule)
 |-- SdkConfig.kt                          # Configuration data class
-|-- SdkEnvironment.kt                     # STAGING / PRODUCTION enum
+|-- SdkEnvironment.kt                     # STAGING / TESTING / PRODUCTION enum
 |-- auth/
 |   |-- Auth.kt                           # Sealed interface: Unauthenticated | Authenticated
 |   |-- SessionManager.kt                 # Session state interface
