@@ -79,9 +79,7 @@ internal class AuthRepositoryImpl(
         sessionManager.save(auth)
 
         val enrichedUser = withLoyaltyProvider(user)
-        if (enrichedUser != user) {
-            sessionManager.save(auth.copy(user = enrichedUser))
-        }
+        saveUserOnCurrentSession(enrichedUser)
 
         Timber.d("Login successful for: ${user.email}")
         return enrichedUser
@@ -137,9 +135,7 @@ internal class AuthRepositoryImpl(
         sessionManager.save(auth)
 
         val enrichedUser = withLoyaltyProvider(user)
-        if (enrichedUser != user) {
-            sessionManager.save(auth.copy(user = enrichedUser))
-        }
+        saveUserOnCurrentSession(enrichedUser)
 
         Timber.d("Token refresh successful")
         return enrichedUser
@@ -184,9 +180,7 @@ internal class AuthRepositoryImpl(
             sessionManager.save(auth)
 
             val enrichedUser = withLoyaltyProvider(user)
-            if (enrichedUser != user) {
-                sessionManager.save(auth.copy(user = enrichedUser))
-            }
+            saveUserOnCurrentSession(enrichedUser)
 
             return enrichedUser
         } catch (e: HttpException) {
@@ -320,13 +314,19 @@ internal class AuthRepositoryImpl(
 
     // region User & Preferences
     override suspend fun getUser(): Customer? {
-        val snapshot = sessionManager.getAuthState()
-        if (snapshot is Auth.Authenticated) {
-            val user = withLoyaltyProvider(apiService.getUser())
-            sessionManager.save(snapshot.copy(user = user))
-            return user
+        if (sessionManager.getAuthState() !is Auth.Authenticated) {
+            return null
         }
-        return null
+        val user = withLoyaltyProvider(apiService.getUser())
+        saveUserOnCurrentSession(user)
+        return user
+    }
+
+    private fun saveUserOnCurrentSession(user: Customer) {
+        val currentAuth = sessionManager.getAuthState()
+        if (currentAuth is Auth.Authenticated && currentAuth.user != user) {
+            sessionManager.save(currentAuth.copy(user = user))
+        }
     }
 
     private suspend fun withLoyaltyProvider(user: Customer): Customer {

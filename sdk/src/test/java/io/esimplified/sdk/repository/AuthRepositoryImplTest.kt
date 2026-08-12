@@ -11,8 +11,10 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
@@ -110,5 +112,88 @@ class AuthRepositoryImplTest {
         authRepository.loginWithRefreshToken("original-refresh-token")
 
         assertEquals("rotated-refresh-token", sessionManager.getRefreshToken())
+    }
+
+    private fun simulateInterceptorRotationDuringPreferencesCall(tokenResponseBody: String) {
+        mockWebServer.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val path = request.path.orEmpty()
+                return when {
+                    path.contains("auth/token") -> MockResponse()
+                        .setResponseCode(200)
+                        .setBody(tokenResponseBody)
+
+                    path.contains("customer/preferences") -> {
+                        val current = sessionManager.getAuthState()
+                        if (current is Auth.Authenticated) {
+                            sessionManager.save(
+                                current.copy(
+                                    accessToken = "interceptor-rotated-access-token",
+                                    refreshToken = "interceptor-rotated-refresh-token"
+                                )
+                            )
+                        }
+                        MockResponse()
+                            .setResponseCode(200)
+                            .setBody("""{ "customer_id": "user-123", "loyalty_provider": "mokafaa" }""")
+                    }
+
+                    path.contains("api/v2/customer/") -> MockResponse()
+                        .setResponseCode(200)
+                        .setBody("""{ "customer_id": "user-123", "email": "test@example.com" }""")
+
+                    else -> MockResponse().setResponseCode(404)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `login does not clobber a refresh token rotated during user enrichment`() = runTest {
+        simulateInterceptorRotationDuringPreferencesCall(
+            """
+            {
+                "access_token": "login-access-token",
+                "refresh_token": "login-refresh-token",
+                "expires_in": 3600,
+                "user": { "customer_id": "user-123", "email": "test@example.com" }
+            }
+            """.trimIndent()
+        )
+
+        authRepository.login("test@example.com", "password")
+
+        assertEquals("interceptor-rotated-refresh-token", sessionManager.getRefreshToken())
+        assertEquals("mokafaa", (sessionManager.getAuthState() as Auth.Authenticated).user.loyaltyProvider)
+    }
+
+    @Test
+    fun `loginWithRefreshToken does not clobber a refresh token rotated during user enrichment`() = runTest {
+        seedAuthenticatedSession(refreshToken = "original-refresh-token")
+        simulateInterceptorRotationDuringPreferencesCall(
+            """
+            {
+                "access_token": "new-access-token",
+                "refresh_token": "rotated-refresh-token",
+                "expires_in": 3600,
+                "user": { "customer_id": "user-123", "email": "test@example.com" }
+            }
+            """.trimIndent()
+        )
+
+        authRepository.loginWithRefreshToken("original-refresh-token")
+
+        assertEquals("interceptor-rotated-refresh-token", sessionManager.getRefreshToken())
+        assertEquals("mokafaa", (sessionManager.getAuthState() as Auth.Authenticated).user.loyaltyProvider)
+    }
+
+    @Test
+    fun `getUser does not clobber a refresh token rotated during the request`() = runTest {
+        seedAuthenticatedSession(refreshToken = "original-refresh-token")
+        simulateInterceptorRotationDuringPreferencesCall(tokenResponseBody = "{}")
+
+        authRepository.getUser()
+
+        assertEquals("interceptor-rotated-refresh-token", sessionManager.getRefreshToken())
     }
 }
