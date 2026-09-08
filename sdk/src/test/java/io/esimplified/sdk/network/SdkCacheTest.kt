@@ -84,9 +84,11 @@ class SdkCacheTest {
         val cache = SdkCache()
         val before = System.currentTimeMillis()
         cache.set("store_review", "value", ttl = 60.seconds)
+        val after = System.currentTimeMillis()
 
         val expiresAt = cache.store.getValue("store_review").expiresAt
-        assertTrue(expiresAt - before <= 60_000)
+        assertTrue(expiresAt >= before + 60_000)
+        assertTrue(expiresAt <= after + 60_000)
     }
 
     @Test
