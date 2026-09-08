@@ -6,13 +6,18 @@ import io.esimplified.sdk.auth.DefaultSessionManager
 import io.esimplified.sdk.auth.SecureStorageProvider
 import io.esimplified.sdk.auth.SessionManager
 import io.esimplified.sdk.di.createSdkModule
+import io.esimplified.sdk.network.SdkCache
 import org.koin.core.module.Module
+import timber.log.Timber
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 object EsimplifiedSdk {
     private var _config: SdkConfig? = null
     private var _sessionManager: SessionManager? = null
     private var _storageProvider: SecureStorageProvider? = null
     private var _context: Context? = null
+    private var _cache: SdkCache? = null
 
     internal val config: SdkConfig
         get() = _config ?: error("EsimplifiedSdk not initialized. Call EsimplifiedSdk.initialize() first.")
@@ -26,6 +31,9 @@ object EsimplifiedSdk {
     internal val context: Context
         get() = _context ?: error("EsimplifiedSdk not initialized. Call EsimplifiedSdk.initialize() first.")
 
+    internal val cache: SdkCache
+        get() = _cache ?: error("EsimplifiedSdk not initialized. Call EsimplifiedSdk.initialize() first.")
+
     fun initialize(
         context: Context,
         config: SdkConfig,
@@ -36,6 +44,19 @@ object EsimplifiedSdk {
         _config = config
         _storageProvider = storageProvider ?: DefaultSecureStorage(context.applicationContext)
         _sessionManager = sessionManager ?: DefaultSessionManager(_storageProvider!!)
+        _cache = SdkCache(
+            if (config.enableCaching) config.defaultCacheTtlSeconds.seconds else Duration.ZERO
+        )
+    }
+
+    fun clearAllCaches() {
+        val cache = _cache
+        if (cache == null) {
+            Timber.d("clearAllCaches called before initialize; nothing to clear")
+            return
+        }
+        cache.clear()
+        Timber.d("Cleared all SDK caches")
     }
 
     fun koinModule(): Module = createSdkModule()

@@ -20,6 +20,8 @@ data class SdkConfig internal constructor(
     val awsWafToken: String,
     val enableLogging: Boolean,
     val customHeadersProvider: (() -> Map<String, String>)?,
+    val enableCaching: Boolean = true,
+    val defaultCacheTtlSeconds: Long = 3600,
 ) {
     constructor(
         environment: SdkEnvironment,
@@ -30,7 +32,21 @@ data class SdkConfig internal constructor(
         awsWafToken: String = "",
         enableLogging: Boolean = false,
         customHeadersProvider: (() -> Map<String, String>)? = null,
-    ) : this(environment, clientName, null, apiVersion, clientId, clientSecret, awsWafToken, enableLogging, customHeadersProvider)
+        enableCaching: Boolean = true,
+        defaultCacheTtlSeconds: Long = 3600,
+    ) : this(
+        environment,
+        clientName,
+        null,
+        apiVersion,
+        clientId,
+        clientSecret,
+        awsWafToken,
+        enableLogging,
+        customHeadersProvider,
+        enableCaching,
+        defaultCacheTtlSeconds,
+    )
 
     internal val baseUrl: String get() = baseUrlOverride
         ?: environment?.baseUrl(clientName ?: error("SdkConfig requires a clientName"))

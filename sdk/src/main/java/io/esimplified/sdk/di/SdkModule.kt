@@ -6,6 +6,7 @@ import io.esimplified.sdk.auth.SecureStorageProvider
 import io.esimplified.sdk.auth.SessionManager
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.RedactingHttpLogger
+import io.esimplified.sdk.network.SdkCache
 import io.esimplified.sdk.network.SdkAuthInterceptor
 import io.esimplified.sdk.repository.*
 import io.esimplified.sdk.repository.impl.*
@@ -20,6 +21,7 @@ import retrofit2.create
 internal fun createSdkModule(): Module = module {
     single<SessionManager> { EsimplifiedSdk.sessionManager }
     single<SecureStorageProvider> { EsimplifiedSdk.storageProvider }
+    single<SdkCache> { EsimplifiedSdk.cache }
 
     single {
         Json {
