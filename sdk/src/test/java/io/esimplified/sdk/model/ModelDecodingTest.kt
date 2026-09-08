@@ -971,4 +971,42 @@ class ModelDecodingTest {
         assertNull(decoded.gallery)
         assertEquals("ZA", decoded.countryCode)
     }
+
+    // MARK: - Destination FAQs
+
+    @Test
+    fun `DestinationFaqResponse decodes slug name language and faqs`() {
+        val payload = """
+            {
+                "slug": "south-africa",
+                "name": "South Africa",
+                "language": "en",
+                "faqs": [
+                    { "question": "Does it work?", "answer": "Yes." },
+                    { "question": "How much?", "answer": "Ten." }
+                ]
+            }
+        """.trimIndent()
+        val decoded = json.decodeFromString<DestinationFaqResponse>(payload)
+        assertEquals("south-africa", decoded.slug)
+        assertEquals("South Africa", decoded.name)
+        assertEquals("en", decoded.language)
+        assertEquals(2, decoded.faqs.size)
+        assertEquals("Does it work?", decoded.faqs.first().question)
+        assertEquals("Yes.", decoded.faqs.first().answer)
+    }
+
+    @Test
+    fun `DestinationFaqResponse decodes an empty faqs list`() {
+        val payload = """{"slug":"za","name":"South Africa","language":"en","faqs":[]}"""
+        val decoded = json.decodeFromString<DestinationFaqResponse>(payload)
+        assertTrue(decoded.faqs.isEmpty())
+    }
+
+    @Test
+    fun `Faq decodes question and answer`() {
+        val decoded = json.decodeFromString<Faq>("""{"question":"Q","answer":"A"}""")
+        assertEquals("Q", decoded.question)
+        assertEquals("A", decoded.answer)
+    }
 }

@@ -28,6 +28,7 @@ import io.esimplified.sdk.model.MokafaaOtpValidateResponse
 import io.esimplified.sdk.model.Country
 import io.esimplified.sdk.model.Customer
 import io.esimplified.sdk.model.DeleteProfileResponse
+import io.esimplified.sdk.model.DestinationFaqResponse
 import io.esimplified.sdk.model.OrderDetail
 import io.esimplified.sdk.model.OrderInfo
 import io.esimplified.sdk.model.PackagePlan
@@ -246,6 +247,12 @@ internal interface ApiService {
         @Field("archived") isArchived: Boolean? = null,
         @Field("esim_name") name: String? = null,
     ): Response<ResponseBody?>
+
+    @GET("api/v2/faqs/destinations/{country_name_slug}/")
+    @Headers("Accept: application/json", "Content-Type: application/json")
+    suspend fun getDestinationFaqs(
+        @Path("country_name_slug") countryNameSlug: String,
+    ): DestinationFaqResponse
 
     @GET("api/v2/theme/")
     @Headers("Accept: application/json", "Content-Type: application/json")
