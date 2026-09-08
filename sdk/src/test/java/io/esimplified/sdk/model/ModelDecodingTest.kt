@@ -3,6 +3,7 @@ package io.esimplified.sdk.model
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -398,5 +399,88 @@ class ModelDecodingTest {
         val customer = json.decodeFromString<Customer>(payload)
         assertEquals("u-1", customer.id)
         assertEquals("a@b.com", customer.email)
+    }
+
+    // MARK: - Assigned eSIM
+
+    @Test
+    fun `AssignedEsim list decodes when one entry has no profile`() {
+        val payload = """
+            [
+                {
+                    "iccid": "8910-installed",
+                    "esim_name": "Installed eSIM",
+                    "assigned_date": "2026-01-01",
+                    "archived": false,
+                    "auto_top_up": false,
+                    "profile": {
+                        "iccid": "8910-installed",
+                        "state": "INSTALLED",
+                        "state_message": "Installed"
+                    }
+                },
+                {
+                    "iccid": "8910-released",
+                    "esim_name": "Freshly bought eSIM",
+                    "assigned_date": "2026-01-02",
+                    "archived": false,
+                    "auto_top_up": false
+                }
+            ]
+        """.trimIndent()
+        val esims = json.decodeFromString<List<AssignedEsim>>(payload)
+        assertEquals(2, esims.size)
+        assertNotNull(esims[0].profile)
+        assertEquals(EsimProfileState.INSTALLED, esims[0].profile?.state)
+        assertNull(esims[1].profile)
+        assertEquals("8910-released", esims[1].iccid)
+    }
+
+    @Test
+    fun `AssignedEsim decodes explicit null profile`() {
+        val payload = """
+            {
+                "iccid": "8910-null",
+                "esim_name": null,
+                "assigned_date": "2026-01-03",
+                "archived": false,
+                "auto_top_up": false,
+                "profile": null
+            }
+        """.trimIndent()
+        val esim = json.decodeFromString<AssignedEsim>(payload)
+        assertNull(esim.profile)
+        assertNull(esim.name)
+    }
+
+    @Test
+    fun `EsimInfo decodes android_sha`() {
+        val payload = """
+            {
+                "assigned_date": "2026-01-01",
+                "iccid": "8910",
+                "matching_id": "MATCH",
+                "premium": false,
+                "sm_dp_address": "sm-dp.example.com",
+                "android_sha": true
+            }
+        """.trimIndent()
+        val info = json.decodeFromString<EsimInfo>(payload)
+        assertTrue(info.androidSha)
+    }
+
+    @Test
+    fun `EsimInfo defaults android_sha to false when absent`() {
+        val payload = """
+            {
+                "assigned_date": "2026-01-01",
+                "iccid": "8910",
+                "matching_id": "MATCH",
+                "premium": false,
+                "sm_dp_address": "sm-dp.example.com"
+            }
+        """.trimIndent()
+        val info = json.decodeFromString<EsimInfo>(payload)
+        assertFalse(info.androidSha)
     }
 }

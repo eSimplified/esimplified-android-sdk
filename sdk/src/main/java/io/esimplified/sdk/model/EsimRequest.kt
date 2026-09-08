@@ -20,7 +20,7 @@ data class AssignedEsim(
     val country: Country? = null,
     @SerialName("order_uuid")
     val orderUUID: String? = null,
-    @SerialName("profile") val profile: EsimProfile,
+    @SerialName("profile") val profile: EsimProfile? = null,
     @SerialName("assigned_date") val assignedDate: String,
     @SerialName("package_details") val packages: List<PackageDetail> = listOf(),
     @SerialName("data_usage_remaining_bytes") val dataUsageRemainingBytes: Double = 0.0,

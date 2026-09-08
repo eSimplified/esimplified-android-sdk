@@ -16,4 +16,6 @@ data class EsimInfo(
     val premium: Boolean,
     @SerialName("sm_dp_address")
     val smDpAddress: String,
+    @SerialName("android_sha")
+    val androidSha: Boolean = false,
 )
