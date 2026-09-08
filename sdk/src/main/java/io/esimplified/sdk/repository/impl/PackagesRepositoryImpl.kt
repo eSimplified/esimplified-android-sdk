@@ -6,7 +6,6 @@ import io.esimplified.sdk.model.ApiErrorResponse
 import io.esimplified.sdk.model.CheckStockResponse
 import io.esimplified.sdk.model.Destination
 import io.esimplified.sdk.model.PackagePlan
-import io.esimplified.sdk.model.RatingApiResponse
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.SdkCache
 import io.esimplified.sdk.repository.RepositoryResult
@@ -90,25 +89,6 @@ internal class PackagesRepositoryImpl(
         }
     // endregion
 
-    // region Rating
-    override suspend fun getPackageRating(
-        forceRefresh: Boolean,
-        cacheTTL: Duration,
-    ): RatingApiResponse = getPackageRatingResult(forceRefresh, cacheTTL).valueOrThrow()
-
-    override suspend fun getPackageRatingResult(
-        forceRefresh: Boolean,
-        cacheTTL: Duration,
-    ): RepositoryResult<RatingApiResponse?> =
-        cache.cachedResult<RatingApiResponse>(PACKAGE_RATING_KEY, forceRefresh, cacheTTL) {
-            try {
-                apiService.getPackageRating()
-            } catch (e: HttpException) {
-                throw Exception(parseHttpError(e) ?: e.message)
-            }
-        }
-    // endregion
-
     // region Cache
     override suspend fun invalidateCache() {
         cache.removeWithPrefix(PACKAGES_KEY_PREFIX)
@@ -140,6 +120,5 @@ internal class PackagesRepositoryImpl(
     private companion object {
         const val PACKAGES_KEY_PREFIX = "packages_"
         const val CHECK_STOCK_KEY_PREFIX = "check_stock_"
-        const val PACKAGE_RATING_KEY = "packages_rating"
     }
 }

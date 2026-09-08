@@ -1009,4 +1009,88 @@ class ModelDecodingTest {
         assertEquals("Q", decoded.question)
         assertEquals("A", decoded.answer)
     }
+
+    // MARK: - Store review
+
+    @Test
+    fun `RatingApiResponse decodes reviews stats and the summary together`() {
+        val payload = """
+            {
+                "store_name": "KnowRoaming",
+                "review_count": 1000,
+                "results_count": 980,
+                "verdict": "Excellent",
+                "average_rating": 4.5,
+                "reviews": [
+                    {
+                        "type": "store_review",
+                        "type_label": "Store review",
+                        "rating": 5,
+                        "title": "Great",
+                        "comments": "Worked well",
+                        "author": { "name": "Alice", "location": "Cape Town" },
+                        "date_created": "2026-01-01",
+                        "time_ago": "2 days ago",
+                        "sku": "SKU-1"
+                    }
+                ],
+                "stats": {
+                    "company": { "review_count": 1000, "average_rating": "4.5" },
+                    "ratings": { "4": 200, "5": 800 }
+                }
+            }
+        """.trimIndent()
+        val decoded = json.decodeFromString<RatingApiResponse>(payload)
+        assertEquals("KnowRoaming", decoded.storeName)
+        assertEquals(1000, decoded.reviewCount)
+        assertEquals(980, decoded.resultsCount)
+        assertEquals("Excellent", decoded.verdict)
+        assertEquals(4.5, decoded.rating!!, 0.001)
+        assertEquals(1, decoded.reviews?.size)
+        assertEquals("store_review", decoded.reviews?.first()?.type)
+        assertEquals("Store review", decoded.reviews?.first()?.typeLabel)
+        assertEquals(5, decoded.reviews?.first()?.rating)
+        assertEquals("2026-01-01", decoded.reviews?.first()?.dateCreated)
+        assertEquals("2 days ago", decoded.reviews?.first()?.timeAgo)
+        assertEquals("SKU-1", decoded.reviews?.first()?.sku)
+        assertEquals("Alice", decoded.reviews?.first()?.author?.name)
+        assertEquals("Cape Town", decoded.reviews?.first()?.author?.location)
+        assertEquals(1000, decoded.stats?.company?.reviewCount)
+        assertEquals("4.5", decoded.stats?.company?.averageRating)
+        assertEquals(200, decoded.stats?.ratings?.four)
+        assertEquals(800, decoded.stats?.ratings?.five)
+    }
+
+    @Test
+    fun `RatingApiResponse decodes a summary only payload with null reviews and stats`() {
+        val payload = """
+            {
+                "store_name": "KnowRoaming",
+                "review_count": 12,
+                "results_count": 12,
+                "verdict": "Good",
+                "average_rating": 4.0
+            }
+        """.trimIndent()
+        val decoded = json.decodeFromString<RatingApiResponse>(payload)
+        assertEquals("Good", decoded.verdict)
+        assertNull(decoded.reviews)
+        assertNull(decoded.stats)
+    }
+
+    @Test
+    fun `Review decodes with only a rating`() {
+        val decoded = json.decodeFromString<Review>("""{"rating":3}""")
+        assertEquals(3, decoded.rating)
+        assertNull(decoded.author)
+        assertNull(decoded.comments)
+    }
+
+    @Test
+    fun `Stats decodes ratings keyed by numeric strings`() {
+        val decoded = json.decodeFromString<Stats>("""{"ratings":{"4":1,"5":2}}""")
+        assertNull(decoded.company)
+        assertEquals(1, decoded.ratings?.four)
+        assertEquals(2, decoded.ratings?.five)
+    }
 }

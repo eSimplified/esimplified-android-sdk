@@ -260,7 +260,7 @@ internal interface ApiService {
 
     @GET("api/v2/reviews/?type=store_review")
     @Headers("Accept: application/json", "Content-Type: application/json")
-    suspend fun getPackageRating(): RatingApiResponse
+    suspend fun getStoreReview(): RatingApiResponse
 
     @GET("api/v2/customer/notifications/")
     @Headers("Accept: application/json", "Content-Type: application/json")

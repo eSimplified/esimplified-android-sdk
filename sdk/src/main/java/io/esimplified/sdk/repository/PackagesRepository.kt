@@ -3,7 +3,6 @@ package io.esimplified.sdk.repository
 import io.esimplified.sdk.model.CheckStockResponse
 import io.esimplified.sdk.model.Destination
 import io.esimplified.sdk.model.PackagePlan
-import io.esimplified.sdk.model.RatingApiResponse
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -28,10 +27,6 @@ interface PackagesRepository {
         cacheTTL: Duration = PACKAGES_TTL,
     ): CheckStockResponse
 
-    suspend fun getPackageRating(
-        forceRefresh: Boolean = false,
-        cacheTTL: Duration = PACKAGES_TTL,
-    ): RatingApiResponse
     // endregion
 
     // region Result reads
@@ -55,12 +50,6 @@ interface PackagesRepository {
         cacheTTL: Duration = PACKAGES_TTL,
     ): RepositoryResult<CheckStockResponse?> =
         RepositoryResult(checkStock(packageTypeId, forceRefresh, cacheTTL))
-
-    suspend fun getPackageRatingResult(
-        forceRefresh: Boolean = false,
-        cacheTTL: Duration = PACKAGES_TTL,
-    ): RepositoryResult<RatingApiResponse?> =
-        RepositoryResult(getPackageRating(forceRefresh, cacheTTL))
     // endregion
 
     // region Cache

@@ -77,4 +77,5 @@ internal fun createSdkModule(): Module = module {
     single<VouchersRepository> { VouchersRepositoryImpl(get()) }
     single<ThemeRepository> { ThemeRepositoryImpl(get(), get()) }
     single<FaqAndSupportRepository> { FaqAndSupportRepositoryImpl(get(), get()) }
+    single<StoreReviewRepository> { StoreReviewRepositoryImpl(get(), get()) }
 }
