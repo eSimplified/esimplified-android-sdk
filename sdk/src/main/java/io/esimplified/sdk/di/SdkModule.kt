@@ -64,13 +64,13 @@ internal fun createSdkModule(): Module = module {
     }
 
     single<AuthRepository> { AuthRepositoryImpl(get(), get(), get()) }
-    single<CountryRepository> { CountryRepositoryImpl(get()) }
-    single<PackagesRepository> { PackagesRepositoryImpl(get()) }
+    single<CountryRepository> { CountryRepositoryImpl(get(), get()) }
+    single<PackagesRepository> { PackagesRepositoryImpl(get(), get()) }
     single<EsimRepository> { EsimRepositoryImpl(get(), get()) }
-    single<OrdersRepository> { OrdersRepositoryImpl(get()) }
+    single<OrdersRepository> { OrdersRepositoryImpl(get(), get()) }
     single<PaymentsRepository> { PaymentsRepositoryImpl(get()) }
     single<PromoCodeRepository> { PromoCodeRepositoryImpl(get(), get()) }
-    single<LoyaltyRepository> { LoyaltyRepositoryImpl(get()) }
+    single<LoyaltyRepository> { LoyaltyRepositoryImpl(get(), get()) }
     single<UserRepository> { UserRepositoryImpl(get()) }
     single<NotificationRepository> { NotificationRepositoryImpl(get()) }
     single<VisaRewardsRepository> { VisaRewardsRepositoryImpl(get()) }

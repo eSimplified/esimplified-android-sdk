@@ -2,10 +2,68 @@ package io.esimplified.sdk.repository
 
 import io.esimplified.sdk.model.OrderHistoryItem
 import io.esimplified.sdk.model.OrderDetail
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 interface OrdersRepository {
-    suspend fun getOrderHistory(): List<OrderHistoryItem>
-    suspend fun getOrderHistory(withLoyaltyPoints: Boolean): List<OrderHistoryItem>
-    suspend fun getOrderDetails(orderUuid: String): OrderDetail
+
+    // region Reads
+    suspend fun getOrderHistory(
+        forceRefresh: Boolean = false,
+        cacheTTL: Duration = ORDERS_LIST_TTL,
+    ): List<OrderHistoryItem>
+
+    suspend fun getOrderHistory(
+        withLoyaltyPoints: Boolean,
+        forceRefresh: Boolean = false,
+        cacheTTL: Duration = ORDERS_LIST_TTL,
+    ): List<OrderHistoryItem>
+
+    suspend fun getOrderDetails(
+        orderUuid: String,
+        forceRefresh: Boolean = false,
+        cacheTTL: Duration = ORDER_DETAIL_TTL,
+    ): OrderDetail
+    // endregion
+
+    // region Result reads
+    suspend fun getOrderHistoryResult(
+        forceRefresh: Boolean = false,
+        cacheTTL: Duration = ORDERS_LIST_TTL,
+    ): RepositoryResult<List<OrderHistoryItem>> =
+        RepositoryResult(getOrderHistory(forceRefresh = forceRefresh, cacheTTL = cacheTTL))
+
+    suspend fun getOrderHistoryResult(
+        withLoyaltyPoints: Boolean,
+        forceRefresh: Boolean = false,
+        cacheTTL: Duration = ORDERS_LIST_TTL,
+    ): RepositoryResult<List<OrderHistoryItem>> =
+        RepositoryResult(
+            getOrderHistory(
+                withLoyaltyPoints = withLoyaltyPoints,
+                forceRefresh = forceRefresh,
+                cacheTTL = cacheTTL,
+            )
+        )
+
+    suspend fun getOrderDetailsResult(
+        orderUuid: String,
+        forceRefresh: Boolean = false,
+        cacheTTL: Duration = ORDER_DETAIL_TTL,
+    ): RepositoryResult<OrderDetail?> =
+        RepositoryResult(getOrderDetails(orderUuid, forceRefresh, cacheTTL))
+    // endregion
+
+    // region Writes
     suspend fun trackOrder(orderUuid: String)
+    // endregion
+
+    // region Cache
+    suspend fun invalidateCache() = Unit
+    // endregion
+
+    companion object {
+        val ORDERS_LIST_TTL: Duration = 600.seconds
+        val ORDER_DETAIL_TTL: Duration = 300.seconds
+    }
 }
