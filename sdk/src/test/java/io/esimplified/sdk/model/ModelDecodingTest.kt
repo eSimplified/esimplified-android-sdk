@@ -909,4 +909,66 @@ class ModelDecodingTest {
         val encoded = json.encodeToString(PaymentRequest.serializer(), request)
         assertFalse(encoded.contains("coupon_id"))
     }
+
+    // MARK: - Theme
+
+    @Test
+    fun `ThemeResponse decodes camelCase pages and destinations`() {
+        val payload = """
+            {
+                "version": "2",
+                "cdnBase": "https://cdn",
+                "pages": {
+                    "home": {
+                        "urlPath": "/home",
+                        "featuredImage": { "url": "https://cdn/home.png", "accent": "#123456" },
+                        "color": "#FF0000"
+                    }
+                },
+                "destinations": {
+                    "south-africa": {
+                        "image": { "url": "https://cdn/za.png" },
+                        "gallery": ["https://cdn/za-1.png", "https://cdn/za-2.png"],
+                        "countryCode": "za"
+                    }
+                }
+            }
+        """.trimIndent()
+        val decoded = json.decodeFromString<ThemeResponse>(payload)
+        assertEquals("2", decoded.version)
+        assertEquals("https://cdn", decoded.cdnBase)
+        assertEquals("/home", decoded.pages["home"]?.urlPath)
+        assertEquals("#FF0000", decoded.pages["home"]?.color)
+        assertEquals("https://cdn/home.png", decoded.pages["home"]?.featuredImage?.url)
+        assertEquals("#123456", decoded.pages["home"]?.featuredImage?.accent)
+        assertEquals("za", decoded.destinations["south-africa"]?.countryCode)
+        assertEquals(2, decoded.destinations["south-africa"]?.gallery?.size)
+    }
+
+    @Test
+    fun `ThemeResponse defaults pages and destinations to empty maps`() {
+        val decoded = json.decodeFromString<ThemeResponse>("""{"version":"2"}""")
+        assertTrue(decoded.pages.isEmpty())
+        assertTrue(decoded.destinations.isEmpty())
+        assertNull(decoded.cdnBase)
+    }
+
+    @Test
+    fun `ThemePage decodes with only a color`() {
+        val decoded = json.decodeFromString<ThemePage>("""{"color":"#00FF00"}""")
+        assertEquals("#00FF00", decoded.color)
+        assertNull(decoded.urlPath)
+        assertNull(decoded.featuredImage)
+    }
+
+    @Test
+    fun `ThemeDestination decodes without a gallery`() {
+        val decoded = json.decodeFromString<ThemeDestination>(
+            """{"image":{"url":"https://cdn/za.png"},"countryCode":"ZA"}"""
+        )
+        assertEquals("https://cdn/za.png", decoded.image?.url)
+        assertNull(decoded.image?.accent)
+        assertNull(decoded.gallery)
+        assertEquals("ZA", decoded.countryCode)
+    }
 }

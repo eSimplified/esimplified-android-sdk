@@ -32,6 +32,7 @@ import io.esimplified.sdk.model.OrderDetail
 import io.esimplified.sdk.model.OrderInfo
 import io.esimplified.sdk.model.PackagePlan
 import io.esimplified.sdk.model.RatingApiResponse
+import io.esimplified.sdk.model.ThemeResponse
 import io.esimplified.sdk.model.VisaRewardsIframeResponse
 import io.esimplified.sdk.model.VisaRewardsResponse
 import io.esimplified.sdk.model.VoucherRedeemRequest
@@ -245,6 +246,10 @@ internal interface ApiService {
         @Field("archived") isArchived: Boolean? = null,
         @Field("esim_name") name: String? = null,
     ): Response<ResponseBody?>
+
+    @GET("api/v2/theme/")
+    @Headers("Accept: application/json", "Content-Type: application/json")
+    suspend fun getTheme(@Query("url") url: String): ThemeResponse
 
     @GET("api/v2/reviews/?type=store_review")
     @Headers("Accept: application/json", "Content-Type: application/json")
