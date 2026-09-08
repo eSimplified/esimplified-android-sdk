@@ -18,4 +18,10 @@ data class EsimInfo(
     val smDpAddress: String,
     @SerialName("android_sha")
     val androidSha: Boolean = false,
+    @SerialName("country")
+    val country: String = "",
+    @SerialName("esim_name")
+    val esimName: String? = null,
+    @SerialName("is_universal")
+    val isUniversal: Boolean = false,
 )

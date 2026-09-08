@@ -483,4 +483,126 @@ class ModelDecodingTest {
         val info = json.decodeFromString<EsimInfo>(payload)
         assertFalse(info.androidSha)
     }
+
+    @Test
+    fun `AssignedEsim decodes is_primary and is_universal and epoch fields`() {
+        val payload = """
+            {
+                "iccid": "8910-primary",
+                "esim_name": "Primary eSIM",
+                "assigned_date": "2026-01-01",
+                "archived": false,
+                "auto_top_up": true,
+                "android_sha": true,
+                "order_number": "ORD-1",
+                "date_activated_epoch": 1735689600,
+                "date_expiry_epoch": 1738368000,
+                "days_left_to_expiry": 31,
+                "is_primary": true,
+                "is_universal": true
+            }
+        """.trimIndent()
+        val esim = json.decodeFromString<AssignedEsim>(payload)
+        assertTrue(esim.isPrimary)
+        assertTrue(esim.isUniversal)
+        assertTrue(esim.androidSha)
+        assertEquals("ORD-1", esim.orderNumber)
+        assertEquals(1735689600L, esim.dateActivatedEpoch)
+        assertEquals(1738368000L, esim.dateExpiryEpoch)
+        assertEquals(31, esim.daysLeftToExpiry)
+    }
+
+    @Test
+    fun `AssignedEsim defaults new flags when payload predates them`() {
+        val payload = """
+            {
+                "iccid": "8910-legacy",
+                "esim_name": "Legacy eSIM",
+                "assigned_date": "2026-01-01",
+                "archived": false,
+                "auto_top_up": false
+            }
+        """.trimIndent()
+        val esim = json.decodeFromString<AssignedEsim>(payload)
+        assertFalse(esim.isPrimary)
+        assertFalse(esim.isUniversal)
+        assertFalse(esim.androidSha)
+        assertNull(esim.orderNumber)
+        assertNull(esim.dateActivatedEpoch)
+        assertNull(esim.dateExpiryEpoch)
+        assertNull(esim.daysLeftToExpiry)
+    }
+
+    @Test
+    fun `EsimInfo decodes country esim_name and is_universal`() {
+        val payload = """
+            {
+                "assigned_date": "2026-01-01",
+                "iccid": "8910",
+                "matching_id": "MATCH",
+                "premium": true,
+                "sm_dp_address": "sm-dp.example.com",
+                "country": "Australia",
+                "esim_name": "My eSIM",
+                "is_universal": true
+            }
+        """.trimIndent()
+        val info = json.decodeFromString<EsimInfo>(payload)
+        assertEquals("Australia", info.country)
+        assertEquals("My eSIM", info.esimName)
+        assertTrue(info.isUniversal)
+    }
+
+    @Test
+    fun `EsimInfo defaults country and is_universal when absent`() {
+        val payload = """
+            {
+                "assigned_date": "2026-01-01",
+                "iccid": "8910",
+                "matching_id": "MATCH",
+                "premium": false,
+                "sm_dp_address": "sm-dp.example.com"
+            }
+        """.trimIndent()
+        val info = json.decodeFromString<EsimInfo>(payload)
+        assertEquals("", info.country)
+        assertNull(info.esimName)
+        assertFalse(info.isUniversal)
+    }
+
+    // MARK: - Package Detail
+
+    @Test
+    fun `PackageDetail decodes data_usage_bytes package_country_code and status_message`() {
+        val payload = """
+            {
+                "status": "ACTIVE",
+                "date_created_epoch": 1735689600,
+                "package_country_name": "Australia",
+                "package_country_code": "AU",
+                "data_usage_bytes": 1073741824.0,
+                "status_message": "Package Activated"
+            }
+        """.trimIndent()
+        val detail = json.decodeFromString<PackageDetail>(payload)
+        assertEquals("AU", detail.packageCountryCode)
+        assertEquals(1073741824.0, detail.dataUsedBytes)
+        assertEquals("Package Activated", detail.statusMessage)
+    }
+
+    @Test
+    fun `PackageDetail decodes payload without the new fields`() {
+        val payload = """
+            {
+                "status": "NOT_ACTIVE",
+                "date_created_epoch": 1735689600,
+                "package_country_name": "Australia"
+            }
+        """.trimIndent()
+        val detail = json.decodeFromString<PackageDetail>(payload)
+        assertNull(detail.packageCountryCode)
+        assertNull(detail.dataUsedBytes)
+        assertEquals("", detail.statusMessage)
+        assertEquals("Australia", detail.packageCountryName)
+    }
 }

@@ -47,5 +47,11 @@ data class PackageDetail(
     @SerialName("time_allowance_seconds")
     val timeAllowanceSeconds: Double = 0.0,
     @SerialName("time_allowance_days")
-    val timeAllowanceDays: Double = 0.0
+    val timeAllowanceDays: Double = 0.0,
+    @SerialName("data_usage_bytes")
+    val dataUsedBytes: Double? = null,
+    @SerialName("package_country_code")
+    val packageCountryCode: String? = null,
+    @SerialName("status_message")
+    val statusMessage: String = ""
 )

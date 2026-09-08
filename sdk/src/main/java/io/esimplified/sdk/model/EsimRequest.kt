@@ -27,4 +27,11 @@ data class AssignedEsim(
     @SerialName("data_usage_remaining_gigabytes") val dataUsageRemainingGigabytes: Double = 0.0,
     @SerialName("archived") val isArchived: Boolean,
     @SerialName("auto_top_up") val isAutoTopUp: Boolean,
+    @SerialName("android_sha") val androidSha: Boolean = false,
+    @SerialName("order_number") val orderNumber: String? = null,
+    @SerialName("date_activated_epoch") val dateActivatedEpoch: Long? = null,
+    @SerialName("date_expiry_epoch") val dateExpiryEpoch: Long? = null,
+    @SerialName("days_left_to_expiry") val daysLeftToExpiry: Int? = null,
+    @SerialName("is_primary") val isPrimary: Boolean = false,
+    @SerialName("is_universal") val isUniversal: Boolean = false,
 )
