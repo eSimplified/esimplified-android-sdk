@@ -91,5 +91,6 @@ data class OrderDetail(
     @SerialName("sm_dp_address") val smDpAddress: String? = null,
     @SerialName("payment_method") val paymentMethod: PaymentMethod,
     @SerialName("transaction_id") val transactionId: String? = null,
-    @SerialName("conversion_tracked") val tracked: Boolean = false
+    @SerialName("conversion_tracked") val tracked: Boolean = false,
+    @SerialName("package") val packageInfo: PackagePlan? = null
 )

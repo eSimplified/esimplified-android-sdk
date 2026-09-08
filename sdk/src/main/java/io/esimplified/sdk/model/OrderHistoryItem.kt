@@ -42,7 +42,13 @@ data class OrderHistoryItem(
     @SerialName("points_earned")
     val loyaltyPointsEarned: LoyaltyPointsDetail? = null,
     @SerialName("points_spent")
-    val loyaltyPointsSpent: LoyaltyPointsDetail? = null
+    val loyaltyPointsSpent: LoyaltyPointsDetail? = null,
+    @SerialName("user")
+    val user: String = "",
+    @SerialName("conversion_tracked")
+    val conversionTracked: Boolean = false,
+    @SerialName("purchase_country")
+    val purchaseCountry: PurchaseCountry? = null
 )
 
 @Serializable

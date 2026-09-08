@@ -22,6 +22,9 @@ data class Customer(
     @SerialName("mokafaa_cic_no") val mokafaaCicNo: String? = null,
     @SerialName("mokafaa_enabled") val mokafaaEnabled: Boolean? = null,
     @SerialName("mokafaa_enrollment") val mokafaaEnrollment: MokafaaEnrollment? = null,
+    @SerialName("receive_emails") val receiveEmails: Boolean? = true,
+    @SerialName("receive_push_notifications") val receivePushNotifications: Boolean? = true,
+    @SerialName("receive_sms") val receiveSms: Boolean? = true,
 ) {
 
     companion object {

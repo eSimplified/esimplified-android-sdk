@@ -605,4 +605,308 @@ class ModelDecodingTest {
         assertEquals("", detail.statusMessage)
         assertEquals("Australia", detail.packageCountryName)
     }
+
+    // MARK: - Package Plan
+
+    private val minimalPackagePlanJson = """
+        {
+            "name": "1 GB / 7 Days",
+            "price": 9.99,
+            "data_GB": 1.0,
+            "country": {
+                "country_name": "Australia",
+                "country_code": "AU",
+                "country_flag": "flag.png",
+                "country_flag_css": "au",
+                "country_name_slug": "australia"
+            },
+            "currency": "USD",
+            "currency_obj": {"symbol": "$", "iso": "USD"},
+            "plan_type": "data",
+            "kyc_display": "none",
+            "package_slug": "au-1gb-7d",
+            "validity_days": 7,
+            "package_type_id": 42,
+            "best_connectivity": "Telstra",
+            "activation_policy": "first_use",
+            "name_additional_text": ""
+        }
+    """
+
+    @Test
+    fun `PackagePlan decodes discount and promo fields`() {
+        val payload = """
+            {
+                "name": "1 GB / 7 Days",
+                "price": 9.99,
+                "data_GB": 1.0,
+                "country": {
+                    "country_name": "Australia",
+                    "country_code": "AU",
+                    "country_flag": "flag.png",
+                    "country_flag_css": "au",
+                    "country_name_slug": "australia"
+                },
+                "currency": "USD",
+                "currency_obj": {"symbol": "$", "iso": "USD"},
+                "plan_type": "data",
+                "kyc_display": "none",
+                "package_slug": "au-1gb-7d",
+                "validity_days": 7,
+                "validity_days_display": "7 Days",
+                "package_type_id": 42,
+                "best_connectivity": "Telstra",
+                "activation_policy": "first_use",
+                "supported_countries": [],
+                "name_additional_text": "",
+                "discount_label": "SAVE 20%",
+                "discount_percentage": "20.00",
+                "promo_code": {
+                    "valid": true,
+                    "discount_code": "SUMMER",
+                    "discount_percentage": 20.0,
+                    "detail": "Summer sale"
+                }
+            }
+        """.trimIndent()
+        val plan = json.decodeFromString<PackagePlan>(payload)
+        assertEquals("7 Days", plan.validityDaysDisplay)
+        assertEquals("SAVE 20%", plan.discountLabel)
+        assertEquals("20.00", plan.discountPercentage)
+        assertEquals("SUMMER", plan.promoCode?.discount)
+        assertTrue(plan.promoCode?.valid == true)
+    }
+
+    @Test
+    fun `PackagePlan decodes payload without the new fields`() {
+        val plan = json.decodeFromString<PackagePlan>(minimalPackagePlanJson.trimIndent())
+        assertEquals("", plan.validityDaysDisplay)
+        assertEquals("", plan.discountLabel)
+        assertNull(plan.discountPercentage)
+        assertNull(plan.promoCode)
+        assertTrue(plan.supportedCountries.isEmpty())
+    }
+
+    // MARK: - Order History
+
+    @Test
+    fun `OrderHistoryItem decodes user conversion_tracked and purchase_country`() {
+        val payload = """
+            {
+                "esim": {
+                    "assigned_date": "2026-01-01",
+                    "iccid": "8910",
+                    "matching_id": "MATCH",
+                    "premium": false,
+                    "sm_dp_address": "sm-dp.example.com"
+                },
+                "order_number": 1001,
+                "order_uuid": "uuid-1",
+                "order_type": "BUY",
+                "package_id": "pkg-1",
+                "final_price": "9.99",
+                "package_name": "1 GB / 7 Days",
+                "purchase_date": "2026-01-01",
+                "purchase_price": "9.99",
+                "discount_code": "",
+                "discount_amount": "0.00",
+                "purchase_currency": "USD",
+                "purchase_currency_obj": {"symbol": "$", "iso": "USD"},
+                "package_type_id": 42,
+                "payment_status": "paid",
+                "payment_method": "stripe_intent",
+                "country": {
+                    "country_name": "Australia",
+                    "country_code": "AU",
+                    "country_flag": "flag.png",
+                    "country_flag_css": "au",
+                    "country_name_slug": "australia"
+                },
+                "user": "user-1",
+                "conversion_tracked": true,
+                "purchase_country": {
+                    "iso": "AU",
+                    "name": "Australia",
+                    "iso3": "AUS",
+                    "flag": "flag.png",
+                    "is_region": false
+                }
+            }
+        """.trimIndent()
+        val item = json.decodeFromString<OrderHistoryItem>(payload)
+        assertEquals("user-1", item.user)
+        assertTrue(item.conversionTracked)
+        assertEquals("AU", item.purchaseCountry?.iso)
+        assertFalse(item.purchaseCountry?.isRegion == true)
+    }
+
+    @Test
+    fun `OrderHistoryItem decodes payload without the new fields`() {
+        val payload = """
+            {
+                "esim": {
+                    "assigned_date": "2026-01-01",
+                    "iccid": "8910",
+                    "matching_id": "MATCH",
+                    "premium": false,
+                    "sm_dp_address": "sm-dp.example.com"
+                },
+                "order_number": 1001,
+                "order_uuid": "uuid-1",
+                "order_type": "BUY",
+                "package_id": "pkg-1",
+                "final_price": "9.99",
+                "package_name": "1 GB / 7 Days",
+                "purchase_date": "2026-01-01",
+                "purchase_price": "9.99",
+                "discount_code": "",
+                "discount_amount": "0.00",
+                "purchase_currency": "USD",
+                "purchase_currency_obj": {"symbol": "$", "iso": "USD"},
+                "package_type_id": 42,
+                "payment_status": "paid",
+                "payment_method": "stripe_intent",
+                "country": {
+                    "country_name": "Australia",
+                    "country_code": "AU",
+                    "country_flag": "flag.png",
+                    "country_flag_css": "au",
+                    "country_name_slug": "australia"
+                }
+            }
+        """.trimIndent()
+        val item = json.decodeFromString<OrderHistoryItem>(payload)
+        assertEquals("", item.user)
+        assertFalse(item.conversionTracked)
+        assertNull(item.purchaseCountry)
+    }
+
+    // MARK: - Order Detail
+
+    @Test
+    fun `OrderDetail decodes nested package object`() {
+        val payload = """
+            {
+                "country": {
+                    "country_name": "Australia",
+                    "country_code": "AU",
+                    "country_flag": "flag.png",
+                    "country_flag_css": "au",
+                    "country_name_slug": "australia"
+                },
+                "customer_id": "u-1",
+                "discount_amount": 0.0,
+                "discount_code": "",
+                "final_price": 9.99,
+                "order_date": "2026-01-01",
+                "order_number": 1001,
+                "order_status": "COMPLETE",
+                "order_type": "BUY",
+                "package_data_size": 1.0,
+                "package_type_id": 42,
+                "package_name": "1 GB / 7 Days",
+                "package_validity": 7,
+                "purchase_currency": "USD",
+                "purchase_currency_obj": {"symbol": "$", "iso": "USD"},
+                "purchase_price": 9.99,
+                "payment_method": "stripe_intent",
+                "package": ${minimalPackagePlanJson.trimIndent()}
+            }
+        """.trimIndent()
+        val detail = json.decodeFromString<OrderDetail>(payload)
+        assertNotNull(detail.packageInfo)
+        assertEquals("au-1gb-7d", detail.packageInfo?.packageSlug)
+        assertEquals(42L, detail.packageInfo?.packageTypeId)
+    }
+
+    @Test
+    fun `OrderDetail decodes payload without a package object`() {
+        val payload = """
+            {
+                "country": {
+                    "country_name": "Australia",
+                    "country_code": "AU",
+                    "country_flag": "flag.png",
+                    "country_flag_css": "au",
+                    "country_name_slug": "australia"
+                },
+                "customer_id": "u-1",
+                "discount_amount": 0.0,
+                "discount_code": "",
+                "final_price": 9.99,
+                "order_date": "2026-01-01",
+                "order_number": 1001,
+                "order_status": "COMPLETE",
+                "order_type": "BUY",
+                "package_data_size": 1.0,
+                "package_type_id": 42,
+                "package_name": "1 GB / 7 Days",
+                "package_validity": 7,
+                "purchase_currency": "USD",
+                "purchase_currency_obj": {"symbol": "$", "iso": "USD"},
+                "purchase_price": 9.99,
+                "payment_method": "stripe_intent"
+            }
+        """.trimIndent()
+        val detail = json.decodeFromString<OrderDetail>(payload)
+        assertNull(detail.packageInfo)
+        assertFalse(detail.tracked)
+    }
+
+    // MARK: - Notification Preferences
+
+    @Test
+    fun `Customer decodes receive_emails receive_push_notifications and receive_sms`() {
+        val payload = """
+            {
+                "customer_id": "u-1",
+                "receive_emails": false,
+                "receive_push_notifications": false,
+                "receive_sms": false
+            }
+        """.trimIndent()
+        val customer = json.decodeFromString<Customer>(payload)
+        assertEquals(false, customer.receiveEmails)
+        assertEquals(false, customer.receivePushNotifications)
+        assertEquals(false, customer.receiveSms)
+    }
+
+    @Test
+    fun `Customer defaults notification preferences to true when absent`() {
+        val customer = json.decodeFromString<Customer>("""{"customer_id": "u-1"}""")
+        assertEquals(true, customer.receiveEmails)
+        assertEquals(true, customer.receivePushNotifications)
+        assertEquals(true, customer.receiveSms)
+    }
+
+    // MARK: - Payment Request
+
+    @Test
+    fun `PaymentRequest serializes coupon_id when set`() {
+        val request = PaymentRequest(
+            type = PaymentRequest.Type.BUY,
+            customer = CustomerDetails(email = "a@b.com"),
+            packageTypeId = 42,
+            paymentMethod = PaymentRequest.Method.STRIPE_INTENT,
+            autoTopUp = false,
+            savePaymentMethod = false,
+            couponId = "COUPON-1"
+        )
+        val encoded = json.encodeToString(PaymentRequest.serializer(), request)
+        assertTrue(encoded.contains("\"coupon_id\":\"COUPON-1\""))
+    }
+
+    @Test
+    fun `PaymentRequest omits coupon_id when unset`() {
+        val request = PaymentRequest(
+            type = PaymentRequest.Type.BUY,
+            customer = CustomerDetails(email = "a@b.com"),
+            packageTypeId = 42,
+            paymentMethod = PaymentRequest.Method.STRIPE_INTENT,
+            autoTopUp = false,
+            savePaymentMethod = false
+        )
+        val encoded = json.encodeToString(PaymentRequest.serializer(), request)
+        assertFalse(encoded.contains("coupon_id"))
+    }
 }

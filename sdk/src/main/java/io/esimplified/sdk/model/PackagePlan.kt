@@ -20,12 +20,16 @@ data class PackagePlan(
     @SerialName("package_type_id") val packageTypeId: Long,
     @SerialName("best_connectivity") val bestConnectivity: String,
     @SerialName("activation_policy") val activationPolicy: String,
-    @SerialName("supported_countries") val supportedCountries: List<SupportedCountry>,
+    @SerialName("supported_countries") val supportedCountries: List<SupportedCountry> = listOf(),
     @SerialName("name_additional_text") val nameAdditionalText: String,
     @SerialName("discounted_price") val discountedPrice: Double? = null,
     @SerialName("earn_percentage") val earnPercentage: Double? = null,
     @SerialName("data_cap") val dataCap: String? = null,
-    @SerialName("throttle_speed") val throttleSpeed: String? = null
+    @SerialName("throttle_speed") val throttleSpeed: String? = null,
+    @SerialName("validity_days_display") val validityDaysDisplay: String = "",
+    @SerialName("discount_label") val discountLabel: String = "",
+    @SerialName("discount_percentage") val discountPercentage: String? = null,
+    @SerialName("promo_code") val promoCode: CheckoutCouponResponse? = null
 ) {
     val isUnlimited: Boolean = data in listOf(-1.0, -1)
     val purchasePrice: Double = discountedPrice ?: price
