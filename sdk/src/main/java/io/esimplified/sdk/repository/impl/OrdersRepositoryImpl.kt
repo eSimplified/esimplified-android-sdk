@@ -14,6 +14,8 @@ import io.esimplified.sdk.repository.cachedResult
 import io.esimplified.sdk.repository.listOrThrow
 import io.esimplified.sdk.repository.valueOrThrow
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.delay
 import retrofit2.HttpException
 import timber.log.Timber
 
@@ -113,14 +115,34 @@ internal class OrdersRepositoryImpl(
         orderUuid: String,
         forceRefresh: Boolean,
         cacheTTL: Duration,
-    ): RepositoryResult<OrderDetail?> =
-        cache.cachedResult<OrderDetail>(orderKey(orderUuid), forceRefresh, cacheTTL) {
-            try {
-                apiService.getOrderDetails(orderUuid, esimStatus = true, encodeQRCode = true)
-            } catch (e: HttpException) {
-                throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
-            }
+    ): RepositoryResult<OrderDetail?> {
+        val key = orderKey(orderUuid)
+        if (!forceRefresh) {
+            val cached = cache.get<OrderDetail>(key)
+            if (cached != null) return RepositoryResult(cached)
         }
+        var attempt = 1
+        while (true) {
+            val result = cache.cachedResult<OrderDetail>(key, forceRefresh = true, cacheTTL) {
+                try {
+                    apiService.getOrderDetails(orderUuid, esimStatus = true, encodeQRCode = true)
+                } catch (e: HttpException) {
+                    throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
+                }
+            }
+            val order = result.value
+            if (result.didFail || order == null || order.orderStatus != PENDING_ORDER_STATUS) {
+                return result
+            }
+            cache.remove(key)
+            if (attempt >= PENDING_ORDER_ATTEMPTS) {
+                Timber.w("Order %s still pending after %d attempts", orderUuid, attempt)
+                return RepositoryResult(order)
+            }
+            attempt++
+            delay(PENDING_ORDER_RETRY_DELAY)
+        }
+    }
 
     override suspend fun getOrderInvoice(orderUuid: String): ByteArray =
         try {
@@ -155,5 +177,8 @@ internal class OrdersRepositoryImpl(
         const val ORDERS_KEY_PREFIX = "orders_"
         const val ORDERS_PAGE_KEY_PREFIX = "orders_page_"
         const val ORDER_KEY_PREFIX = "order_"
+        const val PENDING_ORDER_STATUS = "pending"
+        const val PENDING_ORDER_ATTEMPTS = 5
+        val PENDING_ORDER_RETRY_DELAY = 1.seconds
     }
 }

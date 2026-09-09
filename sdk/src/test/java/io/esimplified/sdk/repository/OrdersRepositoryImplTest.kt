@@ -1,6 +1,7 @@
 package io.esimplified.sdk.repository
 
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
+import io.esimplified.sdk.model.OrderDetail
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.SdkCache
 import io.esimplified.sdk.repository.impl.OrdersRepositoryImpl
@@ -126,6 +127,82 @@ class OrdersRepositoryImplTest {
         assertTrue(path!!.contains("limit=500"))
         assertTrue(path.contains("used_points=true"))
         assertFalse(path.contains("offset"))
+    }
+    // endregion
+
+    // region Pending order retries
+    @Test
+    fun `a ready order returns on the first attempt`() = runTest {
+        enqueueOrderDetail(status = "completed")
+
+        val order = repo().getOrderDetails("uuid-1")
+
+        assertEquals("completed", order.orderStatus)
+        assertEquals(1, mockWebServer.requestCount)
+    }
+
+    @Test
+    fun `a ready order is cached and a repeat call skips the network`() = runTest {
+        enqueueOrderDetail(status = "completed")
+        val repo = repo()
+
+        repo.getOrderDetails("uuid-1")
+        val second = repo.getOrderDetails("uuid-1")
+
+        assertEquals(1, mockWebServer.requestCount)
+        assertEquals("completed", second.orderStatus)
+    }
+
+    @Test
+    fun `a pending order is retried until it turns ready`() = runTest {
+        enqueueOrderDetail(status = "pending")
+        enqueueOrderDetail(status = "pending")
+        enqueueOrderDetail(status = "completed")
+
+        val order = repo().getOrderDetails("uuid-1")
+
+        assertEquals("completed", order.orderStatus)
+        assertEquals(3, mockWebServer.requestCount)
+    }
+
+    @Test
+    fun `a pending order is attempted five times and the pending order is still returned`() = runTest {
+        repeat(6) { enqueueOrderDetail(status = "pending") }
+
+        val result = repo().getOrderDetailsResult("uuid-1")
+
+        assertEquals(5, mockWebServer.requestCount)
+        assertNotNull(result.value)
+        assertEquals("pending", result.value!!.orderStatus)
+        assertFalse(result.didFail)
+    }
+
+    @Test
+    fun `an exhausted pending order is not cached and a later call refetches`() = runTest {
+        repeat(5) { enqueueOrderDetail(status = "pending") }
+        val repo = repo()
+
+        repo.getOrderDetailsResult("uuid-1")
+
+        assertFalse(cache.store.containsKey("order_uuid-1"))
+        assertNull(cache.getExpired<OrderDetail>("order_uuid-1"))
+
+        enqueueOrderDetail(status = "completed")
+        val second = repo.getOrderDetails("uuid-1")
+
+        assertEquals(6, mockWebServer.requestCount)
+        assertEquals("completed", second.orderStatus)
+    }
+
+    @Test
+    fun `a failed order detail fetch is not retried`() = runTest {
+        enqueueServerError()
+
+        val result = repo().getOrderDetailsResult("uuid-1")
+
+        assertEquals(1, mockWebServer.requestCount)
+        assertNull(result.value)
+        assertTrue(result.didFail)
     }
     // endregion
 
@@ -267,6 +344,10 @@ class OrdersRepositoryImplTest {
         enqueueJson("""{"count":$count,"next":$nextField,"previous":null,"results":[$ORDER_JSON]}""")
     }
 
+    private fun enqueueOrderDetail(status: String) {
+        enqueueJson(ORDER_DETAIL_JSON.replace("ORDER_STATUS_PLACEHOLDER", status))
+    }
+
     private fun enqueueServerError() {
         mockWebServer.enqueue(MockResponse().setResponseCode(500).setBody("""{"detail":"boom"}"""))
     }
@@ -290,6 +371,34 @@ class OrdersRepositoryImplTest {
     }
 
     private companion object {
+        const val ORDER_DETAIL_JSON = """
+            {
+                "customer_id": "cust-1",
+                "discount_amount": 0.0,
+                "discount_code": "",
+                "final_price": 9.99,
+                "order_date": "2026-01-01",
+                "order_number": 1001,
+                "order_status": "ORDER_STATUS_PLACEHOLDER",
+                "order_type": "BUY",
+                "package_data_size": 1.0,
+                "package_type_id": 42,
+                "package_name": "1 GB / 7 Days",
+                "package_validity": 7,
+                "purchase_currency": "USD",
+                "purchase_currency_obj": {"symbol": "$", "iso": "USD"},
+                "purchase_price": 9.99,
+                "payment_method": "stripe_intent",
+                "country": {
+                    "country_name": "Australia",
+                    "country_code": "AU",
+                    "country_flag": "flag.png",
+                    "country_flag_css": "au",
+                    "country_name_slug": "australia"
+                }
+            }
+        """
+
         const val ORDER_JSON = """
             {
                 "esim": {
