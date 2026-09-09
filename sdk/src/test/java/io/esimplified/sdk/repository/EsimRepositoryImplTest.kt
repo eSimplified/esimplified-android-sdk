@@ -52,7 +52,7 @@ class EsimRepositoryImplTest {
 
         repo().getActiveEsims()
 
-        assertTrue(cache.store.containsKey("esims_false_legacytrue_primaryany"))
+        assertTrue(cache.store.containsKey("esims_false_legacytrue_primaryany_qrfalse"))
     }
 
     @Test
@@ -61,8 +61,8 @@ class EsimRepositoryImplTest {
 
         repo().getActiveEsims(showLegacy = false)
 
-        assertTrue(cache.store.containsKey("esims_false_legacyfalse_primaryany"))
-        assertFalse(cache.store.containsKey("esims_false_legacytrue_primaryany"))
+        assertTrue(cache.store.containsKey("esims_false_legacyfalse_primaryany_qrfalse"))
+        assertFalse(cache.store.containsKey("esims_false_legacytrue_primaryany_qrfalse"))
     }
 
     @Test
@@ -71,7 +71,7 @@ class EsimRepositoryImplTest {
 
         repo().getActiveEsims(isPrimary = true)
 
-        assertTrue(cache.store.containsKey("esims_false_legacytrue_primarytrue"))
+        assertTrue(cache.store.containsKey("esims_false_legacytrue_primarytrue_qrfalse"))
     }
 
     @Test
@@ -80,8 +80,8 @@ class EsimRepositoryImplTest {
 
         repo().getActiveEsims(isPrimary = false)
 
-        assertTrue(cache.store.containsKey("esims_false_legacytrue_primaryfalse"))
-        assertFalse(cache.store.containsKey("esims_false_legacytrue_primaryany"))
+        assertTrue(cache.store.containsKey("esims_false_legacytrue_primaryfalse_qrfalse"))
+        assertFalse(cache.store.containsKey("esims_false_legacytrue_primaryany_qrfalse"))
     }
 
     @Test
@@ -94,8 +94,8 @@ class EsimRepositoryImplTest {
         repo.getActiveEsims(isPrimary = true)
 
         assertEquals(2, mockWebServer.requestCount)
-        assertTrue(cache.store.containsKey("esims_false_legacytrue_primaryany"))
-        assertTrue(cache.store.containsKey("esims_false_legacytrue_primarytrue"))
+        assertTrue(cache.store.containsKey("esims_false_legacytrue_primaryany_qrfalse"))
+        assertTrue(cache.store.containsKey("esims_false_legacytrue_primarytrue_qrfalse"))
     }
 
     @Test
@@ -131,8 +131,8 @@ class EsimRepositoryImplTest {
         repo.getActiveEsims(isPrimary = true)
         repo.getArchivedEsims(isPrimary = true)
 
-        assertTrue(cache.store.containsKey("esims_false_legacytrue_primarytrue"))
-        assertTrue(cache.store.containsKey("esims_true_legacytrue_primarytrue"))
+        assertTrue(cache.store.containsKey("esims_false_legacytrue_primarytrue_qrfalse"))
+        assertTrue(cache.store.containsKey("esims_true_legacytrue_primarytrue_qrfalse"))
     }
     // endregion
 
@@ -217,19 +217,19 @@ class EsimRepositoryImplTest {
 
     @Test
     fun `updateEsimPrimaryStatus drops every eSIM list and that detail entry`() = runTest {
-        cache.set("esims_false_legacytrue_primaryany", listOf("active"))
-        cache.set("esims_true_legacyfalse_primarytrue", listOf("archived"))
-        cache.set("esim_details_8931", "details")
-        cache.set("esim_details_9999", "other")
+        cache.set("esims_false_legacytrue_primaryany_qrfalse", listOf("active"))
+        cache.set("esims_true_legacyfalse_primarytrue_qrfalse", listOf("archived"))
+        cache.set("esim_details_8931_qrfalse", "details")
+        cache.set("esim_details_9999_qrfalse", "other")
         cache.set("countries_all", listOf("ZA"))
         enqueueUpdateAccepted()
 
         repo().updateEsimPrimaryStatus(iccid = "8931", isPrimary = true)
 
-        assertNull(cache.getExpired<List<String>>("esims_false_legacytrue_primaryany"))
-        assertNull(cache.getExpired<List<String>>("esims_true_legacyfalse_primarytrue"))
-        assertNull(cache.getExpired<String>("esim_details_8931"))
-        assertNotNull(cache.getExpired<String>("esim_details_9999"))
+        assertNull(cache.getExpired<List<String>>("esims_false_legacytrue_primaryany_qrfalse"))
+        assertNull(cache.getExpired<List<String>>("esims_true_legacyfalse_primarytrue_qrfalse"))
+        assertNull(cache.getExpired<String>("esim_details_8931_qrfalse"))
+        assertNotNull(cache.getExpired<String>("esim_details_9999_qrfalse"))
         assertNotNull(cache.getExpired<List<String>>("countries_all"))
     }
 
@@ -326,15 +326,15 @@ class EsimRepositoryImplTest {
 
     @Test
     fun `a confirmed update throws nothing and still clears the cache`() = runTest {
-        cache.set("esims_false_legacytrue_primaryany", listOf("active"))
-        cache.set("esim_details_8931", "details")
+        cache.set("esims_false_legacytrue_primaryany_qrfalse", listOf("active"))
+        cache.set("esim_details_8931_qrfalse", "details")
         enqueueUpdateAccepted()
 
         val error = runCatching { repo().updateEsim(iccid = "8931", name = "Trip") }.exceptionOrNull()
 
         assertNull(error)
-        assertNull(cache.getExpired<List<String>>("esims_false_legacytrue_primaryany"))
-        assertNull(cache.getExpired<String>("esim_details_8931"))
+        assertNull(cache.getExpired<List<String>>("esims_false_legacytrue_primaryany_qrfalse"))
+        assertNull(cache.getExpired<String>("esim_details_8931_qrfalse"))
     }
     // endregion
 

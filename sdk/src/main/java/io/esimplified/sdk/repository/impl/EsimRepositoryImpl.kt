@@ -27,18 +27,20 @@ internal class EsimRepositoryImpl(
         isPrimary: Boolean?,
         forceRefresh: Boolean,
         cacheTTL: Duration,
+        includeBase64QrCode: Boolean,
     ): List<AssignedEsim> =
-        getActiveEsims(showLegacy, isPrimary, forceRefresh, cacheTTL) +
-            getArchivedEsims(showLegacy, isPrimary, forceRefresh, cacheTTL)
+        getActiveEsims(showLegacy, isPrimary, forceRefresh, cacheTTL, includeBase64QrCode) +
+            getArchivedEsims(showLegacy, isPrimary, forceRefresh, cacheTTL, includeBase64QrCode)
 
     override suspend fun getEsimsResult(
         showLegacy: Boolean,
         isPrimary: Boolean?,
         forceRefresh: Boolean,
         cacheTTL: Duration,
+        includeBase64QrCode: Boolean,
     ): RepositoryResult<List<AssignedEsim>> = combineResults(
-        getActiveEsimsResult(showLegacy, isPrimary, forceRefresh, cacheTTL),
-        getArchivedEsimsResult(showLegacy, isPrimary, forceRefresh, cacheTTL),
+        getActiveEsimsResult(showLegacy, isPrimary, forceRefresh, cacheTTL, includeBase64QrCode),
+        getArchivedEsimsResult(showLegacy, isPrimary, forceRefresh, cacheTTL, includeBase64QrCode),
     )
 
     override suspend fun getActiveEsims(
@@ -46,12 +48,14 @@ internal class EsimRepositoryImpl(
         isPrimary: Boolean?,
         forceRefresh: Boolean,
         cacheTTL: Duration,
+        includeBase64QrCode: Boolean,
     ): List<AssignedEsim> = fetchEsimList(
         archived = false,
         showLegacy = showLegacy,
         isPrimary = isPrimary,
         forceRefresh = forceRefresh,
         cacheTTL = cacheTTL,
+        includeBase64QrCode = includeBase64QrCode,
     ).listOrThrow()
 
     override suspend fun getActiveEsimsResult(
@@ -59,12 +63,14 @@ internal class EsimRepositoryImpl(
         isPrimary: Boolean?,
         forceRefresh: Boolean,
         cacheTTL: Duration,
+        includeBase64QrCode: Boolean,
     ): RepositoryResult<List<AssignedEsim>> = fetchEsimList(
         archived = false,
         showLegacy = showLegacy,
         isPrimary = isPrimary,
         forceRefresh = forceRefresh,
         cacheTTL = cacheTTL,
+        includeBase64QrCode = includeBase64QrCode,
     )
 
     override suspend fun getArchivedEsims(
@@ -72,12 +78,14 @@ internal class EsimRepositoryImpl(
         isPrimary: Boolean?,
         forceRefresh: Boolean,
         cacheTTL: Duration,
+        includeBase64QrCode: Boolean,
     ): List<AssignedEsim> = fetchEsimList(
         archived = true,
         showLegacy = showLegacy,
         isPrimary = isPrimary,
         forceRefresh = forceRefresh,
         cacheTTL = cacheTTL,
+        includeBase64QrCode = includeBase64QrCode,
     ).listOrThrow()
 
     override suspend fun getArchivedEsimsResult(
@@ -85,32 +93,41 @@ internal class EsimRepositoryImpl(
         isPrimary: Boolean?,
         forceRefresh: Boolean,
         cacheTTL: Duration,
+        includeBase64QrCode: Boolean,
     ): RepositoryResult<List<AssignedEsim>> = fetchEsimList(
         archived = true,
         showLegacy = showLegacy,
         isPrimary = isPrimary,
         forceRefresh = forceRefresh,
         cacheTTL = cacheTTL,
+        includeBase64QrCode = includeBase64QrCode,
     )
 
     override suspend fun getEsimByIccid(
         iccid: String,
         forceRefresh: Boolean,
         cacheTTL: Duration,
-    ): AssignedEsim = getEsimByIccidResult(iccid, forceRefresh, cacheTTL).valueOrThrow()
+        includeBase64QrCode: Boolean,
+    ): AssignedEsim = getEsimByIccidResult(iccid, forceRefresh, cacheTTL, includeBase64QrCode).valueOrThrow()
 
     override suspend fun getEsimByIccidResult(
         iccid: String,
         forceRefresh: Boolean,
         cacheTTL: Duration,
+        includeBase64QrCode: Boolean,
     ): RepositoryResult<AssignedEsim?> =
-        cache.cachedResult<AssignedEsim>(esimDetailsKey(iccid), forceRefresh, cacheTTL) {
+        cache.cachedResult<AssignedEsim>(
+            esimDetailsKey(iccid, includeBase64QrCode),
+            forceRefresh,
+            cacheTTL,
+        ) {
             try {
                 apiService.getCustomerEsimByICCID(
                     iccid = iccid,
                     getESimDetails = true,
                     getPackageDetails = true,
-                    getBalanceRemaining = true
+                    getBalanceRemaining = true,
+                    includeBase64QrCode = true.takeIf { includeBase64QrCode }
                 )
             } catch (e: HttpException) {
                 throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
@@ -152,14 +169,21 @@ internal class EsimRepositoryImpl(
     }
 
     private fun invalidateEsimCaches(iccid: String) {
-        cache.remove(esimDetailsKey(iccid))
+        cache.remove(esimDetailsKey(iccid, includeBase64QrCode = false))
+        cache.remove(esimDetailsKey(iccid, includeBase64QrCode = true))
         cache.removeWithPrefix(ESIM_LIST_KEY_PREFIX)
     }
 
-    private fun esimListKey(archived: Boolean, showLegacy: Boolean, isPrimary: Boolean?): String =
-        "$ESIM_LIST_KEY_PREFIX${archived}_legacy${showLegacy}_primary${isPrimary?.toString() ?: UNSET_IS_PRIMARY}"
+    private fun esimListKey(
+        archived: Boolean,
+        showLegacy: Boolean,
+        isPrimary: Boolean?,
+        includeBase64QrCode: Boolean,
+    ): String =
+        "$ESIM_LIST_KEY_PREFIX${archived}_legacy${showLegacy}_primary${isPrimary?.toString() ?: UNSET_IS_PRIMARY}_qr$includeBase64QrCode"
 
-    private fun esimDetailsKey(iccid: String): String = "$ESIM_DETAILS_KEY_PREFIX$iccid"
+    private fun esimDetailsKey(iccid: String, includeBase64QrCode: Boolean): String =
+        "$ESIM_DETAILS_KEY_PREFIX${iccid}_qr$includeBase64QrCode"
     // endregion
 
     private suspend fun fetchEsimList(
@@ -168,9 +192,10 @@ internal class EsimRepositoryImpl(
         isPrimary: Boolean?,
         forceRefresh: Boolean,
         cacheTTL: Duration,
+        includeBase64QrCode: Boolean,
     ): RepositoryResult<List<AssignedEsim>> =
         cache.cachedListResult(
-            esimListKey(archived, showLegacy, isPrimary),
+            esimListKey(archived, showLegacy, isPrimary, includeBase64QrCode),
             forceRefresh,
             cacheTTL,
         ) {
@@ -183,7 +208,8 @@ internal class EsimRepositoryImpl(
                     showLegacy = showLegacy,
                     isPrimary = isPrimary,
                     orderBy = LIST_ORDER_BY,
-                    limit = LIST_LIMIT
+                    limit = LIST_LIMIT,
+                    includeBase64QrCode = true.takeIf { includeBase64QrCode }
                 ).results
             } catch (e: HttpException) {
                 throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)

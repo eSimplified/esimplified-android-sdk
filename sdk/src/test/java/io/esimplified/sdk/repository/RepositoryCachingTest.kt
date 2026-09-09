@@ -91,8 +91,8 @@ class RepositoryCachingTest {
         repo.getArchivedEsims()
 
         assertEquals(2, mockWebServer.requestCount)
-        assertTrue(cache.store.containsKey("esims_false_legacytrue_primaryany"))
-        assertTrue(cache.store.containsKey("esims_true_legacytrue_primaryany"))
+        assertTrue(cache.store.containsKey("esims_false_legacytrue_primaryany_qrfalse"))
+        assertTrue(cache.store.containsKey("esims_true_legacytrue_primaryany_qrfalse"))
     }
     // endregion
 
@@ -212,17 +212,17 @@ class RepositoryCachingTest {
     // region Invalidation
     @Test
     fun `Esim invalidateCache clears both esims and esim_details but leaves countries`() = runTest {
-        cache.set("esims_false_legacytrue_primaryany", listOf("active"))
-        cache.set("esims_true_legacytrue_primaryany", listOf("archived"))
-        cache.set("esim_details_8931", "details")
+        cache.set("esims_false_legacytrue_primaryany_qrfalse", listOf("active"))
+        cache.set("esims_true_legacytrue_primaryany_qrfalse", listOf("archived"))
+        cache.set("esim_details_8931_qrfalse", "details")
         cache.set("countries_all", listOf("ZA"))
         cache.set("countries_by_ZA__", listOf("ZA"))
 
         EsimRepositoryImpl(apiService, cache).invalidateCache()
 
-        assertNull(cache.getExpired<List<String>>("esims_false_legacytrue_primaryany"))
-        assertNull(cache.getExpired<List<String>>("esims_true_legacytrue_primaryany"))
-        assertNull(cache.getExpired<String>("esim_details_8931"))
+        assertNull(cache.getExpired<List<String>>("esims_false_legacytrue_primaryany_qrfalse"))
+        assertNull(cache.getExpired<List<String>>("esims_true_legacytrue_primaryany_qrfalse"))
+        assertNull(cache.getExpired<String>("esim_details_8931_qrfalse"))
         assertNotNull(cache.getExpired<List<String>>("countries_all"))
         assertNotNull(cache.getExpired<List<String>>("countries_by_ZA__"))
         assertEquals(0, mockWebServer.requestCount)
@@ -262,28 +262,28 @@ class RepositoryCachingTest {
     fun `Country invalidateCache clears every countries key`() = runTest {
         cache.set("countries_all", listOf("ZA"))
         cache.set("countries_by_ZA__", listOf("ZA"))
-        cache.set("esims_false_legacytrue_primaryany", listOf("active"))
+        cache.set("esims_false_legacytrue_primaryany_qrfalse", listOf("active"))
 
         CountryRepositoryImpl(apiService, cache).invalidateCache()
 
         assertNull(cache.getExpired<List<String>>("countries_all"))
         assertNull(cache.getExpired<List<String>>("countries_by_ZA__"))
-        assertNotNull(cache.getExpired<List<String>>("esims_false_legacytrue_primaryany"))
+        assertNotNull(cache.getExpired<List<String>>("esims_false_legacytrue_primaryany_qrfalse"))
     }
 
     @Test
     fun `updating an eSIM drops that detail entry and every eSIM list`() = runTest {
-        cache.set("esims_false_legacytrue_primaryany", listOf("active"))
-        cache.set("esim_details_8931", "details")
-        cache.set("esim_details_9999", "other")
+        cache.set("esims_false_legacytrue_primaryany_qrfalse", listOf("active"))
+        cache.set("esim_details_8931_qrfalse", "details")
+        cache.set("esim_details_9999_qrfalse", "other")
         cache.set("countries_all", listOf("ZA"))
         mockWebServer.enqueue(MockResponse().setResponseCode(200).setBody("""{"message":"eSIM updated successfully"}"""))
 
         EsimRepositoryImpl(apiService, cache).updateEsim(iccid = "8931", name = "Trip")
 
-        assertNull(cache.getExpired<List<String>>("esims_false_legacytrue_primaryany"))
-        assertNull(cache.getExpired<String>("esim_details_8931"))
-        assertNotNull(cache.getExpired<String>("esim_details_9999"))
+        assertNull(cache.getExpired<List<String>>("esims_false_legacytrue_primaryany_qrfalse"))
+        assertNull(cache.getExpired<String>("esim_details_8931_qrfalse"))
+        assertNotNull(cache.getExpired<String>("esim_details_9999_qrfalse"))
         assertNotNull(cache.getExpired<List<String>>("countries_all"))
     }
     // endregion

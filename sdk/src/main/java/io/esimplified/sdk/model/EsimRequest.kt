@@ -34,4 +34,14 @@ data class AssignedEsim(
     @SerialName("days_left_to_expiry") val daysLeftToExpiry: Int? = null,
     @SerialName("is_primary") val isPrimary: Boolean = false,
     @SerialName("is_universal") val isUniversal: Boolean = false,
-)
+    @SerialName("sm_dp_address") val smDpAddress: String? = null,
+    @SerialName("activation_code") val activationCode: String? = null,
+    @SerialName("qr_code_image_base64") val qrCodeImageBase64: String? = null,
+    @SerialName("esim_provider") val esimProvider: String? = null,
+) {
+    val canInstallDirectly: Boolean
+        get() = !smDpAddress.isNullOrEmpty() && !activationCode.isNullOrEmpty()
+
+    val hasUnlimitedPackage: Boolean
+        get() = dataUsageRemainingGigabytes == UNLIMITED_GIGABYTES
+}

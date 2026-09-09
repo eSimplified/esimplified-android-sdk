@@ -19,6 +19,7 @@ import io.esimplified.sdk.model.VerifyEmailRequest
 import io.esimplified.sdk.model.VerifyEmailResponse
 import io.esimplified.sdk.model.GetTokenIntrospectResponse
 import io.esimplified.sdk.model.GetTokenResponse
+import io.esimplified.sdk.model.IframeRequest
 import io.esimplified.sdk.model.OrderHistoryItem
 import io.esimplified.sdk.model.KredsLoyaltyBalanceResponse
 import io.esimplified.sdk.model.MokafaaOtpInitiateRequest
@@ -187,7 +188,8 @@ internal interface ApiService {
         @Query("show_legacy") showLegacy: Boolean? = null,
         @Query("is_primary") isPrimary: Boolean? = null,
         @Query("order_by") orderBy: String? = null,
-        @Query("limit") limit: Int? = null
+        @Query("limit") limit: Int? = null,
+        @Query("include_base64_qr_code") includeBase64QrCode: Boolean? = null
     ): BaseResponse<List<AssignedEsim>>
 
     @GET("api/v2/customer/esims/{iccid}/")
@@ -197,6 +199,7 @@ internal interface ApiService {
         @Query("show_esim_details") getESimDetails: Boolean? = null,
         @Query("show_package_details") getPackageDetails: Boolean? = null,
         @Query("show_balance_remaining") getBalanceRemaining: Boolean? = null,
+        @Query("include_base64_qr_code") includeBase64QrCode: Boolean? = null,
     ): AssignedEsim
 
     @GET("api/v2/customer/orders/{order_uuid}/")
@@ -236,6 +239,11 @@ internal interface ApiService {
 
     @POST("api/v2/customer/promotions/iframe/")
     suspend fun getPromotionIframe(): VisaRewardsIframeResponse
+
+    @POST("api/v2/customer/promotions/iframe/")
+    suspend fun getPromotionIframeFor(
+        @Body data: IframeRequest
+    ): VisaRewardsIframeResponse
 
     @GET("api/v2/customer/promotions/validate/{token}")
     suspend fun validatePromotion(@Path("token") token: String): VisaRewardsResponse

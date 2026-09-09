@@ -12,6 +12,7 @@ interface EsimRepository {
         isPrimary: Boolean? = null,
         forceRefresh: Boolean = false,
         cacheTTL: Duration = ESIM_LIST_TTL,
+        includeBase64QrCode: Boolean = false,
     ): List<AssignedEsim>
 
     suspend fun getActiveEsims(
@@ -19,6 +20,7 @@ interface EsimRepository {
         isPrimary: Boolean? = null,
         forceRefresh: Boolean = false,
         cacheTTL: Duration = ESIM_LIST_TTL,
+        includeBase64QrCode: Boolean = false,
     ): List<AssignedEsim>
 
     suspend fun getArchivedEsims(
@@ -26,12 +28,14 @@ interface EsimRepository {
         isPrimary: Boolean? = null,
         forceRefresh: Boolean = false,
         cacheTTL: Duration = ESIM_LIST_TTL,
+        includeBase64QrCode: Boolean = false,
     ): List<AssignedEsim>
 
     suspend fun getEsimByIccid(
         iccid: String,
         forceRefresh: Boolean = false,
         cacheTTL: Duration = ESIM_DETAILS_TTL,
+        includeBase64QrCode: Boolean = false,
     ): AssignedEsim
     // endregion
 
@@ -41,31 +45,35 @@ interface EsimRepository {
         isPrimary: Boolean? = null,
         forceRefresh: Boolean = false,
         cacheTTL: Duration = ESIM_LIST_TTL,
+        includeBase64QrCode: Boolean = false,
     ): RepositoryResult<List<AssignedEsim>> =
-        RepositoryResult(getEsims(showLegacy, isPrimary, forceRefresh, cacheTTL))
+        RepositoryResult(getEsims(showLegacy, isPrimary, forceRefresh, cacheTTL, includeBase64QrCode))
 
     suspend fun getActiveEsimsResult(
         showLegacy: Boolean = true,
         isPrimary: Boolean? = null,
         forceRefresh: Boolean = false,
         cacheTTL: Duration = ESIM_LIST_TTL,
+        includeBase64QrCode: Boolean = false,
     ): RepositoryResult<List<AssignedEsim>> =
-        RepositoryResult(getActiveEsims(showLegacy, isPrimary, forceRefresh, cacheTTL))
+        RepositoryResult(getActiveEsims(showLegacy, isPrimary, forceRefresh, cacheTTL, includeBase64QrCode))
 
     suspend fun getArchivedEsimsResult(
         showLegacy: Boolean = true,
         isPrimary: Boolean? = null,
         forceRefresh: Boolean = false,
         cacheTTL: Duration = ESIM_LIST_TTL,
+        includeBase64QrCode: Boolean = false,
     ): RepositoryResult<List<AssignedEsim>> =
-        RepositoryResult(getArchivedEsims(showLegacy, isPrimary, forceRefresh, cacheTTL))
+        RepositoryResult(getArchivedEsims(showLegacy, isPrimary, forceRefresh, cacheTTL, includeBase64QrCode))
 
     suspend fun getEsimByIccidResult(
         iccid: String,
         forceRefresh: Boolean = false,
         cacheTTL: Duration = ESIM_DETAILS_TTL,
+        includeBase64QrCode: Boolean = false,
     ): RepositoryResult<AssignedEsim?> =
-        RepositoryResult(getEsimByIccid(iccid, forceRefresh, cacheTTL))
+        RepositoryResult(getEsimByIccid(iccid, forceRefresh, cacheTTL, includeBase64QrCode))
     // endregion
 
     // region Writes
