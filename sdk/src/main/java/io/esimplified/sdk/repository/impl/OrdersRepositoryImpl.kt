@@ -5,6 +5,7 @@ import io.esimplified.sdk.repository.OrdersRepository
 import io.esimplified.sdk.model.ApiErrorResponse
 import io.esimplified.sdk.model.OrderHistoryItem
 import io.esimplified.sdk.model.OrderDetail
+import io.esimplified.sdk.model.OrdersPage
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.SdkCache
 import io.esimplified.sdk.repository.RepositoryResult
@@ -68,6 +69,40 @@ internal class OrdersRepositoryImpl(
             }
         }
 
+    override suspend fun getOrdersPageResult(
+        limit: Int,
+        offset: Int,
+        withLoyaltyPoints: Boolean,
+        forceRefresh: Boolean,
+        cacheTTL: Duration,
+    ): RepositoryResult<OrdersPage> {
+        val result = cache.cachedResult<OrdersPage>(
+            ordersPageKey(withLoyaltyPoints, limit, offset),
+            forceRefresh,
+            cacheTTL,
+        ) {
+            try {
+                val response = apiService.getOrderHistory(
+                    usedPoints = if (withLoyaltyPoints) true else null,
+                    limit = limit,
+                    offset = offset,
+                )
+                OrdersPage(
+                    orders = response.results,
+                    totalCount = response.count,
+                    hasMore = !response.next.isNullOrEmpty(),
+                )
+            } catch (e: HttpException) {
+                throw Exception(parseHttpError(e) ?: e.message)
+            }
+        }
+        return RepositoryResult(
+            value = result.value ?: OrdersPage(),
+            isStale = result.isStale,
+            failure = result.failure,
+        )
+    }
+
     override suspend fun getOrderDetails(
         orderUuid: String,
         forceRefresh: Boolean,
@@ -87,6 +122,13 @@ internal class OrdersRepositoryImpl(
             }
         }
 
+    override suspend fun getOrderInvoice(orderUuid: String): ByteArray =
+        try {
+            apiService.getOrderInvoice(orderUuid).bytes()
+        } catch (e: HttpException) {
+            throw Exception(parseHttpError(e) ?: e.message)
+        }
+
     override suspend fun trackOrder(orderUuid: String) {
         runCatching {
             apiService.getOrderStatus(orderUuid)
@@ -103,6 +145,9 @@ internal class OrdersRepositoryImpl(
     }
 
     private fun orderKey(orderUuid: String): String = "$ORDER_KEY_PREFIX$orderUuid"
+
+    private fun ordersPageKey(withLoyaltyPoints: Boolean, limit: Int, offset: Int): String =
+        "$ORDERS_PAGE_KEY_PREFIX${withLoyaltyPoints}_${limit}_$offset"
     // endregion
 
     private fun parseHttpError(e: HttpException): String? {
@@ -121,6 +166,7 @@ internal class OrdersRepositoryImpl(
 
     private companion object {
         const val ORDERS_KEY_PREFIX = "orders_"
+        const val ORDERS_PAGE_KEY_PREFIX = "orders_page_"
         const val ORDER_KEY_PREFIX = "order_"
     }
 }

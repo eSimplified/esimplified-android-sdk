@@ -220,8 +220,15 @@ internal interface ApiService {
 
     @GET("api/v2/customer/orders/" )
     suspend fun getOrderHistory(
-        @Query("used_points") usedPoints: Boolean? = null
+        @Query("used_points") usedPoints: Boolean? = null,
+        @Query("limit") limit: Int? = null,
+        @Query("offset") offset: Int? = null
     ): BaseResponse<List<OrderHistoryItem>>
+
+    @GET("api/v2/orders/{order_uuid}/invoice/")
+    suspend fun getOrderInvoice(
+        @Path("order_uuid") id: String
+    ): ResponseBody
     @GET("api/v2/customer/loyalty/" )
     suspend fun getLoyaltyPoints(): KredsLoyaltyBalanceResponse
 
