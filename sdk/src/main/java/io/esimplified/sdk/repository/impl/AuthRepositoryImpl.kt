@@ -13,8 +13,8 @@ import io.esimplified.sdk.model.UpdateCustomerPreferencesRequest
 import io.esimplified.sdk.model.VerifyEmailRequest
 import io.esimplified.sdk.model.VerifyEmailResponse
 import io.esimplified.sdk.model.GetTokenResponse
-import io.esimplified.sdk.model.ApiErrorResponse
 import io.esimplified.sdk.model.Customer
+import io.esimplified.sdk.network.ApiErrorMessage
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.auth.Auth
 import io.esimplified.sdk.auth.SessionManager
@@ -168,7 +168,7 @@ internal class AuthRepositoryImpl(
 
             return user
         } catch (e: HttpException) {
-            throw Exception(parseHttpError(e) ?: "Google sign-in failed")
+            throw Exception(ApiErrorMessage.parseOrNull(e) ?: "Google sign-in failed")
         }
     }
     // endregion
@@ -205,7 +205,7 @@ internal class AuthRepositoryImpl(
 
             return response
         } catch (e: HttpException) {
-            throw Exception(parseHttpError(e) ?: e.message)
+            throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
         }
     }
     // endregion
@@ -221,7 +221,7 @@ internal class AuthRepositoryImpl(
 
             return response
         } catch (e: HttpException) {
-            throw Exception(parseHttpError(e) ?: e.message)
+            throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
         }
     }
 
@@ -285,7 +285,7 @@ internal class AuthRepositoryImpl(
             }
             return response
         } catch (e: HttpException) {
-            throw Exception(parseHttpError(e) ?: "Email verification failed")
+            throw Exception(ApiErrorMessage.parseOrNull(e) ?: "Email verification failed")
         }
     }
     // endregion
@@ -402,7 +402,7 @@ internal class AuthRepositoryImpl(
 
             return response
         } catch (e: HttpException) {
-            throw Exception(parseHttpError(e) ?: "Update failed")
+            throw Exception(ApiErrorMessage.parseOrNull(e) ?: "Update failed")
         }
     }
     // endregion
@@ -418,18 +418,5 @@ internal class AuthRepositoryImpl(
         return LocalDateTime.now().plusSeconds(expiresIn.toLong())
     }
 
-    private fun parseHttpError(e: HttpException): String? {
-        return try {
-            val errorBody = e.response()?.errorBody()?.string()
-            if (errorBody != null) {
-                val errorResponse = json.decodeFromString<ApiErrorResponse>(errorBody)
-                errorResponse.detail ?: errorResponse.message ?: errorResponse.error
-            } else {
-                null
-            }
-        } catch (_: Exception) {
-            null
-        }
-    }
     // endregion
 }

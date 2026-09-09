@@ -1,9 +1,9 @@
 package io.esimplified.sdk.repository.impl
 
-import io.esimplified.sdk.model.ApiErrorResponse
 import io.esimplified.sdk.model.ThemeDestination
 import io.esimplified.sdk.model.ThemePage
 import io.esimplified.sdk.model.ThemeResponse
+import io.esimplified.sdk.network.ApiErrorMessage
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.SdkCache
 import io.esimplified.sdk.repository.RepositoryResult
@@ -12,15 +12,12 @@ import io.esimplified.sdk.repository.asSdkError
 import io.esimplified.sdk.repository.originalOrSelf
 import kotlin.time.Duration
 import kotlinx.coroutines.CancellationException
-import kotlinx.serialization.json.Json
 import retrofit2.HttpException
 
 internal class ThemeRepositoryImpl(
     private val apiService: ApiService,
     private val cache: SdkCache,
 ) : ThemeRepository {
-
-    private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
 
     // region Page theme
     override suspend fun fetchPageTheme(
@@ -97,7 +94,7 @@ internal class ThemeRepositoryImpl(
         try {
             return apiService.getTheme(url = url)
         } catch (e: HttpException) {
-            throw Exception(parseHttpError(e) ?: e.message)
+            throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
         }
     }
 
@@ -106,20 +103,6 @@ internal class ThemeRepositoryImpl(
         if (cached != null) return cached
         val failed = failure ?: return null
         throw failed.originalOrSelf()
-    }
-
-    private fun parseHttpError(e: HttpException): String? {
-        return try {
-            val errorBody = e.response()?.errorBody()?.string()
-            if (errorBody != null) {
-                val errorResponse = json.decodeFromString<ApiErrorResponse>(errorBody)
-                errorResponse.detail ?: errorResponse.message ?: errorResponse.error
-            } else {
-                null
-            }
-        } catch (_: Exception) {
-            null
-        }
     }
 
     private companion object {

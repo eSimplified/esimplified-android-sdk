@@ -2,10 +2,10 @@ package io.esimplified.sdk.repository.impl
 
 import io.esimplified.sdk.repository.PackagesRepository
 
-import io.esimplified.sdk.model.ApiErrorResponse
 import io.esimplified.sdk.model.CheckStockResponse
 import io.esimplified.sdk.model.Destination
 import io.esimplified.sdk.model.PackagePlan
+import io.esimplified.sdk.network.ApiErrorMessage
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.SdkCache
 import io.esimplified.sdk.repository.RepositoryResult
@@ -14,15 +14,12 @@ import io.esimplified.sdk.repository.cachedResult
 import io.esimplified.sdk.repository.listOrThrow
 import io.esimplified.sdk.repository.valueOrThrow
 import kotlin.time.Duration
-import kotlinx.serialization.json.Json
 import retrofit2.HttpException
 
 internal class PackagesRepositoryImpl(
     private val apiService: ApiService,
     private val cache: SdkCache,
 ) : PackagesRepository {
-
-    private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
 
     // region Packages
     override suspend fun getPackages(
@@ -44,7 +41,7 @@ internal class PackagesRepositoryImpl(
                     slug = destination.slug
                 ).results
             } catch (e: HttpException) {
-                throw Exception(parseHttpError(e) ?: e.message)
+                throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
             }
         }
 
@@ -63,7 +60,7 @@ internal class PackagesRepositoryImpl(
             try {
                 apiService.getEsimTopUpPackages(iccid = iccid).results
             } catch (e: HttpException) {
-                throw Exception(parseHttpError(e) ?: e.message)
+                throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
             }
         }
     // endregion
@@ -84,7 +81,7 @@ internal class PackagesRepositoryImpl(
             try {
                 apiService.getPackageStock(packageTypeId = packageTypeId)
             } catch (e: HttpException) {
-                throw Exception(parseHttpError(e) ?: e.message)
+                throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
             }
         }
     // endregion
@@ -102,20 +99,6 @@ internal class PackagesRepositoryImpl(
 
     private fun checkStockKey(packageTypeId: Int): String = "$CHECK_STOCK_KEY_PREFIX$packageTypeId"
     // endregion
-
-    private fun parseHttpError(e: HttpException): String? {
-        return try {
-            val errorBody = e.response()?.errorBody()?.string()
-            if (errorBody != null) {
-                val errorResponse = json.decodeFromString<ApiErrorResponse>(errorBody)
-                errorResponse.detail ?: errorResponse.message ?: errorResponse.error
-            } else {
-                null
-            }
-        } catch (_: Exception) {
-            null
-        }
-    }
 
     private companion object {
         const val PACKAGES_KEY_PREFIX = "packages_"
