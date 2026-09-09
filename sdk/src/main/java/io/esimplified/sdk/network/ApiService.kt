@@ -185,7 +185,9 @@ internal interface ApiService {
         @Query("show_balance_remaining") getBalanceRemaining: Boolean? = null,
         @Query("show_archived_esims") showArchived: Boolean? = null,
         @Query("show_legacy") showLegacy: Boolean? = null,
-        @Query("is_primary") isPrimary: Boolean? = null
+        @Query("is_primary") isPrimary: Boolean? = null,
+        @Query("order_by") orderBy: String? = null,
+        @Query("limit") limit: Int? = null
     ): BaseResponse<List<AssignedEsim>>
 
     @GET("api/v2/customer/esims/{iccid}/")

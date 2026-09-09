@@ -166,6 +166,31 @@ class EsimRepositoryImplTest {
 
         assertTrue(mockWebServer.takeRequest().path!!.contains("is_primary=true"))
     }
+
+    @Test
+    fun `the list request sends the assigned date sort and the list limit`() = runTest {
+        enqueueEmptyEsims()
+
+        repo().getActiveEsims()
+
+        val path = mockWebServer.takeRequest().path
+        assertNotNull(path)
+        assertTrue(path!!.contains("order_by=-assigned_date"))
+        assertTrue(path.contains("limit=1000"))
+    }
+
+    @Test
+    fun `the archived list request also sends the sort and the limit`() = runTest {
+        enqueueEmptyEsims()
+
+        repo().getArchivedEsims()
+
+        val path = mockWebServer.takeRequest().path
+        assertNotNull(path)
+        assertTrue(path!!.contains("show_archived_esims=true"))
+        assertTrue(path.contains("order_by=-assigned_date"))
+        assertTrue(path.contains("limit=1000"))
+    }
     // endregion
 
     // region Set primary

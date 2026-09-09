@@ -181,7 +181,9 @@ internal class EsimRepositoryImpl(
                     getBalanceRemaining = true,
                     showArchived = archived,
                     showLegacy = showLegacy,
-                    isPrimary = isPrimary
+                    isPrimary = isPrimary,
+                    orderBy = LIST_ORDER_BY,
+                    limit = LIST_LIMIT
                 ).results
             } catch (e: HttpException) {
                 throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
@@ -192,6 +194,8 @@ internal class EsimRepositoryImpl(
         const val ESIM_LIST_KEY_PREFIX = "esims_"
         const val ESIM_DETAILS_KEY_PREFIX = "esim_details_"
         const val UNSET_IS_PRIMARY = "any"
+        const val LIST_ORDER_BY = "-assigned_date"
+        const val LIST_LIMIT = 1000
         const val UPDATE_SUCCEEDED_MESSAGE = "eSIM updated successfully"
         const val UPDATE_FAILED_MESSAGE = "The update did not succeed"
     }
