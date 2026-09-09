@@ -229,9 +229,97 @@ class EsimRepositoryImplTest {
     }
     // endregion
 
+    // region Update failures
+    @Test
+    fun `a rename rejected by the server throws with the parsed message`() = runTest {
+        enqueueUpdateFailure(500, """{"message":"That name is already taken"}""")
+
+        val error = runCatching { repo().updateEsim(iccid = "8931", name = "Trip") }.exceptionOrNull()
+
+        assertEquals("That name is already taken", error?.message)
+    }
+
+    @Test
+    fun `an archive rejected by the server throws with the parsed message`() = runTest {
+        enqueueUpdateFailure(500, """{"detail":"eSIM cannot be archived"}""")
+
+        val error =
+            runCatching { repo().updateEsim(iccid = "8931", isArchived = true) }.exceptionOrNull()
+
+        assertEquals("eSIM cannot be archived", error?.message)
+    }
+
+    @Test
+    fun `an auto top up change rejected by the server throws with the parsed message`() = runTest {
+        enqueueUpdateFailure(500, """{"auto_top_up":["No payment method on file"]}""")
+
+        val error =
+            runCatching { repo().updateEsim(iccid = "8931", isAutoTopUp = true) }.exceptionOrNull()
+
+        assertEquals("Auto top up: No payment method on file", error?.message)
+    }
+
+    @Test
+    fun `a set primary rejected by the server throws with the parsed message`() = runTest {
+        enqueueUpdateFailure(500, """{"message":"Another eSIM is already primary"}""")
+
+        val error = runCatching {
+            repo().updateEsimPrimaryStatus(iccid = "8931", isPrimary = true)
+        }.exceptionOrNull()
+
+        assertEquals("Another eSIM is already primary", error?.message)
+    }
+
+    @Test
+    fun `a failure with an unparseable body throws the fallback message`() = runTest {
+        enqueueUpdateFailure(500, "")
+
+        val error = runCatching { repo().updateEsim(iccid = "8931", name = "Trip") }.exceptionOrNull()
+
+        assertEquals("Unknown error", error?.message)
+    }
+
+    @Test
+    fun `a 200 whose message is not the success message throws that message`() = runTest {
+        mockWebServer.enqueue(
+            MockResponse().setResponseCode(200).setBody("""{"message":"eSIM was not updated"}""")
+        )
+
+        val error = runCatching { repo().updateEsim(iccid = "8931", name = "Trip") }.exceptionOrNull()
+
+        assertEquals("eSIM was not updated", error?.message)
+    }
+
+    @Test
+    fun `a 200 with no body throws because the update was not confirmed`() = runTest {
+        mockWebServer.enqueue(MockResponse().setResponseCode(200))
+
+        val error = runCatching { repo().updateEsim(iccid = "8931", name = "Trip") }.exceptionOrNull()
+
+        assertEquals("The update did not succeed", error?.message)
+    }
+
+    @Test
+    fun `a confirmed update throws nothing and still clears the cache`() = runTest {
+        cache.set("esims_false_legacytrue_primaryany", listOf("active"))
+        cache.set("esim_details_8931", "details")
+        enqueueUpdateAccepted()
+
+        val error = runCatching { repo().updateEsim(iccid = "8931", name = "Trip") }.exceptionOrNull()
+
+        assertNull(error)
+        assertNull(cache.getExpired<List<String>>("esims_false_legacytrue_primaryany"))
+        assertNull(cache.getExpired<String>("esim_details_8931"))
+    }
+    // endregion
+
     private fun repo() = EsimRepositoryImpl(apiService, cache)
 
     private fun enqueueEmptyEsims() = enqueueJson("""{"count":0,"results":[]}""")
+
+    private fun enqueueUpdateFailure(code: Int, body: String) = mockWebServer.enqueue(
+        MockResponse().setResponseCode(code).setBody(body)
+    )
 
     private fun enqueueUpdateAccepted() = mockWebServer.enqueue(
         MockResponse().setResponseCode(200).setBody("""{"message":"eSIM updated successfully"}""")

@@ -13,6 +13,7 @@ import io.esimplified.sdk.repository.combineResults
 import io.esimplified.sdk.repository.listOrThrow
 import io.esimplified.sdk.repository.valueOrThrow
 import kotlin.time.Duration
+import okhttp3.ResponseBody
 import retrofit2.HttpException
 
 internal class EsimRepositoryImpl(
@@ -124,18 +125,24 @@ internal class EsimRepositoryImpl(
         isPrimary: Boolean?
     ) {
         invalidateEsimCaches(iccid)
-        try {
-            apiService.updateEsim(
-                id = iccid,
-                name = name,
-                isArchived = isArchived,
-                autoTopUp = isAutoTopUp,
-                isPrimary = isPrimary
-            )
-        } catch (e: HttpException) {
-            throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
+        val response = apiService.updateEsim(
+            id = iccid,
+            name = name,
+            isArchived = isArchived,
+            autoTopUp = isAutoTopUp,
+            isPrimary = isPrimary
+        )
+        if (!response.isSuccessful) {
+            throw Exception(ApiErrorMessage.parse(readBody(response.errorBody())))
+        }
+        val message = ApiErrorMessage.parseOrNull(readBody(response.body()))
+        if (message != UPDATE_SUCCEEDED_MESSAGE) {
+            throw Exception(message ?: UPDATE_FAILED_MESSAGE)
         }
     }
+
+    private fun readBody(body: ResponseBody?): String? =
+        runCatching { body?.string() }.getOrNull()
     // endregion
 
     // region Cache
@@ -185,5 +192,7 @@ internal class EsimRepositoryImpl(
         const val ESIM_LIST_KEY_PREFIX = "esims_"
         const val ESIM_DETAILS_KEY_PREFIX = "esim_details_"
         const val UNSET_IS_PRIMARY = "any"
+        const val UPDATE_SUCCEEDED_MESSAGE = "eSIM updated successfully"
+        const val UPDATE_FAILED_MESSAGE = "The update did not succeed"
     }
 }
