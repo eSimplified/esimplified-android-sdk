@@ -60,6 +60,14 @@ interface AuthRepository {
         phoneNumber: String?,
         password: String
     ): ProfileResponse
+
+    suspend fun updateCustomerProfile(
+        firstName: String? = null,
+        lastName: String? = null,
+        phoneNumber: String? = null,
+        email: String? = null,
+        password: String? = null,
+    ): ProfileResponse
     // endregion
 
     // region Session

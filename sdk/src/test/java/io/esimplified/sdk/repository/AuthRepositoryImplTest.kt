@@ -17,6 +17,8 @@ import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import retrofit2.Retrofit
@@ -212,6 +214,40 @@ class AuthRepositoryImplTest {
         assertEquals("mokafaa", savedUser.loyaltyProvider)
         assertEquals("pending", savedUser.mokafaaEnrollment?.state)
         assertEquals("2026-08-12T10:00:00Z", savedUser.mokafaaEnrollment?.sessionExpiresAt)
+    }
+
+    @Test
+    fun `updateCustomerProfile can send a phone number on its own`() = runTest {
+        seedAuthenticatedSession(refreshToken = "original-refresh-token")
+        mockWebServer.enqueue(
+            MockResponse().setResponseCode(200).setBody("{\"updated\": true}")
+        )
+
+        authRepository.updateCustomerProfile(phoneNumber = "+27831234567")
+
+        val body = mockWebServer.takeRequest().body.readUtf8()
+        assertTrue(body.contains("\"phone_number\":\"+27831234567\""))
+        assertFalse(body.contains("\"password\""))
+        assertFalse(body.contains("\"new_email\""))
+        assertEquals(
+            "+27831234567",
+            (sessionManager.getAuthState() as Auth.Authenticated).user.phoneNumber
+        )
+    }
+
+    @Test
+    fun `updateCustomerProfile leaves the stored email alone when none is supplied`() = runTest {
+        seedAuthenticatedSession(refreshToken = "original-refresh-token")
+        mockWebServer.enqueue(
+            MockResponse().setResponseCode(200).setBody("{\"updated\": true}")
+        )
+
+        authRepository.updateCustomerProfile(firstName = "Kieran")
+
+        assertEquals(
+            "test@example.com",
+            (sessionManager.getAuthState() as Auth.Authenticated).user.email
+        )
     }
 
     @Test

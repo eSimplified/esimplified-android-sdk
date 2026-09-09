@@ -2,6 +2,7 @@ package io.esimplified.sdk.repository.impl
 
 import io.esimplified.sdk.repository.VisaRewardsRepository
 
+import io.esimplified.sdk.model.IframeRequest
 import io.esimplified.sdk.model.VisaRewardsIframeResponse
 import io.esimplified.sdk.model.VisaRewardsResponse
 import io.esimplified.sdk.network.ApiErrorMessage
@@ -15,7 +16,11 @@ internal class VisaRewardsRepositoryImpl(
     // region Visa Rewards
     override suspend fun getIframe(isEU: Boolean): VisaRewardsIframeResponse {
         try {
-            return apiService.getPromotionIframe()
+            return if (isEU) {
+                apiService.getPromotionIframeFor(IframeRequest(vendor = EU_VENDOR))
+            } else {
+                apiService.getPromotionIframe()
+            }
         } catch (e: HttpException) {
             throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
         }
@@ -41,4 +46,7 @@ internal class VisaRewardsRepositoryImpl(
     }
     // endregion
 
+    private companion object {
+        const val EU_VENDOR = "eu"
+    }
 }

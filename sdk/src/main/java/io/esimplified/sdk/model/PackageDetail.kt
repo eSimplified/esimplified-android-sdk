@@ -54,4 +54,10 @@ data class PackageDetail(
     val packageCountryCode: String? = null,
     @SerialName("status_message")
     val statusMessage: String = ""
-)
+) {
+    val hasUnlimitedPackage: Boolean
+        get() = dataAllowanceGigabytes == UNLIMITED_GIGABYTES ||
+            dataUsageRemainingGigabytes == UNLIMITED_GIGABYTES
+}
+
+internal const val UNLIMITED_GIGABYTES = -1.0

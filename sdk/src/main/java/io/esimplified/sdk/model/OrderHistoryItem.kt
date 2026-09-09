@@ -38,7 +38,7 @@ data class OrderHistoryItem(
     @SerialName("payment_method")
     val paymentMethod: PaymentMethod,
     @SerialName("country")
-    val country: Country,
+    val country: Country? = null,
     @SerialName("points_earned")
     val loyaltyPointsEarned: LoyaltyPointsDetail? = null,
     @SerialName("points_spent")

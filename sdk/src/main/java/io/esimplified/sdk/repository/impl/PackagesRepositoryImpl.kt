@@ -5,6 +5,7 @@ import io.esimplified.sdk.repository.PackagesRepository
 import io.esimplified.sdk.model.CheckStockResponse
 import io.esimplified.sdk.model.Destination
 import io.esimplified.sdk.model.PackagePlan
+import io.esimplified.sdk.model.PackagesPage
 import io.esimplified.sdk.network.ApiErrorMessage
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.SdkCache
@@ -44,6 +45,44 @@ internal class PackagesRepositoryImpl(
                 throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
             }
         }
+
+    override suspend fun getPackagesPage(
+        destination: Destination,
+        forceRefresh: Boolean,
+        cacheTTL: Duration,
+    ): PackagesPage = getPackagesPageResult(destination, forceRefresh, cacheTTL).value ?: PackagesPage()
+
+    override suspend fun getPackagesPageResult(
+        destination: Destination,
+        forceRefresh: Boolean,
+        cacheTTL: Duration,
+    ): RepositoryResult<PackagesPage> {
+        val result = cache.cachedResult<PackagesPage>(
+            packagesPageKey(destination),
+            forceRefresh,
+            cacheTTL,
+        ) {
+            try {
+                val response = apiService.getPackageListBy(
+                    code = destination.code,
+                    name = destination.name,
+                    slug = destination.slug
+                )
+                PackagesPage(
+                    packages = response.results,
+                    totalCount = response.count,
+                    promoCode = response.promoCode,
+                )
+            } catch (e: HttpException) {
+                throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
+            }
+        }
+        return RepositoryResult(
+            value = result.value ?: PackagesPage(),
+            isStale = result.isStale,
+            failure = result.failure,
+        )
+    }
 
     override suspend fun getTopUpPackages(
         iccid: String,
@@ -94,6 +133,9 @@ internal class PackagesRepositoryImpl(
 
     private fun packagesKey(destination: Destination): String =
         "$PACKAGES_KEY_PREFIX${destination.code}_${destination.name}_${destination.slug}"
+
+    private fun packagesPageKey(destination: Destination): String =
+        "${PACKAGES_KEY_PREFIX}page_${destination.code}_${destination.name}_${destination.slug}"
 
     private fun topUpPackagesKey(iccid: String): String = "${PACKAGES_KEY_PREFIX}topup_$iccid"
 

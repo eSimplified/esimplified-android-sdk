@@ -3,6 +3,7 @@ package io.esimplified.sdk.repository
 import io.esimplified.sdk.model.CheckStockResponse
 import io.esimplified.sdk.model.Destination
 import io.esimplified.sdk.model.PackagePlan
+import io.esimplified.sdk.model.PackagesPage
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -20,6 +21,12 @@ interface PackagesRepository {
         forceRefresh: Boolean = false,
         cacheTTL: Duration = PACKAGES_TTL,
     ): List<PackagePlan>
+
+    suspend fun getPackagesPage(
+        destination: Destination,
+        forceRefresh: Boolean = false,
+        cacheTTL: Duration = PACKAGES_TTL,
+    ): PackagesPage
 
     suspend fun checkStock(
         packageTypeId: Int,
@@ -43,6 +50,13 @@ interface PackagesRepository {
         cacheTTL: Duration = PACKAGES_TTL,
     ): RepositoryResult<List<PackagePlan>> =
         RepositoryResult(getTopUpPackages(iccid, forceRefresh, cacheTTL))
+
+    suspend fun getPackagesPageResult(
+        destination: Destination,
+        forceRefresh: Boolean = false,
+        cacheTTL: Duration = PACKAGES_TTL,
+    ): RepositoryResult<PackagesPage> =
+        RepositoryResult(getPackagesPage(destination, forceRefresh, cacheTTL))
 
     suspend fun checkStockResult(
         packageTypeId: Int,

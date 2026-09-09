@@ -35,6 +35,7 @@ internal class AuthRepositoryImpl(
     companion object {
         private const val KEY_USER_ID = "user_id"
         private const val KEY_USER_EMAIL = "email"
+        private const val UPDATE_FAILED_MESSAGE = "Update failed"
     }
 
     // region Authentication
@@ -350,6 +351,62 @@ internal class AuthRepositoryImpl(
         }
 
         return response
+    }
+
+    override suspend fun updateCustomerProfile(
+        firstName: String?,
+        lastName: String?,
+        phoneNumber: String?,
+        email: String?,
+        password: String?,
+    ): ProfileResponse {
+        try {
+            val userId = secureStorage.secureLoad(KEY_USER_ID, "")
+            val userEmail = secureStorage.secureLoad(KEY_USER_EMAIL, "")
+            val fullName = listOfNotNull(firstName, lastName)
+                .joinToString(" ")
+                .takeIf { it.isNotEmpty() }
+
+            val response = apiService.update(
+                CustomerDetails(
+                    id = userId,
+                    email = email,
+                    firstName = firstName,
+                    lastName = lastName,
+                    fullName = fullName,
+                    phoneNumber = phoneNumber,
+                    newEmail = email?.takeIf { it != userEmail },
+                    password = password,
+                )
+            )
+
+            if (response.detail != null) {
+                throw Exception(response.detail)
+            }
+
+            if (response.success == false || response.updated == false) {
+                throw Exception(response.detail ?: response.message ?: UPDATE_FAILED_MESSAGE)
+            }
+
+            val snapshot = sessionManager.getAuthState()
+            if (snapshot is Auth.Authenticated) {
+                sessionManager.save(
+                    snapshot.copy(
+                        user = snapshot.user.copy(
+                            email = email ?: snapshot.user.email,
+                            firstName = firstName ?: snapshot.user.firstName,
+                            lastName = lastName ?: snapshot.user.lastName,
+                            fullName = fullName ?: snapshot.user.fullName,
+                            phoneNumber = phoneNumber ?: snapshot.user.phoneNumber,
+                        )
+                    )
+                )
+            }
+
+            return response
+        } catch (e: HttpException) {
+            throw Exception(ApiErrorMessage.parseOrNull(e) ?: UPDATE_FAILED_MESSAGE)
+        }
     }
 
     override suspend fun updateProfile(
