@@ -4,6 +4,7 @@ import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFact
 import io.esimplified.sdk.model.AssignedEsim
 import io.esimplified.sdk.model.Destination
 import io.esimplified.sdk.model.PackageDetail
+import io.esimplified.sdk.model.VisaRewardsResponse
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.SdkCache
 import io.esimplified.sdk.repository.impl.OrdersRepositoryImpl
@@ -151,6 +152,31 @@ class ParityGapTest {
         repo.getPackagesPage(destination)
 
         assertEquals(2, mockWebServer.requestCount)
+    }
+    // endregion
+
+    // region Visa reward counts tell absent from zero
+    @Test
+    fun `a reward response without the counts reports them as absent`() {
+        val response = Json { ignoreUnknownKeys = true; coerceInputValues = true }
+            .decodeFromString<VisaRewardsResponse>("""{"eligible":true,"allowed_count":3}""")
+
+        assertNull(response.remaining)
+        assertNull(response.used)
+        assertEquals(3, response.allowed)
+        assertEquals(3, response.remainingOrAllowed)
+    }
+
+    @Test
+    fun `a reward response with no rewards left reports zero, not absent`() {
+        val response = Json { ignoreUnknownKeys = true; coerceInputValues = true }
+            .decodeFromString<VisaRewardsResponse>(
+                """{"eligible":true,"allowed_count":3,"remaining_count":0,"used_count":3}"""
+            )
+
+        assertEquals(0, response.remaining)
+        assertEquals(3, response.used)
+        assertEquals(0, response.remainingOrAllowed)
     }
     // endregion
 
