@@ -2,6 +2,8 @@ package io.esimplified.sdk.repository
 
 import io.esimplified.sdk.network.SdkCache
 import io.esimplified.sdk.network.SdkError
+import java.net.ConnectException
+import java.net.UnknownHostException
 import kotlinx.coroutines.CancellationException
 import kotlin.time.Duration
 
@@ -57,8 +59,22 @@ internal fun <T> RepositoryResult<List<T>>.listOrThrow(): List<T> {
     throw failed.originalOrSelf()
 }
 
-internal fun Throwable.asSdkError(): SdkError =
-    this as? SdkError ?: SdkError.Unknown(this)
+internal fun Throwable.asSdkError(): SdkError = when {
+    this is SdkError -> this
+    isOfflineFailure() -> SdkError.NoInternetConnection()
+    else -> SdkError.Unknown(this)
+}
+
+private fun Throwable.isOfflineFailure(): Boolean {
+    var current: Throwable? = this
+    var depth = 0
+    while (current != null && depth < 8) {
+        if (current is UnknownHostException || current is ConnectException) return true
+        current = current.cause.takeIf { it !== current }
+        depth++
+    }
+    return false
+}
 
 internal fun SdkError?.originalOrSelf(): Throwable = when (this) {
     null -> SdkError.Unknown(IllegalStateException("No cached value and no failure recorded"))
