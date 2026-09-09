@@ -37,7 +37,7 @@ internal class OrdersRepositoryImpl(
     ): RepositoryResult<List<OrderHistoryItem>> =
         cache.cachedListResult("${ORDERS_KEY_PREFIX}none", forceRefresh, cacheTTL) {
             try {
-                apiService.getOrderHistory().results
+                apiService.getOrderHistory(limit = UNPAGED_LIMIT).results
             } catch (e: HttpException) {
                 throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
             }
@@ -60,7 +60,10 @@ internal class OrdersRepositoryImpl(
     ): RepositoryResult<List<OrderHistoryItem>> =
         cache.cachedListResult("$ORDERS_KEY_PREFIX$withLoyaltyPoints", forceRefresh, cacheTTL) {
             try {
-                apiService.getOrderHistory(usedPoints = if (withLoyaltyPoints) true else null).results
+                apiService.getOrderHistory(
+                    usedPoints = if (withLoyaltyPoints) true else null,
+                    limit = UNPAGED_LIMIT,
+                ).results
             } catch (e: HttpException) {
                 throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
             }
@@ -148,6 +151,7 @@ internal class OrdersRepositoryImpl(
     // endregion
 
     private companion object {
+        const val UNPAGED_LIMIT = 500
         const val ORDERS_KEY_PREFIX = "orders_"
         const val ORDERS_PAGE_KEY_PREFIX = "orders_page_"
         const val ORDER_KEY_PREFIX = "order_"

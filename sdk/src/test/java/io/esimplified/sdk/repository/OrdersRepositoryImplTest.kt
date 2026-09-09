@@ -101,6 +101,34 @@ class OrdersRepositoryImplTest {
     }
     // endregion
 
+    // region Unpaged reads
+    @Test
+    fun `the unpaged request sends the unpaged limit`() = runTest {
+        enqueueOrders()
+
+        repo().getOrderHistoryResult()
+
+        val path = mockWebServer.takeRequest().path
+        assertNotNull(path)
+        assertTrue(path!!.contains("limit=500"))
+        assertFalse(path.contains("offset"))
+        assertFalse(path.contains("used_points"))
+    }
+
+    @Test
+    fun `the unpaged request with loyalty points sends the unpaged limit alongside used_points`() = runTest {
+        enqueueOrders()
+
+        repo().getOrderHistoryResult(withLoyaltyPoints = true)
+
+        val path = mockWebServer.takeRequest().path
+        assertNotNull(path)
+        assertTrue(path!!.contains("limit=500"))
+        assertTrue(path.contains("used_points=true"))
+        assertFalse(path.contains("offset"))
+    }
+    // endregion
+
     // region Page caching
     @Test
     fun `a fresh page is served without touching the network`() = runTest {
