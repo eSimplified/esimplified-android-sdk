@@ -183,7 +183,9 @@ internal interface ApiService {
         @Query("show_esim_details") getESimDetails: Boolean? = null,
         @Query("show_package_details") getPackageDetails: Boolean? = null,
         @Query("show_balance_remaining") getBalanceRemaining: Boolean? = null,
-        @Query("show_archived_esims") showArchived: Boolean? = null
+        @Query("show_archived_esims") showArchived: Boolean? = null,
+        @Query("show_legacy") showLegacy: Boolean? = null,
+        @Query("is_primary") isPrimary: Boolean? = null
     ): BaseResponse<List<AssignedEsim>>
 
     @GET("api/v2/customer/esims/{iccid}/")
@@ -246,6 +248,7 @@ internal interface ApiService {
         @Field("auto_top_up") autoTopUp: Boolean? = null,
         @Field("archived") isArchived: Boolean? = null,
         @Field("esim_name") name: String? = null,
+        @Field("is_primary") isPrimary: Boolean? = null,
     ): Response<ResponseBody?>
 
     @GET("api/v2/faqs/destinations/{country_name_slug}/")

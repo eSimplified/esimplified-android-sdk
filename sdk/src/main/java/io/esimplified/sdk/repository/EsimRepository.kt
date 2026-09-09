@@ -8,16 +8,22 @@ interface EsimRepository {
 
     // region Reads
     suspend fun getEsims(
+        showLegacy: Boolean = true,
+        isPrimary: Boolean? = null,
         forceRefresh: Boolean = false,
         cacheTTL: Duration = ESIM_LIST_TTL,
     ): List<AssignedEsim>
 
     suspend fun getActiveEsims(
+        showLegacy: Boolean = true,
+        isPrimary: Boolean? = null,
         forceRefresh: Boolean = false,
         cacheTTL: Duration = ESIM_LIST_TTL,
     ): List<AssignedEsim>
 
     suspend fun getArchivedEsims(
+        showLegacy: Boolean = true,
+        isPrimary: Boolean? = null,
         forceRefresh: Boolean = false,
         cacheTTL: Duration = ESIM_LIST_TTL,
     ): List<AssignedEsim>
@@ -31,22 +37,28 @@ interface EsimRepository {
 
     // region Result reads
     suspend fun getEsimsResult(
+        showLegacy: Boolean = true,
+        isPrimary: Boolean? = null,
         forceRefresh: Boolean = false,
         cacheTTL: Duration = ESIM_LIST_TTL,
     ): RepositoryResult<List<AssignedEsim>> =
-        RepositoryResult(getEsims(forceRefresh, cacheTTL))
+        RepositoryResult(getEsims(showLegacy, isPrimary, forceRefresh, cacheTTL))
 
     suspend fun getActiveEsimsResult(
+        showLegacy: Boolean = true,
+        isPrimary: Boolean? = null,
         forceRefresh: Boolean = false,
         cacheTTL: Duration = ESIM_LIST_TTL,
     ): RepositoryResult<List<AssignedEsim>> =
-        RepositoryResult(getActiveEsims(forceRefresh, cacheTTL))
+        RepositoryResult(getActiveEsims(showLegacy, isPrimary, forceRefresh, cacheTTL))
 
     suspend fun getArchivedEsimsResult(
+        showLegacy: Boolean = true,
+        isPrimary: Boolean? = null,
         forceRefresh: Boolean = false,
         cacheTTL: Duration = ESIM_LIST_TTL,
     ): RepositoryResult<List<AssignedEsim>> =
-        RepositoryResult(getArchivedEsims(forceRefresh, cacheTTL))
+        RepositoryResult(getArchivedEsims(showLegacy, isPrimary, forceRefresh, cacheTTL))
 
     suspend fun getEsimByIccidResult(
         iccid: String,
@@ -62,7 +74,11 @@ interface EsimRepository {
         name: String? = null,
         isAutoTopUp: Boolean? = null,
         isArchived: Boolean? = null,
+        isPrimary: Boolean? = null,
     )
+
+    suspend fun updateEsimPrimaryStatus(iccid: String, isPrimary: Boolean) =
+        updateEsim(iccid = iccid, isPrimary = isPrimary)
     // endregion
 
     // region Cache

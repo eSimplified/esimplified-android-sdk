@@ -24,34 +24,76 @@ internal class EsimRepositoryImpl(
     private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
 
     // region eSIMs
-    override suspend fun getEsims(forceRefresh: Boolean, cacheTTL: Duration): List<AssignedEsim> =
-        getActiveEsims(forceRefresh, cacheTTL) + getArchivedEsims(forceRefresh, cacheTTL)
+    override suspend fun getEsims(
+        showLegacy: Boolean,
+        isPrimary: Boolean?,
+        forceRefresh: Boolean,
+        cacheTTL: Duration,
+    ): List<AssignedEsim> =
+        getActiveEsims(showLegacy, isPrimary, forceRefresh, cacheTTL) +
+            getArchivedEsims(showLegacy, isPrimary, forceRefresh, cacheTTL)
 
     override suspend fun getEsimsResult(
+        showLegacy: Boolean,
+        isPrimary: Boolean?,
         forceRefresh: Boolean,
         cacheTTL: Duration,
     ): RepositoryResult<List<AssignedEsim>> = combineResults(
-        getActiveEsimsResult(forceRefresh, cacheTTL),
-        getArchivedEsimsResult(forceRefresh, cacheTTL),
+        getActiveEsimsResult(showLegacy, isPrimary, forceRefresh, cacheTTL),
+        getArchivedEsimsResult(showLegacy, isPrimary, forceRefresh, cacheTTL),
     )
 
-    override suspend fun getActiveEsims(forceRefresh: Boolean, cacheTTL: Duration): List<AssignedEsim> =
-        fetchEsimList(archived = false, forceRefresh = forceRefresh, cacheTTL = cacheTTL).listOrThrow()
+    override suspend fun getActiveEsims(
+        showLegacy: Boolean,
+        isPrimary: Boolean?,
+        forceRefresh: Boolean,
+        cacheTTL: Duration,
+    ): List<AssignedEsim> = fetchEsimList(
+        archived = false,
+        showLegacy = showLegacy,
+        isPrimary = isPrimary,
+        forceRefresh = forceRefresh,
+        cacheTTL = cacheTTL,
+    ).listOrThrow()
 
     override suspend fun getActiveEsimsResult(
+        showLegacy: Boolean,
+        isPrimary: Boolean?,
         forceRefresh: Boolean,
         cacheTTL: Duration,
-    ): RepositoryResult<List<AssignedEsim>> =
-        fetchEsimList(archived = false, forceRefresh = forceRefresh, cacheTTL = cacheTTL)
+    ): RepositoryResult<List<AssignedEsim>> = fetchEsimList(
+        archived = false,
+        showLegacy = showLegacy,
+        isPrimary = isPrimary,
+        forceRefresh = forceRefresh,
+        cacheTTL = cacheTTL,
+    )
 
-    override suspend fun getArchivedEsims(forceRefresh: Boolean, cacheTTL: Duration): List<AssignedEsim> =
-        fetchEsimList(archived = true, forceRefresh = forceRefresh, cacheTTL = cacheTTL).listOrThrow()
+    override suspend fun getArchivedEsims(
+        showLegacy: Boolean,
+        isPrimary: Boolean?,
+        forceRefresh: Boolean,
+        cacheTTL: Duration,
+    ): List<AssignedEsim> = fetchEsimList(
+        archived = true,
+        showLegacy = showLegacy,
+        isPrimary = isPrimary,
+        forceRefresh = forceRefresh,
+        cacheTTL = cacheTTL,
+    ).listOrThrow()
 
     override suspend fun getArchivedEsimsResult(
+        showLegacy: Boolean,
+        isPrimary: Boolean?,
         forceRefresh: Boolean,
         cacheTTL: Duration,
-    ): RepositoryResult<List<AssignedEsim>> =
-        fetchEsimList(archived = true, forceRefresh = forceRefresh, cacheTTL = cacheTTL)
+    ): RepositoryResult<List<AssignedEsim>> = fetchEsimList(
+        archived = true,
+        showLegacy = showLegacy,
+        isPrimary = isPrimary,
+        forceRefresh = forceRefresh,
+        cacheTTL = cacheTTL,
+    )
 
     override suspend fun getEsimByIccid(
         iccid: String,
@@ -81,7 +123,8 @@ internal class EsimRepositoryImpl(
         iccid: String,
         name: String?,
         isAutoTopUp: Boolean?,
-        isArchived: Boolean?
+        isArchived: Boolean?,
+        isPrimary: Boolean?
     ) {
         invalidateEsimCaches(iccid)
         try {
@@ -89,7 +132,8 @@ internal class EsimRepositoryImpl(
                 id = iccid,
                 name = name,
                 isArchived = isArchived,
-                autoTopUp = isAutoTopUp
+                autoTopUp = isAutoTopUp,
+                isPrimary = isPrimary
             )
         } catch (e: HttpException) {
             throw Exception(parseHttpError(e) ?: e.message)
@@ -108,24 +152,32 @@ internal class EsimRepositoryImpl(
         cache.removeWithPrefix(ESIM_LIST_KEY_PREFIX)
     }
 
-    private fun esimListKey(archived: Boolean): String =
-        "$ESIM_LIST_KEY_PREFIX${archived}_legacy${SHOW_LEGACY}_primary$IS_PRIMARY"
+    private fun esimListKey(archived: Boolean, showLegacy: Boolean, isPrimary: Boolean?): String =
+        "$ESIM_LIST_KEY_PREFIX${archived}_legacy${showLegacy}_primary${isPrimary?.toString() ?: UNSET_IS_PRIMARY}"
 
     private fun esimDetailsKey(iccid: String): String = "$ESIM_DETAILS_KEY_PREFIX$iccid"
     // endregion
 
     private suspend fun fetchEsimList(
         archived: Boolean,
+        showLegacy: Boolean,
+        isPrimary: Boolean?,
         forceRefresh: Boolean,
         cacheTTL: Duration,
     ): RepositoryResult<List<AssignedEsim>> =
-        cache.cachedListResult(esimListKey(archived), forceRefresh, cacheTTL) {
+        cache.cachedListResult(
+            esimListKey(archived, showLegacy, isPrimary),
+            forceRefresh,
+            cacheTTL,
+        ) {
             try {
                 apiService.getCustomerEsimList(
                     getESimDetails = true,
                     getPackageDetails = true,
                     getBalanceRemaining = true,
-                    showArchived = archived
+                    showArchived = archived,
+                    showLegacy = showLegacy,
+                    isPrimary = isPrimary
                 ).results
             } catch (e: HttpException) {
                 throw Exception(parseHttpError(e) ?: e.message)
@@ -149,7 +201,6 @@ internal class EsimRepositoryImpl(
     private companion object {
         const val ESIM_LIST_KEY_PREFIX = "esims_"
         const val ESIM_DETAILS_KEY_PREFIX = "esim_details_"
-        const val SHOW_LEGACY = true
-        const val IS_PRIMARY = "any"
+        const val UNSET_IS_PRIMARY = "any"
     }
 }
