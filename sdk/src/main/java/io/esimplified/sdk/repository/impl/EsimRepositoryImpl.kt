@@ -124,9 +124,6 @@ internal class EsimRepositoryImpl(
             try {
                 apiService.getCustomerEsimByICCID(
                     iccid = iccid,
-                    getESimDetails = true,
-                    getPackageDetails = true,
-                    getBalanceRemaining = true,
                     includeBase64QrCode = true.takeIf { includeBase64QrCode }
                 )
             } catch (e: HttpException) {

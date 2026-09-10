@@ -192,13 +192,10 @@ internal interface ApiService {
         @Query("include_base64_qr_code") includeBase64QrCode: Boolean? = null
     ): BaseResponse<List<AssignedEsim>>
 
-    @GET("api/v2/customer/esims/{iccid}/")
+    @GET("api/v2/customer/esims/{iccid}/details/")
     @Headers("Accept: application/json", "Content-Type: application/json")
     suspend fun getCustomerEsimByICCID(
         @Path("iccid") iccid: String,
-        @Query("show_esim_details") getESimDetails: Boolean? = null,
-        @Query("show_package_details") getPackageDetails: Boolean? = null,
-        @Query("show_balance_remaining") getBalanceRemaining: Boolean? = null,
         @Query("include_base64_qr_code") includeBase64QrCode: Boolean? = null,
     ): AssignedEsim
 
