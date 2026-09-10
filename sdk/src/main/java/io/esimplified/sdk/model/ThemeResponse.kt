@@ -24,7 +24,7 @@ data class ThemePage(
 // region Theme image
 @Serializable
 data class ThemeImage(
-    val url: String,
+    val url: String = "",
     val accent: String? = null,
 )
 // endregion

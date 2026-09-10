@@ -7,13 +7,13 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class RatingApiResponse(
     @SerialName("store_name")
-    val storeName: String,
+    val storeName: String = "",
     @SerialName("review_count")
-    val reviewCount: Int,
+    val reviewCount: Int = 0,
     @SerialName("results_count")
-    val resultsCount: Int,
+    val resultsCount: Int = 0,
     @SerialName("verdict")
-    val verdict: String,
+    val verdict: String = "",
     @SerialName("average_rating")
     val rating: Double?,
     @SerialName("reviews")
@@ -71,9 +71,9 @@ data class Stats(
 @Serializable
 data class CompanyStats(
     @SerialName("review_count")
-    val reviewCount: Int,
+    val reviewCount: Int = 0,
     @SerialName("average_rating")
-    val averageRating: String,
+    val averageRating: String = "",
 )
 // endregion
 

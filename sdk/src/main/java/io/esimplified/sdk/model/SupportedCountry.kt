@@ -6,7 +6,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class SupportedCountry(
     @SerialName("country_name")
-    val name: String,
+    val name: String = "",
     @SerialName("country_code")
-    val code: String,
+    val code: String = "",
 )

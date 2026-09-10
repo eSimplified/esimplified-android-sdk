@@ -6,7 +6,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class NotificationSettings(
     @SerialName("type")
-    val type: String,
+    val type: String = "",
     @SerialName("enabled")
-    val enabled: Boolean
+    val enabled: Boolean = false,
 )

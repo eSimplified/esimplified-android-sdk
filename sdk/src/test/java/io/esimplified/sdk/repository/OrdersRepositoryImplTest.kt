@@ -337,6 +337,73 @@ class OrdersRepositoryImplTest {
     }
     // endregion
 
+    // region Undecodable rows
+    @Test
+    fun `a page with one undecodable row surfaces a failure rather than a bare empty page`() = runTest {
+        enqueueJson(
+            """{"count":2,"next":null,"previous":null,"results":[$UNDECODABLE_ORDER_JSON,$ORDER_JSON]}"""
+        )
+
+        val result = repo().getOrdersPageResult(limit = 10, offset = 0)
+
+        assertTrue(result.value.orders.isEmpty())
+        assertTrue(result.didFail)
+        assertFalse(result.isOffline)
+        assertFalse(result.isStale)
+    }
+
+    @Test
+    fun `an unpaged history with one undecodable row surfaces a failure`() = runTest {
+        enqueueJson(
+            """{"count":2,"next":null,"previous":null,"results":[$UNDECODABLE_ORDER_JSON,$ORDER_JSON]}"""
+        )
+
+        val result = repo().getOrderHistoryResult()
+
+        assertTrue(result.value.isEmpty())
+        assertTrue(result.didFail)
+    }
+
+    @Test
+    fun `an unpaged history with one undecodable row throws from the non-result call`() = runTest {
+        enqueueJson(
+            """{"count":2,"next":null,"previous":null,"results":[$UNDECODABLE_ORDER_JSON,$ORDER_JSON]}"""
+        )
+
+        val thrown = runCatching { repo().getOrderHistory() }.exceptionOrNull()
+
+        assertNotNull(thrown)
+    }
+
+    @Test
+    fun `a page of rows with null countries decodes every row`() = runTest {
+        val row = ORDER_JSON.replace(COUNTRY_OBJECT_JSON, "null")
+        val rows = List(3) { row }.joinToString(",")
+        enqueueJson("""{"count":3,"next":null,"previous":null,"results":[$rows]}""")
+
+        val result = repo().getOrdersPageResult(limit = 10, offset = 0)
+
+        assertFalse(result.didFail)
+        assertEquals(3, result.value.orders.size)
+        assertNull(result.value.orders.first().country)
+    }
+
+    @Test
+    fun `an order detail with a null country decodes`() = runTest {
+        enqueueJson(ORDER_DETAIL_JSON.replace("ORDER_STATUS_PLACEHOLDER", "COMPLETE").replace(
+            COUNTRY_OBJECT_JSON,
+            "null",
+        ))
+
+        val result = repo().getOrderDetailsResult("uuid-1")
+
+        assertFalse(result.didFail)
+        assertNotNull(result.value)
+        assertNull(result.value?.country)
+        assertEquals(1001, result.value?.orderNumber)
+    }
+    // endregion
+
     private fun repo() = OrdersRepositoryImpl(apiService, cache)
 
     private fun enqueueOrders(count: Int = 1, next: String? = null) {
@@ -396,6 +463,41 @@ class OrdersRepositoryImplTest {
                     "country_flag_css": "au",
                     "country_name_slug": "australia"
                 }
+            }
+        """
+
+        const val COUNTRY_OBJECT_JSON = """{
+                    "country_name": "Australia",
+                    "country_code": "AU",
+                    "country_flag": "flag.png",
+                    "country_flag_css": "au",
+                    "country_name_slug": "australia"
+                }"""
+
+        const val UNDECODABLE_ORDER_JSON = """
+            {
+                "esim": {
+                    "assigned_date": "2026-01-01",
+                    "iccid": "8911",
+                    "matching_id": "MATCH",
+                    "premium": false,
+                    "sm_dp_address": "sm-dp.example.com"
+                },
+                "order_number": null,
+                "order_uuid": "uuid-2",
+                "order_type": "BUY",
+                "package_id": "pkg-1",
+                "final_price": "9.99",
+                "package_name": "1 GB / 7 Days",
+                "purchase_date": "2026-01-01",
+                "purchase_price": "9.99",
+                "discount_code": "",
+                "discount_amount": "0.00",
+                "purchase_currency": "USD",
+                "purchase_currency_obj": {"symbol": "$", "iso": "USD"},
+                "package_type_id": 42,
+                "payment_status": "paid",
+                "payment_method": "stripe_intent"
             }
         """
 

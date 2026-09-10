@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class CheckStockResponse(
-    @SerialName("stock") val stock: Boolean,
-    @SerialName("package") val packageInfo: PackagePlan,
+    @SerialName("stock") val stock: Boolean = false,
+    @SerialName("package") val packageInfo: PackagePlan? = null,
     @SerialName("promo_code") val promoCode: CheckoutCouponResponse = CheckoutCouponResponse()
 )

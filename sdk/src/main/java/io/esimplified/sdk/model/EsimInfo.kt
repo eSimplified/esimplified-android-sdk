@@ -7,15 +7,15 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class EsimInfo(
     @SerialName("assigned_date")
-    val assignedDate: String,
+    val assignedDate: String = "",
     @SerialName("iccid")
-    val iccid: String,
+    val iccid: String = "",
     @SerialName("matching_id")
-    val matchingId: String,
+    val matchingId: String = "",
     @SerialName("premium")
-    val premium: Boolean,
+    val premium: Boolean = false,
     @SerialName("sm_dp_address")
-    val smDpAddress: String,
+    val smDpAddress: String = "",
     @SerialName("android_sha")
     val androidSha: Boolean = false,
     @SerialName("country")

@@ -20,6 +20,12 @@ class ModelDecodingTest {
         coerceInputValues = true
     }
 
+    private val productionJson = Json {
+        ignoreUnknownKeys = true
+        explicitNulls = false
+        coerceInputValues = true
+    }
+
     // MARK: - Customer / Auth
 
     @Test
@@ -1093,4 +1099,286 @@ class ModelDecodingTest {
         assertEquals(1, decoded.ratings?.four)
         assertEquals(2, decoded.ratings?.five)
     }
+
+    // MARK: - Null tolerance regressions
+
+    @Test
+    fun `OrderHistoryItem decodes an explicit null country`() {
+        val payload = orderHistoryJson(country = "null")
+        val item = productionJson.decodeFromString<OrderHistoryItem>(payload)
+        assertNull(item.country)
+        assertEquals(1001, item.orderNumber)
+        assertEquals("uuid-1", item.orderUUID)
+    }
+
+    @Test
+    fun `OrderHistoryItem decodes an absent country`() {
+        val item = productionJson.decodeFromString<OrderHistoryItem>(orderHistoryJson(country = null))
+        assertNull(item.country)
+        assertEquals(1001, item.orderNumber)
+    }
+
+    @Test
+    fun `an order history page survives one row with a null country`() {
+        val payload = """
+            [${orderHistoryJson(country = "null")},${orderHistoryJson()}]
+        """.trimIndent()
+        val items = productionJson.decodeFromString<List<OrderHistoryItem>>(payload)
+        assertEquals(2, items.size)
+        assertNull(items[0].country)
+        assertEquals("AU", items[1].country?.code)
+    }
+
+    @Test
+    fun `OrderDetail decodes an explicit null country`() {
+        val detail = productionJson.decodeFromString<OrderDetail>(orderDetailJson(country = "null"))
+        assertNull(detail.country)
+        assertEquals(1001, detail.orderNumber)
+        assertEquals("COMPLETE", detail.orderStatus)
+    }
+
+    @Test
+    fun `OrderDetail decodes an absent country`() {
+        val detail = productionJson.decodeFromString<OrderDetail>(orderDetailJson(country = null))
+        assertNull(detail.country)
+        assertEquals(1001, detail.orderNumber)
+    }
+
+    @Test
+    fun `OrderDetail decodes a null payment_method as unknown`() {
+        val payload = orderDetailJson(paymentMethod = "null")
+        val detail = productionJson.decodeFromString<OrderDetail>(payload)
+        assertEquals(PaymentMethod.UNKNOWN, detail.paymentMethod)
+    }
+
+    @Test
+    fun `OrderHistoryItem decodes a null payment_method as unknown`() {
+        val item = productionJson.decodeFromString<OrderHistoryItem>(orderHistoryJson(paymentMethod = "null"))
+        assertEquals(PaymentMethod.UNKNOWN, item.paymentMethod)
+    }
+
+    @Test
+    fun `Country decodes an object whose every string is null`() {
+        val payload = """
+            {
+                "country_name": null,
+                "country_code": null,
+                "country_flag": null,
+                "country_flag_css": null,
+                "country_name_slug": null
+            }
+        """.trimIndent()
+        val country = productionJson.decodeFromString<Country>(payload)
+        assertEquals("", country.name)
+        assertEquals("", country.code)
+        assertEquals("", country.flag)
+        assertEquals("", country.flagCss)
+        assertEquals("", country.slug)
+        assertFalse(country.isGlobal)
+    }
+
+    @Test
+    fun `CurrencyObject decodes a null symbol and iso`() {
+        val currency = productionJson.decodeFromString<CurrencyObject>("""{"symbol":null,"iso":null}""")
+        assertEquals("", currency.symbol)
+        assertEquals("", currency.isoCode)
+    }
+
+    @Test
+    fun `EsimInfo decodes a payload of nulls`() {
+        val payload = """
+            {
+                "assigned_date": null,
+                "iccid": null,
+                "matching_id": null,
+                "premium": null,
+                "sm_dp_address": null
+            }
+        """.trimIndent()
+        val esim = productionJson.decodeFromString<EsimInfo>(payload)
+        assertEquals("", esim.iccid)
+        assertEquals("", esim.matchingId)
+        assertEquals("", esim.smDpAddress)
+        assertEquals("", esim.assignedDate)
+        assertFalse(esim.premium)
+    }
+
+    @Test
+    fun `OrderHistoryItem decodes a null esim`() {
+        val item = productionJson.decodeFromString<OrderHistoryItem>(orderHistoryJson(esim = "null"))
+        assertEquals("", item.esim.iccid)
+        assertEquals(1001, item.orderNumber)
+    }
+
+    // MARK: - Lenient from_price
+
+    @Test
+    fun `Country decodes a numeric from_price`() {
+        val country = productionJson.decodeFromString<Country>("""{"country_name":"AU","from_price":4.99}""")
+        assertEquals(4.99, country.fromPrice!!, 0.0001)
+    }
+
+    @Test
+    fun `Country decodes a quoted from_price`() {
+        val country = productionJson.decodeFromString<Country>("""{"country_name":"AU","from_price":"4.99"}""")
+        assertEquals(4.99, country.fromPrice!!, 0.0001)
+    }
+
+    @Test
+    fun `Country decodes a null from_price`() {
+        val country = productionJson.decodeFromString<Country>("""{"country_name":"AU","from_price":null}""")
+        assertNull(country.fromPrice)
+    }
+
+    @Test
+    fun `Country decodes an unparseable from_price as null`() {
+        val country = productionJson.decodeFromString<Country>("""{"country_name":"AU","from_price":"N/A"}""")
+        assertNull(country.fromPrice)
+    }
+
+    @Test
+    fun `Country decodes an absent from_price`() {
+        val country = productionJson.decodeFromString<Country>("""{"country_name":"AU"}""")
+        assertNull(country.fromPrice)
+    }
+
+    // MARK: - Loyalty points currency
+
+    @Test
+    fun `LoyaltyPointsDetail decodes an explicit null currency`() {
+        val payload = """{"amount":"15.00","currency":null}"""
+        val detail = productionJson.decodeFromString<LoyaltyPointsDetail>(payload)
+        assertEquals("15.00", detail.resolvedAmount)
+        assertEquals("", detail.resolvedCurrencyIso)
+    }
+
+    @Test
+    fun `LoyaltyPointsDetail decodes an absent currency`() {
+        val detail = productionJson.decodeFromString<LoyaltyPointsDetail>("""{"amount":"15.00"}""")
+        assertEquals("15.00", detail.resolvedAmount)
+        assertEquals("", detail.resolvedCurrencyIso)
+    }
+
+    @Test
+    fun `KredsLoyaltyBalanceResponse decodes a null detail`() {
+        val payload = """{"total_loyalty_points":null,"total_loyalty_points_detail":null}"""
+        val balance = productionJson.decodeFromString<KredsLoyaltyBalanceResponse>(payload)
+        assertEquals(0, balance.totalLoyaltyPoints)
+        assertEquals("0.00", balance.totalLoyaltyPointsDetail.resolvedAmount)
+    }
+
+    // MARK: - Tolerant package country
+
+    @Test
+    fun `PackagePlan decodes a bare string country like iOS`() {
+        val plan = productionJson.decodeFromString<PackagePlan>(packagePlanJson(country = "\"Japan\""))
+        assertEquals("Japan", plan.country.name)
+        assertEquals("", plan.country.code)
+    }
+
+    @Test
+    fun `PackagePlan decodes a null country`() {
+        val plan = productionJson.decodeFromString<PackagePlan>(packagePlanJson(country = "null"))
+        assertEquals("", plan.country.name)
+    }
+
+    @Test
+    fun `PackagePlan decodes an object country`() {
+        val plan = productionJson.decodeFromString<PackagePlan>(packagePlanJson())
+        assertEquals("Australia", plan.country.name)
+        assertEquals("AU", plan.country.code)
+    }
+
+    // MARK: - Null tolerance fixtures
+
+    private fun packagePlanJson(country: String = countryObjectJson): String = """
+        {
+            "name": "1 GB / 7 Days",
+            "price": 9.99,
+            "data_GB": 1.0,
+            "country": $country,
+            "currency": "USD",
+            "currency_obj": {"symbol": "$", "iso": "USD"},
+            "plan_type": "data",
+            "kyc_display": "none",
+            "package_slug": "au-1gb-7d",
+            "validity_days": 7,
+            "package_type_id": 42,
+            "best_connectivity": "Telstra",
+            "activation_policy": "first_use",
+            "name_additional_text": ""
+        }
+    """.trimIndent()
+
+    private fun orderHistoryJson(
+        country: String? = countryObjectJson,
+        paymentMethod: String = "\"stripe_intent\"",
+        esim: String = esimInfoJson,
+    ): String = """
+        {
+            "esim": $esim,
+            "order_number": 1001,
+            "order_uuid": "uuid-1",
+            "order_type": "BUY",
+            "package_id": "pkg-1",
+            "final_price": "9.99",
+            "package_name": "1 GB / 7 Days",
+            "purchase_date": "2026-01-01",
+            "purchase_price": "9.99",
+            "discount_code": "",
+            "discount_amount": "0.00",
+            "purchase_currency": "USD",
+            "purchase_currency_obj": {"symbol": "$", "iso": "USD"},
+            "package_type_id": 42,
+            "payment_status": "paid",
+            "payment_method": $paymentMethod
+            ${if (country == null) "" else ", \"country\": $country"}
+        }
+    """.trimIndent()
+
+    private fun orderDetailJson(
+        country: String? = countryObjectJson,
+        paymentMethod: String = "\"stripe_intent\"",
+    ): String = """
+        {
+            "customer_id": "u-1",
+            "discount_amount": 0.0,
+            "discount_code": "",
+            "final_price": 9.99,
+            "order_date": "2026-01-01",
+            "order_number": 1001,
+            "order_status": "COMPLETE",
+            "order_type": "BUY",
+            "package_data_size": 1.0,
+            "package_type_id": 42,
+            "package_name": "1 GB / 7 Days",
+            "package_validity": 7,
+            "purchase_currency": "USD",
+            "purchase_currency_obj": {"symbol": "$", "iso": "USD"},
+            "purchase_price": 9.99,
+            "payment_method": $paymentMethod
+            ${if (country == null) "" else ", \"country\": $country"}
+        }
+    """.trimIndent()
 }
+
+private val countryObjectJson = """
+    {
+        "country_name": "Australia",
+        "country_code": "AU",
+        "country_flag": "flag.png",
+        "country_flag_css": "au",
+        "country_name_slug": "australia"
+    }
+""".trimIndent()
+
+private val esimInfoJson = """
+    {
+        "assigned_date": "2026-01-01",
+        "iccid": "8910",
+        "matching_id": "MATCH",
+        "premium": false,
+        "sm_dp_address": "sm-dp.example.com"
+    }
+""".trimIndent()
+

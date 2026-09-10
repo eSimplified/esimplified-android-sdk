@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class PackageDetail(
-    val status: String,
+    val status: String = "",
     @SerialName("package_id")
     val packageID: String? = null,
     @SerialName("package_type_id")
@@ -23,7 +23,7 @@ data class PackageDetail(
     @SerialName("date_created_epoch")
     val dateCreatedEpoch: Long,
     @SerialName("package_country_name")
-    val packageCountryName: String,
+    val packageCountryName: String = "",
     @SerialName("voice_usage_remaining_seconds")
     val voiceUsageRemainingSeconds: Long = 0,
     @SerialName("data_usage_remaining_gigabytes")

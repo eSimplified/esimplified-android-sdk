@@ -13,7 +13,7 @@ data class EsimRequest(
 @Serializable
 data class AssignedEsim(
     @SerialName("iccid")
-    val iccid: String,
+    val iccid: String = "",
     @SerialName("esim_name")
     val name: String?,
     @SerialName("country")
@@ -21,12 +21,12 @@ data class AssignedEsim(
     @SerialName("order_uuid")
     val orderUUID: String? = null,
     @SerialName("profile") val profile: EsimProfile? = null,
-    @SerialName("assigned_date") val assignedDate: String,
+    @SerialName("assigned_date") val assignedDate: String = "",
     @SerialName("package_details") val packages: List<PackageDetail> = listOf(),
     @SerialName("data_usage_remaining_bytes") val dataUsageRemainingBytes: Double = 0.0,
     @SerialName("data_usage_remaining_gigabytes") val dataUsageRemainingGigabytes: Double = 0.0,
-    @SerialName("archived") val isArchived: Boolean,
-    @SerialName("auto_top_up") val isAutoTopUp: Boolean,
+    @SerialName("archived") val isArchived: Boolean = false,
+    @SerialName("auto_top_up") val isAutoTopUp: Boolean = false,
     @SerialName("android_sha") val androidSha: Boolean = false,
     @SerialName("order_number") val orderNumber: String? = null,
     @SerialName("date_activated_epoch") val dateActivatedEpoch: Long? = null,
