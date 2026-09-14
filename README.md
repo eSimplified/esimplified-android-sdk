@@ -157,10 +157,34 @@ SdkConfig(
     customHeadersProvider: (() -> Map<String, String>)?, // optional extra headers per request
     enableCaching: Boolean = true,                       // in-memory response cache (see Caching)
     defaultCacheTtlSeconds: Long = 3600,                 // fallback TTL when a call doesn't pass one
+    logger: SdkLogger? = null,                           // receive the SDK's own log lines (see Logging)
 )
 ```
 
 Setting `enableCaching = false` gives every cache entry a zero TTL, so every read goes to the network. Per-call `cacheTTL` arguments still apply when caching is on.
+
+## Logging
+
+The SDK has no logging dependency. It writes its own diagnostics to `android.util.Log` under the tag `EsimplifiedSdk`, and **only** when your app is debuggable or you set `enableLogging = true`. A release build of a release app logs nothing.
+
+Log lines carry status codes, error classes and redacted request paths. They never carry an email address, a password, an access or refresh token, an ICCID, a customer id, an order UUID, a voucher code, or a raw request or response body. Path segments that look like an identifier are replaced with `…`, so a request reads `/api/v2/customer/esims/…/details/`.
+
+To route the SDK's lines into your own logging, pass a `logger`. A supplied logger receives every line regardless of build type, so it is your choice where they end up:
+
+```kotlin
+SdkConfig(
+    // …
+    logger = { level, message, throwable ->
+        when (level) {
+            SdkLogLevel.ERROR -> Timber.e(throwable, message)
+            SdkLogLevel.WARNING -> Timber.w(throwable, message)
+            SdkLogLevel.DEBUG -> Timber.d(throwable, message)
+        }
+    },
+)
+```
+
+`enableLogging = true` additionally turns on the SDK's OkHttp request/response logger, which redacts auth headers and sensitive body fields but prints full URLs and bodies otherwise. Keep it to debug builds.
 
 ## SDK Structure
 
@@ -169,6 +193,7 @@ sdk/src/main/java/io/esimplified/sdk/
 |-- EsimplifiedSdk.kt                    # SDK entry point (initialize, koinModule)
 |-- SdkConfig.kt                          # Configuration data class
 |-- SdkEnvironment.kt                     # STAGING / TESTING / PRODUCTION enum
+|-- SdkLogger.kt                          # Logging seam: SdkLogger, SdkLogLevel, internal SdkLog
 |-- auth/
 |   |-- Auth.kt                           # Sealed interface: Unauthenticated | Authenticated
 |   |-- SessionManager.kt                 # Session state interface
@@ -846,6 +871,17 @@ Existing calls that pass `showLegacy = true` to an archived read still compile a
 
 The archived list's cache key changed with it: `esims_true_legacyunset_…` when the flag is omitted, `esims_true_legacytrue_…` when it is passed. Only in-memory keys, nothing persisted.
 
+### 10. Timber is gone, and the SDK no longer logs personal data
+
+The SDK dropped its Timber dependency. If your app was relying on the SDK contributing to your Timber tree, it no longer does.
+
+Two things changed for you:
+
+- **Your dependency graph loses `com.jakewharton.timber:timber`** unless you depend on it yourself. If you use Timber, keep declaring it; the SDK was never the reason it resolved for you, but a transitive `implementation` dependency did carry it onto your runtime classpath.
+- **SDK log lines no longer emit by accident.** 1.x called Timber unconditionally, so any app that planted a tree in production — forwarding to Crashlytics, say — received SDK lines it never asked for, including `Login attempt for: {email}` and `Login successful for: {email}`. 2.0 writes to `android.util.Log` only when your app is debuggable or `enableLogging = true`, and no line carries an email, token, ICCID, customer id, order UUID, voucher code or raw body.
+
+To receive SDK lines deliberately, pass `logger` to `SdkConfig` — see [Logging](#logging).
+
 ### Checklist
 
 - [ ] Build, and fix every money-field type error with the `…Value` accessor or the `String` verbatim
@@ -857,6 +893,7 @@ The archived list's cache key changed with it: `esims_true_legacyunset_…` when
 - [ ] Delete any construction of the seven removed request types
 - [ ] Drop the `EsimplifiedSdk.clearAllCaches()` call from your logout path — `logout()` does it
 - [ ] Widen any `EsimRepository` implementation of `getArchivedEsims` / `getArchivedEsimsResult` to `showLegacy: Boolean?`
+- [ ] Declare Timber yourself if you used it and relied on the SDK pulling it in, and pass `SdkConfig.logger` if you want SDK lines
 
 ## Support
 
@@ -897,7 +934,6 @@ The SDK ships consumer ProGuard rules (`consumer-rules.pro`) that are automatica
 | Retrofit | 2.11.0 | HTTP client |
 | OkHttp | 4.12.0 | HTTP transport + interceptors |
 | Koin | 4.1.1 | Dependency injection |
-| Timber | 5.0.1 | Logging |
 | AndroidX Security Crypto | 1.1.0-alpha06 | EncryptedSharedPreferences |
 | Android Gradle Plugin | 8.13.2 | Build tooling |
 

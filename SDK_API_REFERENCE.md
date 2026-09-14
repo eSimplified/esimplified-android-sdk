@@ -37,7 +37,8 @@ SdkConfig(
     enableLogging: Boolean = false,
     customHeadersProvider: (() -> Map<String, String>)? = null,
     enableCaching: Boolean = true,
-    defaultCacheTtlSeconds: Long = 3600
+    defaultCacheTtlSeconds: Long = 3600,
+    logger: SdkLogger? = null
 )
 ```
 
@@ -62,6 +63,10 @@ startKoin {
 ### EsimplifiedSdk.clearAllCaches()
 
 Drops every cached read. `AuthRepository.logout()` already does this, so call it directly only when you want a clean slate without ending the session.
+
+### SdkLogger
+
+`SdkConfig(logger = …)` takes a `fun interface SdkLogger { fun log(level: SdkLogLevel, message: String, throwable: Throwable?) }`, with `SdkLogLevel` of `DEBUG`, `WARNING` or `ERROR`. Supply one to route the SDK's own diagnostics into your logging; leave it null and the SDK writes to `android.util.Log` under the tag `EsimplifiedSdk` only when the app is debuggable or `enableLogging = true`. The SDK has no logging dependency, and no line carries an email, token, ICCID, customer id, order UUID, voucher code or raw body.
 
 ### EsimplifiedSdk.sessionManager
 
