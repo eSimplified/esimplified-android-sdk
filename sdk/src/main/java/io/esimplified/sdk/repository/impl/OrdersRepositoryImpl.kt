@@ -17,7 +17,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.delay
 import retrofit2.HttpException
-import timber.log.Timber
+import io.esimplified.sdk.SdkLog
 
 internal class OrdersRepositoryImpl(
     private val apiService: ApiService,
@@ -136,7 +136,7 @@ internal class OrdersRepositoryImpl(
             }
             cache.remove(key)
             if (attempt >= PENDING_ORDER_ATTEMPTS) {
-                Timber.w("Order %s still pending after %d attempts", orderUuid, attempt)
+                SdkLog.w("An order is still pending after $attempt attempts")
                 return RepositoryResult(order)
             }
             attempt++
@@ -155,7 +155,7 @@ internal class OrdersRepositoryImpl(
         runCatching {
             apiService.getOrderStatus(orderUuid)
         }.onFailure {
-            Timber.e(it)
+            SdkLog.e("Order conversion tracking failed", it)
         }
     }
     // endregion

@@ -22,6 +22,7 @@ data class SdkConfig internal constructor(
     val customHeadersProvider: (() -> Map<String, String>)?,
     val enableCaching: Boolean = true,
     val defaultCacheTtlSeconds: Long = 3600,
+    val logger: SdkLogger? = null,
 ) {
     constructor(
         environment: SdkEnvironment,
@@ -34,6 +35,7 @@ data class SdkConfig internal constructor(
         customHeadersProvider: (() -> Map<String, String>)? = null,
         enableCaching: Boolean = true,
         defaultCacheTtlSeconds: Long = 3600,
+        logger: SdkLogger? = null,
     ) : this(
         environment,
         clientName,
@@ -46,6 +48,7 @@ data class SdkConfig internal constructor(
         customHeadersProvider,
         enableCaching,
         defaultCacheTtlSeconds,
+        logger,
     )
 
     internal val baseUrl: String get() = baseUrlOverride

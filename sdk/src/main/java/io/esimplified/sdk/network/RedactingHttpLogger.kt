@@ -11,7 +11,7 @@ import kotlinx.serialization.json.buildJsonObject
 import okhttp3.Interceptor
 import okhttp3.Response
 import okio.Buffer
-import timber.log.Timber
+import io.esimplified.sdk.SdkLog
 
 internal class RedactingHttpLogger : Interceptor {
 
@@ -19,30 +19,30 @@ internal class RedactingHttpLogger : Interceptor {
         val request = chain.request()
         val startNanos = System.nanoTime()
 
-        Timber.tag(TAG).d("--> ${request.method} ${request.url}")
+        SdkLog.d("$TAG --> ${request.method} ${request.url}")
         request.headers.forEach { (name, value) ->
-            Timber.tag(TAG).d("$name: ${redactHeaderValue(name, value)}")
+            SdkLog.d("$TAG $name: ${redactHeaderValue(name, value)}")
         }
         request.body?.let { body ->
             val buffer = Buffer()
             body.writeTo(buffer)
             val raw = buffer.readUtf8()
             val contentType = body.contentType()?.toString().orEmpty()
-            Timber.tag(TAG).d(redactBody(raw, contentType))
+            SdkLog.d("$TAG ${redactBody(raw, contentType)}")
         }
 
         val response: Response
         try {
             response = chain.proceed(request)
         } catch (exception: Exception) {
-            Timber.tag(TAG).e(exception, "<-- HTTP FAILED")
+            SdkLog.e("$TAG <-- HTTP FAILED", exception)
             throw exception
         }
 
         val durationMs = (System.nanoTime() - startNanos) / 1_000_000
-        Timber.tag(TAG).d("<-- ${response.code} ${response.message} ${request.url} (${durationMs}ms)")
+        SdkLog.d("$TAG <-- ${response.code} ${response.message} ${request.url} (${durationMs}ms)")
         response.headers.forEach { (name, value) ->
-            Timber.tag(TAG).d("$name: ${redactHeaderValue(name, value)}")
+            SdkLog.d("$TAG $name: ${redactHeaderValue(name, value)}")
         }
 
         val responseBody = response.body
@@ -51,7 +51,7 @@ internal class RedactingHttpLogger : Interceptor {
             source.request(Long.MAX_VALUE)
             val raw = source.buffer.clone().readUtf8()
             val contentType = responseBody.contentType()?.toString().orEmpty()
-            Timber.tag(TAG).d(redactBody(raw, contentType))
+            SdkLog.d("$TAG ${redactBody(raw, contentType)}")
         }
 
         return response

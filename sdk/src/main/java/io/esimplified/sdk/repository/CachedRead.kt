@@ -5,8 +5,10 @@ import io.esimplified.sdk.network.SdkError
 import java.net.ConnectException
 import java.net.UnknownHostException
 import kotlinx.coroutines.CancellationException
-import timber.log.Timber
+import io.esimplified.sdk.SdkLog
 import kotlin.time.Duration
+
+internal fun String.cacheKeyFamily(): String = substringBefore('_') + "_"
 
 // region Cached reads
 internal suspend inline fun <reified T : Any> SdkCache.cachedResult(
@@ -27,7 +29,7 @@ internal suspend inline fun <reified T : Any> SdkCache.cachedResult(
         throw cancellation
     } catch (error: Throwable) {
         val expired = getExpired<T>(key)
-        Timber.w(error, "Cached read failed for key %s, serving cached=%b", key, expired != null)
+        SdkLog.w("Cached read failed for ${key.cacheKeyFamily()}, serving cached=${expired != null}", error)
         RepositoryResult(expired, isStale = expired != null, failure = error.asSdkError())
     }
 }

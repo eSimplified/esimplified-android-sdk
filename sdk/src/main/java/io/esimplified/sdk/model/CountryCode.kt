@@ -3,7 +3,7 @@ package io.esimplified.sdk.model
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import timber.log.Timber
+import io.esimplified.sdk.SdkLog
 
 
 @Serializable
@@ -22,7 +22,7 @@ data class CountryCode(
                 val json = Json { ignoreUnknownKeys = true }
                 return json.decodeFromString<List<CountryCode>>(data)
             }.onFailure {
-                Timber.w(it, "Country code list failed to decode, %d chars", data.length)
+                SdkLog.w("Country code list failed to decode, ${data.length} chars", it)
             }.getOrDefault(emptyList())
         }
     }

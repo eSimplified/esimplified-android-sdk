@@ -37,7 +37,6 @@ dependencies {
     implementation(libs.retrofit.serialization.converter)
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging.interceptor)
-    implementation(libs.timber)
     implementation(libs.koin.core)
     implementation(libs.security.crypto)
 

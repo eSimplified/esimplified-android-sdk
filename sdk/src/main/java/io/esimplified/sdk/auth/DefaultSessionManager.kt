@@ -5,7 +5,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import timber.log.Timber
+import io.esimplified.sdk.SdkLog
 import java.time.LocalDateTime
 
 internal class DefaultSessionManager(
@@ -63,7 +63,7 @@ internal class DefaultSessionManager(
                 )
             }
         } catch (e: Exception) {
-            Timber.d(e, "Failed to restore session from storage")
+            SdkLog.d("Failed to restore session from storage", e)
             Auth.Unauthenticated
         }
     }

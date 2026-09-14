@@ -2,6 +2,9 @@ package io.esimplified.sdk.repository
 
 import io.esimplified.sdk.auth.Auth
 import io.esimplified.sdk.auth.DefaultSessionManager
+import io.esimplified.sdk.SdkLog
+import io.esimplified.sdk.SdkLogLevel
+import io.esimplified.sdk.SdkLogger
 import io.esimplified.sdk.fake.FakeSecureStorage
 import io.esimplified.sdk.model.Customer
 import io.esimplified.sdk.network.ApiService
@@ -61,6 +64,7 @@ class AuthRepositoryImplTest {
     @After
     fun teardown() {
         mockWebServer.shutdown()
+        SdkLog.resetForTesting()
     }
 
     private fun seedAuthenticatedSession(refreshToken: String, referralCode: String? = null) {
@@ -465,6 +469,55 @@ class AuthRepositoryImplTest {
                         """"purchase_price":"10.00","discount_amount":"0.00","package_type_id":1}]}"""
                 )
         )
+    }
+    // endregion
+
+
+    // region Logging
+    @Test
+    fun `the login path never logs the customer's email address`() = runTest {
+        val lines = mutableListOf<String>()
+        SdkLog.delegate = SdkLogger { _: SdkLogLevel, message: String, _: Throwable? -> lines += message }
+
+        mockWebServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """
+                    {
+                        "access_token": "an-access-token",
+                        "refresh_token": "a-refresh-token",
+                        "expires_in": 3600,
+                        "user": { "customer_id": "user-123", "email": "private@example.com" }
+                    }
+                    """.trimIndent()
+                )
+        )
+
+        authRepository.login("private@example.com", "hunter2")
+
+        assertTrue("Expected the login path to log something", lines.isNotEmpty())
+        assertFalse(lines.any { it.contains("private@example.com") })
+        assertFalse(lines.any { it.contains("hunter2") })
+        assertFalse(lines.any { it.contains("an-access-token") })
+        assertFalse(lines.any { it.contains("a-refresh-token") })
+    }
+
+    @Test
+    fun `a rejected login logs the status code but not the response body`() = runTest {
+        val lines = mutableListOf<String>()
+        SdkLog.delegate = SdkLogger { _: SdkLogLevel, message: String, _: Throwable? -> lines += message }
+
+        mockWebServer.enqueue(
+            MockResponse()
+                .setResponseCode(401)
+                .setBody("""{"detail":"No active account found with private@example.com"}""")
+        )
+
+        runCatching { authRepository.login("private@example.com", "hunter2") }
+
+        assertTrue(lines.any { it.contains("401") })
+        assertFalse(lines.any { it.contains("private@example.com") })
     }
     // endregion
 

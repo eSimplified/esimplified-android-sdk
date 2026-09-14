@@ -22,7 +22,7 @@ import io.esimplified.sdk.auth.SessionManager
 import io.esimplified.sdk.auth.SecureStorageProvider
 import kotlinx.serialization.json.Json
 import retrofit2.HttpException
-import timber.log.Timber
+import io.esimplified.sdk.SdkLog
 import java.time.LocalDateTime
 
 internal class AuthRepositoryImpl(
@@ -42,18 +42,18 @@ internal class AuthRepositoryImpl(
 
     // region Authentication
     override suspend fun login(email: String, password: String): Customer {
-        Timber.d("Login attempt for: $email")
+        SdkLog.d("Login attempt")
         val response = apiService.getAuthToken(
             grantType = "password",
             username = email,
             password = password
         )
 
-        Timber.d("Login response code: ${response.code()}")
+        SdkLog.d("Login response code: ${response.code()}")
 
         if (!response.isSuccessful) {
             val errorBody = response.errorBody()?.string().orEmpty()
-            Timber.e("Login failed [${response.code()}]: $errorBody")
+            SdkLog.e("Login failed [${response.code()}]")
             val message = try {
                 val errorResponse = json.decodeFromString<GetTokenResponse>(errorBody)
                 errorResponse.description ?: errorResponse.detail ?: errorResponse.error
@@ -80,22 +80,22 @@ internal class AuthRepositoryImpl(
         )
         sessionManager.save(auth)
 
-        Timber.d("Login successful for: ${user.email}")
+        SdkLog.d("Login successful")
         return user
     }
 
     override suspend fun loginWithRefreshToken(refreshToken: String): Customer {
-        Timber.d("Refreshing token")
+        SdkLog.d("Refreshing token")
         val response = apiService.getAuthToken(
             grantType = "refresh_token",
             refreshToken = refreshToken
         )
 
-        Timber.d("Refresh response code: ${response.code()}")
+        SdkLog.d("Refresh response code: ${response.code()}")
 
         if (!response.isSuccessful) {
             val errorBody = response.errorBody()?.string().orEmpty()
-            Timber.e("Token refresh failed [${response.code()}]: $errorBody")
+            SdkLog.e("Token refresh failed [${response.code()}]")
             sessionManager.onAuthenticationFailed()
             throw InvalidRefreshTokenException()
         }
@@ -127,7 +127,7 @@ internal class AuthRepositoryImpl(
         )
         sessionManager.save(auth)
 
-        Timber.d("Token refresh successful")
+        SdkLog.d("Token refresh successful")
         return user
     }
 
@@ -325,7 +325,7 @@ internal class AuthRepositoryImpl(
         return try {
             fetchProfile()
         } catch (e: Exception) {
-            Timber.e(e, "Failed to re-fetch the customer profile after a partial update")
+            SdkLog.e("Failed to re-fetch the customer profile after a partial update", e)
             null
         }
     }
@@ -345,7 +345,7 @@ internal class AuthRepositoryImpl(
                 mokafaaEnrollment = preferences.mokafaaEnrollment ?: user.mokafaaEnrollment,
             )
         } catch (e: Exception) {
-            Timber.e(e, "Failed to fetch customer preferences for loyalty provider")
+            SdkLog.e("Failed to fetch customer preferences for loyalty provider", e)
             user
         }
     }
@@ -515,7 +515,7 @@ internal class AuthRepositoryImpl(
     override suspend fun logout() {
         sessionManager.save(Auth.Unauthenticated)
         cache.clear()
-        Timber.d("Logged out and cleared all cached responses")
+        SdkLog.d("Logged out and cleared all cached responses")
     }
     // endregion
 

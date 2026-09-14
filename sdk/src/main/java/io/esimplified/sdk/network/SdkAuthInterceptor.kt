@@ -9,7 +9,8 @@ import okhttp3.FormBody
 import okhttp3.Interceptor
 import okhttp3.Request
 import okhttp3.Response
-import timber.log.Timber
+import io.esimplified.sdk.SdkLog
+import io.esimplified.sdk.redactedPath
 import java.io.IOException
 import java.time.LocalDateTime
 
@@ -28,7 +29,7 @@ internal class SdkAuthInterceptor(
     }
 
     init {
-        Timber.d("SdkAuthInterceptor initialized — clientId: ${config.clientId.take(8)}..., authUrl: ${config.baseUrl}")
+        SdkLog.d("SdkAuthInterceptor initialized — authUrl: ${config.baseUrl}")
     }
 
     override fun intercept(chain: Interceptor.Chain): Response {
@@ -37,11 +38,14 @@ internal class SdkAuthInterceptor(
 
         var authState = sessionManager.getAuthState()
 
-        Timber.d("Request: ${originalRequest.method} ${originalRequest.url} | authState: ${authState::class.simpleName}")
+        SdkLog.d(
+            "Request: ${originalRequest.method} ${originalRequest.url.encodedPath.redactedPath()}" +
+                " | authState: ${authState::class.simpleName}"
+        )
 
         // Proactive token refresh — if token expires within 5 minutes, refresh before sending
         if (authState is Auth.Authenticated && authState.isExpired && !isAuthTokenEndpoint) {
-            Timber.d("Token near expiry — proactive refresh")
+            SdkLog.d("Token near expiry — proactive refresh")
             synchronized(refreshLock) {
                 authState = sessionManager.getAuthState()
                 if (authState is Auth.Authenticated && (authState as Auth.Authenticated).isExpired) {
@@ -63,15 +67,15 @@ internal class SdkAuthInterceptor(
         when {
             isAuthTokenEndpoint -> {
                 requestBuilder.header("authorization", "Basic $credentials")
-                Timber.d("Auth token endpoint -> keeping Basic auth")
+                SdkLog.d("Auth token endpoint -> keeping Basic auth")
             }
             authState is Auth.Authenticated && (authState as Auth.Authenticated).accessToken.isNotEmpty() -> {
                 requestBuilder.header("authorization", "Bearer ${(authState as Auth.Authenticated).accessToken}")
-                Timber.d("Authenticated request -> using Bearer token")
+                SdkLog.d("Authenticated request -> using Bearer token")
             }
             else -> {
                 requestBuilder.header("authorization", "Basic $credentials")
-                Timber.d("Unauthenticated request -> using Basic auth")
+                SdkLog.d("Unauthenticated request -> using Basic auth")
             }
         }
 
@@ -95,10 +99,10 @@ internal class SdkAuthInterceptor(
         }
 
         val response = chain.proceed(requestBuilder.build())
-        Timber.d("Response: ${response.code} for ${originalRequest.url}")
+        SdkLog.d("Response: ${response.code} for ${originalRequest.url.encodedPath.redactedPath()}")
 
         if ((response.code == 401 || response.code == 403) && authState is Auth.Authenticated && !isAuthTokenEndpoint) {
-            Timber.w("Got ${response.code} -> attempting reactive token refresh")
+            SdkLog.w("Got ${response.code} -> attempting reactive token refresh")
             response.close()
 
             val originalAccessToken = (authState as Auth.Authenticated).accessToken
@@ -106,7 +110,7 @@ internal class SdkAuthInterceptor(
             synchronized(refreshLock) {
                 val currentAuthState = sessionManager.getAuthState()
                 if (currentAuthState is Auth.Authenticated && currentAuthState.accessToken != originalAccessToken && currentAuthState.accessToken.isNotEmpty()) {
-                    Timber.d("Token already refreshed by another thread")
+                    SdkLog.d("Token already refreshed by another thread")
                     return chain.proceed(rebuildRequest(originalRequest, currentAuthState))
                 }
 
@@ -134,19 +138,19 @@ internal class SdkAuthInterceptor(
 
     private fun attemptTokenRefresh(chain: Interceptor.Chain, authState: Auth.Authenticated): RefreshOutcome {
         if (authState.refreshToken.isEmpty()) {
-            Timber.e("No refresh token to refresh with — ending the session")
+            SdkLog.e("No refresh token to refresh with — ending the session")
             return RefreshOutcome.AuthRejected
         }
 
         val refreshResponse = try {
             chain.proceed(createRefreshRequest(authState))
         } catch (networkError: IOException) {
-            Timber.e("Refresh network error: ${networkError.message}")
+            SdkLog.e("Refresh network error", networkError)
             return RefreshOutcome.Retryable(networkError)
         }
 
         return try {
-            Timber.d("Refresh response: ${refreshResponse.code}")
+            SdkLog.d("Refresh response: ${refreshResponse.code}")
             if (refreshResponse.isSuccessful) {
                 val tokens = parseTokenResponse(refreshResponse)
                 val base = (sessionManager.getAuthState() as? Auth.Authenticated)
@@ -161,16 +165,16 @@ internal class SdkAuthInterceptor(
                 )
                 RefreshOutcome.Success
             } else if (refreshResponse.code in AUTH_REJECTING_CODES) {
-                Timber.e("Refresh rejected with ${refreshResponse.code} — ending the session")
+                SdkLog.e("Refresh rejected with ${refreshResponse.code} — ending the session")
                 RefreshOutcome.AuthRejected
             } else {
                 val message = ApiErrorMessage.parseOrNull(readBody(refreshResponse))
                     ?: refreshResponse.message.ifEmpty { ApiErrorMessage.FALLBACK }
-                Timber.e("Refresh failed with ${refreshResponse.code} — keeping the session")
+                SdkLog.e("Refresh failed with ${refreshResponse.code} — keeping the session")
                 RefreshOutcome.Retryable(SdkError.NetworkError(refreshResponse.code, message))
             }
         } catch (parseError: IOException) {
-            Timber.e("Refresh response parse error: ${parseError.message}")
+            SdkLog.e("Refresh response parse error", parseError)
             RefreshOutcome.Retryable(parseError)
         } finally {
             refreshResponse.close()
