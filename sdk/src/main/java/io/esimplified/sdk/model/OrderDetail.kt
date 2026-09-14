@@ -71,9 +71,13 @@ data class OrderDetail(
     @SerialName("country_code") val countryCode: String? = null,
     @SerialName("country_name") val countryName: String? = null,
     @SerialName("customer_id") val customerId: String,
-    @SerialName("discount_amount") val discountAmount: Double,
+    @SerialName("discount_amount")
+    @Serializable(with = LenientStringSerializer::class)
+    val discountAmount: String,
     @SerialName("discount_code") val discountCode: String = "",
-    @SerialName("final_price") val finalPrice: Double,
+    @SerialName("final_price")
+    @Serializable(with = LenientStringSerializer::class)
+    val finalPrice: String,
     @SerialName("order_date") val orderDate: String = "",
     @SerialName("order_number") val orderNumber: Int,
     @SerialName("order_status") val orderStatus: String = "",
@@ -85,7 +89,9 @@ data class OrderDetail(
     @SerialName("password_reset_encoded") val passwordResetEncoded: String? = null,
     @SerialName("purchase_currency") val currency: String = "",
     @SerialName("purchase_currency_obj") val currencyObject: CurrencyObject = CurrencyObject(),
-    @SerialName("purchase_price") val price: Double,
+    @SerialName("purchase_price")
+    @Serializable(with = LenientStringSerializer::class)
+    val price: String,
     @SerialName("points_earned") val loyaltyPointsEarned: LoyaltyPointsDetail? = null,
     @SerialName("points_spent") val loyaltyPointsSpent: LoyaltyPointsDetail? = null,
     @SerialName("sm_dp_address") val smDpAddress: String? = null,
@@ -93,4 +99,15 @@ data class OrderDetail(
     @SerialName("transaction_id") val transactionId: String? = null,
     @SerialName("conversion_tracked") val tracked: Boolean = false,
     @SerialName("package") val packageInfo: PackagePlan? = null
-)
+) {
+    // region Money
+    val discountAmountValue: Double
+        get() = discountAmount.toDoubleOrNull() ?: 0.0
+
+    val finalPriceValue: Double
+        get() = finalPrice.toDoubleOrNull() ?: 0.0
+
+    val priceValue: Double
+        get() = price.toDoubleOrNull() ?: 0.0
+    // endregion
+}

@@ -6,7 +6,9 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class PackagePlan(
     @SerialName("name") val name: String = "",
-    @SerialName("price") val price: Double,
+    @SerialName("price")
+    @Serializable(with = LenientStringSerializer::class)
+    val price: String,
     @SerialName("converted_price") val convertedPrice: Double? = null,
     @SerialName("data_GB") val data: Double,
     @SerialName("country")
@@ -24,7 +26,9 @@ data class PackagePlan(
     @SerialName("activation_policy") val activationPolicy: String = "",
     @SerialName("supported_countries") val supportedCountries: List<SupportedCountry> = listOf(),
     @SerialName("name_additional_text") val nameAdditionalText: String = "",
-    @SerialName("discounted_price") val discountedPrice: Double? = null,
+    @SerialName("discounted_price")
+    @Serializable(with = LenientStringSerializer::class)
+    val discountedPrice: String? = null,
     @SerialName("earn_percentage") val earnPercentage: Double? = null,
     @SerialName("data_cap") val dataCap: String? = null,
     @SerialName("throttle_speed") val throttleSpeed: String? = null,
@@ -34,7 +38,24 @@ data class PackagePlan(
     @SerialName("promo_code") val promoCode: CheckoutCouponResponse? = null
 ) {
     val isUnlimited: Boolean = data in listOf(-1.0, -1)
-    val purchasePrice: Double = discountedPrice ?: price
-    val isFreePurchase: Boolean = purchasePrice == 0.00
-    val hasDiscount: Boolean = discountedPrice?.let { it > 0.00 } ?: false
+
+    // region Money
+    val priceValue: Double
+        get() = price.toDoubleOrNull() ?: 0.0
+
+    val discountedPriceValue: Double?
+        get() = discountedPrice?.toDoubleOrNull()
+
+    val purchasePrice: String
+        get() = discountedPrice ?: price
+
+    val purchasePriceValue: Double
+        get() = purchasePrice.toDoubleOrNull() ?: 0.0
+
+    val isFreePurchase: Boolean
+        get() = purchasePriceValue == 0.0
+
+    val hasDiscount: Boolean
+        get() = (discountedPriceValue ?: 0.0) > 0.0
+    // endregion
 }

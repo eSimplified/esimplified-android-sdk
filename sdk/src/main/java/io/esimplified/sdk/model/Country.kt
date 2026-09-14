@@ -3,10 +3,7 @@ package io.esimplified.sdk.model
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.descriptors.PrimitiveKind
-import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
 import kotlinx.serialization.descriptors.SerialDescriptor
-import kotlinx.serialization.descriptors.nullable
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.JsonDecoder
@@ -30,8 +27,8 @@ data class Country(
     @SerialName("is_region")
     val isRegion: Boolean = false,
     @SerialName("from_price")
-    @Serializable(with = LenientPriceSerializer::class)
-    val fromPrice: Double? = null,
+    @Serializable(with = LenientStringSerializer::class)
+    val fromPrice: String? = null,
     @SerialName("currency")
     val currency: String? = null,
     @SerialName("currency_obj")
@@ -40,30 +37,13 @@ data class Country(
 
     val isGlobal: Boolean = code == GLOBAL_CODE
 
+    val fromPriceValue: Double?
+        get() = fromPrice?.toDoubleOrNull()
+
     companion object {
         private const val GLOBAL_CODE = "2A"
     }
 }
-
-// region Lenient price
-internal object LenientPriceSerializer : KSerializer<Double?> {
-
-    override val descriptor: SerialDescriptor =
-        PrimitiveSerialDescriptor(LENIENT_PRICE_SERIAL_NAME, PrimitiveKind.STRING).nullable
-
-    override fun serialize(encoder: Encoder, value: Double?) {
-        if (value == null) encoder.encodeNull() else encoder.encodeDouble(value)
-    }
-
-    override fun deserialize(decoder: Decoder): Double? {
-        val json = decoder as? JsonDecoder ?: return decoder.decodeDouble()
-        val primitive = json.decodeJsonElement() as? JsonPrimitive ?: return null
-        return primitive.content.toDoubleOrNull()
-    }
-}
-
-internal const val LENIENT_PRICE_SERIAL_NAME = "io.esimplified.sdk.model.LenientPrice"
-// endregion
 
 // region Tolerant country
 internal object TolerantCountrySerializer : KSerializer<Country> {

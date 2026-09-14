@@ -1,11 +1,15 @@
 package io.esimplified.sdk.model
 
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -1213,33 +1217,38 @@ class ModelDecodingTest {
     // MARK: - Lenient from_price
 
     @Test
-    fun `Country decodes a numeric from_price`() {
+    fun `Country decodes a numeric from_price as its literal text`() {
         val country = productionJson.decodeFromString<Country>("""{"country_name":"AU","from_price":4.99}""")
-        assertEquals(4.99, country.fromPrice!!, 0.0001)
+        assertEquals("4.99", country.fromPrice)
+        assertEquals(4.99, country.fromPriceValue!!, 0.0001)
     }
 
     @Test
-    fun `Country decodes a quoted from_price`() {
+    fun `Country keeps a quoted from_price verbatim`() {
         val country = productionJson.decodeFromString<Country>("""{"country_name":"AU","from_price":"4.99"}""")
-        assertEquals(4.99, country.fromPrice!!, 0.0001)
+        assertEquals("4.99", country.fromPrice)
+        assertEquals(4.99, country.fromPriceValue!!, 0.0001)
     }
 
     @Test
     fun `Country decodes a null from_price`() {
         val country = productionJson.decodeFromString<Country>("""{"country_name":"AU","from_price":null}""")
         assertNull(country.fromPrice)
+        assertNull(country.fromPriceValue)
     }
 
     @Test
-    fun `Country decodes an unparseable from_price as null`() {
+    fun `Country keeps an unparseable from_price but has no value for it`() {
         val country = productionJson.decodeFromString<Country>("""{"country_name":"AU","from_price":"N/A"}""")
-        assertNull(country.fromPrice)
+        assertEquals("N/A", country.fromPrice)
+        assertNull(country.fromPriceValue)
     }
 
     @Test
     fun `Country decodes an absent from_price`() {
         val country = productionJson.decodeFromString<Country>("""{"country_name":"AU"}""")
         assertNull(country.fromPrice)
+        assertNull(country.fromPriceValue)
     }
 
     // MARK: - Loyalty points currency
@@ -1289,12 +1298,206 @@ class ModelDecodingTest {
         assertEquals("AU", plan.country.code)
     }
 
+    // MARK: - Money strings
+
+    @Test
+    fun `PackagePlan keeps a string price verbatim and exposes its value`() {
+        val plan = productionJson.decodeFromString<PackagePlan>(packagePlanJson(price = "\"899.00\""))
+        assertEquals("899.00", plan.price)
+        assertEquals(899.0, plan.priceValue, 0.0001)
+    }
+
+    @Test
+    fun `PackagePlan keeps a zero-decimal string price verbatim`() {
+        val plan = productionJson.decodeFromString<PackagePlan>(packagePlanJson(price = "\"1500\""))
+        assertEquals("1500", plan.price)
+        assertEquals(1500.0, plan.priceValue, 0.0001)
+    }
+
+    @Test
+    fun `PackagePlan decodes a bare decimal price as its literal text`() {
+        val plan = productionJson.decodeFromString<PackagePlan>(packagePlanJson(price = "9.99"))
+        assertEquals("9.99", plan.price)
+        assertEquals(9.99, plan.priceValue, 0.0001)
+    }
+
+    @Test
+    fun `PackagePlan decodes a bare integer price as its literal text`() {
+        val plan = productionJson.decodeFromString<PackagePlan>(packagePlanJson(price = "1500"))
+        assertEquals("1500", plan.price)
+        assertEquals(1500.0, plan.priceValue, 0.0001)
+    }
+
+    @Test
+    fun `PackagePlan without a discounted price purchases at the list price`() {
+        val plan = productionJson.decodeFromString<PackagePlan>(packagePlanJson(price = "\"899.00\""))
+        assertNull(plan.discountedPrice)
+        assertNull(plan.discountedPriceValue)
+        assertEquals("899.00", plan.purchasePrice)
+        assertEquals(899.0, plan.purchasePriceValue, 0.0001)
+        assertFalse(plan.hasDiscount)
+        assertFalse(plan.isFreePurchase)
+    }
+
+    @Test
+    fun `PackagePlan with a string discounted price purchases at the discount`() {
+        val plan = productionJson.decodeFromString<PackagePlan>(
+            packagePlanJson(price = "\"899.00\"", extra = """, "discounted_price": "539.00""""),
+        )
+        assertEquals("539.00", plan.discountedPrice)
+        assertEquals(539.0, plan.discountedPriceValue!!, 0.0001)
+        assertEquals("539.00", plan.purchasePrice)
+        assertEquals(539.0, plan.purchasePriceValue, 0.0001)
+        assertTrue(plan.hasDiscount)
+        assertFalse(plan.isFreePurchase)
+    }
+
+    @Test
+    fun `PackagePlan with a bare numeric discounted price purchases at the discount`() {
+        val plan = productionJson.decodeFromString<PackagePlan>(
+            packagePlanJson(price = "9.99", extra = """, "discounted_price": 4.99"""),
+        )
+        assertEquals("4.99", plan.discountedPrice)
+        assertEquals("4.99", plan.purchasePrice)
+        assertEquals(4.99, plan.purchasePriceValue, 0.0001)
+        assertTrue(plan.hasDiscount)
+    }
+
+    @Test
+    fun `PackagePlan with a zero discounted price is free and reports no discount`() {
+        val plan = productionJson.decodeFromString<PackagePlan>(
+            packagePlanJson(price = "\"899.00\"", extra = """, "discounted_price": "0.00""""),
+        )
+        assertEquals("0.00", plan.purchasePrice)
+        assertTrue(plan.isFreePurchase)
+        assertFalse(plan.hasDiscount)
+    }
+
+    @Test
+    fun `PackagePlan with a null discounted price has no discount`() {
+        val plan = productionJson.decodeFromString<PackagePlan>(
+            packagePlanJson(price = "\"899.00\"", extra = """, "discounted_price": null"""),
+        )
+        assertNull(plan.discountedPrice)
+        assertFalse(plan.hasDiscount)
+        assertEquals("899.00", plan.purchasePrice)
+    }
+
+    @Test
+    fun `PackagePlan with a zero list price is free`() {
+        val plan = productionJson.decodeFromString<PackagePlan>(packagePlanJson(price = "\"0.00\""))
+        assertTrue(plan.isFreePurchase)
+        assertFalse(plan.hasDiscount)
+    }
+
+    @Test
+    fun `PackagePlan keeps an unparseable price but values it at zero`() {
+        val plan = productionJson.decodeFromString<PackagePlan>(packagePlanJson(price = "\"N/A\""))
+        assertEquals("N/A", plan.price)
+        assertEquals(0.0, plan.priceValue, 0.0)
+    }
+
+    @Test
+    fun `PackagePlan leaves converted_price as a number`() {
+        val plan = productionJson.decodeFromString<PackagePlan>(
+            packagePlanJson(price = "\"899.00\"", extra = """, "converted_price": 5.75"""),
+        )
+        assertEquals(5.75, plan.convertedPrice!!, 0.0001)
+    }
+
+    @Test
+    fun `PackagePlan does not serialize its computed money properties`() {
+        val plan = productionJson.decodeFromString<PackagePlan>(packagePlanJson(price = "\"899.00\""))
+        val encoded = productionJson.encodeToString(plan)
+        assertTrue(encoded.contains("\"price\":\"899.00\""))
+        assertFalse(encoded.contains("purchasePrice"))
+        assertFalse(encoded.contains("priceValue"))
+        assertFalse(encoded.contains("hasDiscount"))
+        assertFalse(encoded.contains("isFreePurchase"))
+    }
+
+    @Test
+    fun `OrderDetail keeps string money fields verbatim and exposes their values`() {
+        val detail = productionJson.decodeFromString<OrderDetail>(
+            orderDetailJson(discountAmount = "\"360.00\"", finalPrice = "\"539.00\"", purchasePrice = "\"899.00\""),
+        )
+        assertEquals("360.00", detail.discountAmount)
+        assertEquals(360.0, detail.discountAmountValue, 0.0001)
+        assertEquals("539.00", detail.finalPrice)
+        assertEquals(539.0, detail.finalPriceValue, 0.0001)
+        assertEquals("899.00", detail.price)
+        assertEquals(899.0, detail.priceValue, 0.0001)
+    }
+
+    @Test
+    fun `OrderDetail decodes bare numeric money fields as their literal text`() {
+        val detail = productionJson.decodeFromString<OrderDetail>(
+            orderDetailJson(discountAmount = "0.0", finalPrice = "9.99", purchasePrice = "3249"),
+        )
+        assertEquals("0.0", detail.discountAmount)
+        assertEquals(0.0, detail.discountAmountValue, 0.0)
+        assertEquals("9.99", detail.finalPrice)
+        assertEquals(9.99, detail.finalPriceValue, 0.0001)
+        assertEquals("3249", detail.price)
+        assertEquals(3249.0, detail.priceValue, 0.0001)
+    }
+
+    @Test
+    fun `OrderDetail still fails as a whole when a money field is null`() {
+        assertThrows(SerializationException::class.java) {
+            productionJson.decodeFromString<OrderDetail>(orderDetailJson(finalPrice = "null"))
+        }
+    }
+
+    // MARK: - Lenient string serializer
+
+    @Serializable
+    private data class LenientHolder(
+        @Serializable(with = LenientStringSerializer::class) val value: String,
+    )
+
+    @Test
+    fun `LenientStringSerializer keeps a JSON string verbatim`() {
+        assertEquals("12.50", productionJson.decodeFromString<LenientHolder>("""{"value":"12.50"}""").value)
+        assertEquals("", productionJson.decodeFromString<LenientHolder>("""{"value":""}""").value)
+    }
+
+    @Test
+    fun `LenientStringSerializer returns the literal text of a JSON number`() {
+        assertEquals("12.5", productionJson.decodeFromString<LenientHolder>("""{"value":12.5}""").value)
+        assertEquals("1500", productionJson.decodeFromString<LenientHolder>("""{"value":1500}""").value)
+        assertEquals("-3", productionJson.decodeFromString<LenientHolder>("""{"value":-3}""").value)
+        assertEquals("1e3", productionJson.decodeFromString<LenientHolder>("""{"value":1e3}""").value)
+    }
+
+    @Test
+    fun `LenientStringSerializer rejects null objects and arrays`() {
+        assertThrows(SerializationException::class.java) {
+            productionJson.decodeFromString<LenientHolder>("""{"value":null}""")
+        }
+        assertThrows(SerializationException::class.java) {
+            productionJson.decodeFromString<LenientHolder>("""{"value":{"amount":1}}""")
+        }
+        assertThrows(SerializationException::class.java) {
+            productionJson.decodeFromString<LenientHolder>("""{"value":[1]}""")
+        }
+    }
+
+    @Test
+    fun `LenientStringSerializer encodes as a JSON string`() {
+        assertEquals("""{"value":"9.99"}""", productionJson.encodeToString(LenientHolder("9.99")))
+    }
+
     // MARK: - Null tolerance fixtures
 
-    private fun packagePlanJson(country: String = countryObjectJson): String = """
+    private fun packagePlanJson(
+        country: String = countryObjectJson,
+        price: String = "9.99",
+        extra: String = "",
+    ): String = """
         {
             "name": "1 GB / 7 Days",
-            "price": 9.99,
+            "price": $price,
             "data_GB": 1.0,
             "country": $country,
             "currency": "USD",
@@ -1307,6 +1510,7 @@ class ModelDecodingTest {
             "best_connectivity": "Telstra",
             "activation_policy": "first_use",
             "name_additional_text": ""
+            $extra
         }
     """.trimIndent()
 
@@ -1339,12 +1543,15 @@ class ModelDecodingTest {
     private fun orderDetailJson(
         country: String? = countryObjectJson,
         paymentMethod: String = "\"stripe_intent\"",
+        discountAmount: String = "0.0",
+        finalPrice: String = "9.99",
+        purchasePrice: String = "9.99",
     ): String = """
         {
             "customer_id": "u-1",
-            "discount_amount": 0.0,
+            "discount_amount": $discountAmount,
             "discount_code": "",
-            "final_price": 9.99,
+            "final_price": $finalPrice,
             "order_date": "2026-01-01",
             "order_number": 1001,
             "order_status": "COMPLETE",
@@ -1355,7 +1562,7 @@ class ModelDecodingTest {
             "package_validity": 7,
             "purchase_currency": "USD",
             "purchase_currency_obj": {"symbol": "$", "iso": "USD"},
-            "purchase_price": 9.99,
+            "purchase_price": $purchasePrice,
             "payment_method": $paymentMethod
             ${if (country == null) "" else ", \"country\": $country"}
         }
