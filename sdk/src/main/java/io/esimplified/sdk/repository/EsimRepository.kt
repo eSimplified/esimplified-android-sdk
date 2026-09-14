@@ -24,7 +24,7 @@ interface EsimRepository {
     ): List<AssignedEsim>
 
     suspend fun getArchivedEsims(
-        showLegacy: Boolean = true,
+        showLegacy: Boolean? = null,
         isPrimary: Boolean? = null,
         forceRefresh: Boolean = false,
         cacheTTL: Duration = ESIM_LIST_TTL,
@@ -59,7 +59,7 @@ interface EsimRepository {
         RepositoryResult(getActiveEsims(showLegacy, isPrimary, forceRefresh, cacheTTL, includeBase64QrCode))
 
     suspend fun getArchivedEsimsResult(
-        showLegacy: Boolean = true,
+        showLegacy: Boolean? = null,
         isPrimary: Boolean? = null,
         forceRefresh: Boolean = false,
         cacheTTL: Duration = ESIM_LIST_TTL,

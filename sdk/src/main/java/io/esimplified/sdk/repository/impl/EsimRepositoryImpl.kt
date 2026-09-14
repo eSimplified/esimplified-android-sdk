@@ -74,7 +74,7 @@ internal class EsimRepositoryImpl(
     )
 
     override suspend fun getArchivedEsims(
-        showLegacy: Boolean,
+        showLegacy: Boolean?,
         isPrimary: Boolean?,
         forceRefresh: Boolean,
         cacheTTL: Duration,
@@ -89,7 +89,7 @@ internal class EsimRepositoryImpl(
     ).listOrThrow()
 
     override suspend fun getArchivedEsimsResult(
-        showLegacy: Boolean,
+        showLegacy: Boolean?,
         isPrimary: Boolean?,
         forceRefresh: Boolean,
         cacheTTL: Duration,
@@ -173,11 +173,12 @@ internal class EsimRepositoryImpl(
 
     private fun esimListKey(
         archived: Boolean,
-        showLegacy: Boolean,
+        showLegacy: Boolean?,
         isPrimary: Boolean?,
         includeBase64QrCode: Boolean,
     ): String =
-        "$ESIM_LIST_KEY_PREFIX${archived}_legacy${showLegacy}_primary${isPrimary?.toString() ?: UNSET_IS_PRIMARY}_qr$includeBase64QrCode"
+        "$ESIM_LIST_KEY_PREFIX${archived}_legacy${showLegacy?.toString() ?: UNSET_SHOW_LEGACY}" +
+            "_primary${isPrimary?.toString() ?: UNSET_IS_PRIMARY}_qr$includeBase64QrCode"
 
     private fun esimDetailsKey(iccid: String, includeBase64QrCode: Boolean): String =
         "$ESIM_DETAILS_KEY_PREFIX${iccid}_qr$includeBase64QrCode"
@@ -185,7 +186,7 @@ internal class EsimRepositoryImpl(
 
     private suspend fun fetchEsimList(
         archived: Boolean,
-        showLegacy: Boolean,
+        showLegacy: Boolean?,
         isPrimary: Boolean?,
         forceRefresh: Boolean,
         cacheTTL: Duration,
@@ -217,6 +218,7 @@ internal class EsimRepositoryImpl(
         const val ESIM_LIST_KEY_PREFIX = "esims_"
         const val ESIM_DETAILS_KEY_PREFIX = "esim_details_"
         const val UNSET_IS_PRIMARY = "any"
+        const val UNSET_SHOW_LEGACY = "unset"
         const val LIST_ORDER_BY = "-assigned_date"
         const val LIST_LIMIT = 1000
         const val UPDATE_SUCCEEDED_MESSAGE = "eSIM updated successfully"

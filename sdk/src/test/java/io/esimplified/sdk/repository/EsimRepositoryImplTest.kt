@@ -132,7 +132,7 @@ class EsimRepositoryImplTest {
         repo.getArchivedEsims(isPrimary = true)
 
         assertTrue(cache.store.containsKey("esims_false_legacytrue_primarytrue_qrfalse"))
-        assertTrue(cache.store.containsKey("esims_true_legacytrue_primarytrue_qrfalse"))
+        assertTrue(cache.store.containsKey("esims_true_legacyunset_primarytrue_qrfalse"))
     }
     // endregion
 
@@ -177,6 +177,48 @@ class EsimRepositoryImplTest {
         assertNotNull(path)
         assertTrue(path!!.contains("order_by=-assigned_date"))
         assertTrue(path.contains("limit=1000"))
+    }
+
+    @Test
+    fun `the archived list request omits show_legacy entirely`() = runTest {
+        enqueueEmptyEsims()
+
+        repo().getArchivedEsims()
+
+        val path = mockWebServer.takeRequest().path
+        assertNotNull(path)
+        assertTrue(path!!.contains("show_archived_esims=true"))
+        assertFalse(path.contains("show_legacy"))
+    }
+
+    @Test
+    fun `the archived result read omits show_legacy entirely`() = runTest {
+        enqueueEmptyEsims()
+
+        repo().getArchivedEsimsResult()
+
+        val path = mockWebServer.takeRequest().path
+        assertNotNull(path)
+        assertTrue(path!!.contains("show_archived_esims=true"))
+        assertFalse(path.contains("show_legacy"))
+    }
+
+    @Test
+    fun `the archived list still sends show_legacy when a caller asks for it`() = runTest {
+        enqueueEmptyEsims()
+
+        repo().getArchivedEsims(showLegacy = true)
+
+        assertTrue(mockWebServer.takeRequest().path!!.contains("show_legacy=true"))
+    }
+
+    @Test
+    fun `the active list is unaffected and still sends show_legacy true by default`() = runTest {
+        enqueueEmptyEsims()
+
+        repo().getActiveEsims()
+
+        assertTrue(mockWebServer.takeRequest().path!!.contains("show_legacy=true"))
     }
 
     @Test

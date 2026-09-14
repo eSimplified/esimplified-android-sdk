@@ -92,7 +92,7 @@ class RepositoryCachingTest {
 
         assertEquals(2, mockWebServer.requestCount)
         assertTrue(cache.store.containsKey("esims_false_legacytrue_primaryany_qrfalse"))
-        assertTrue(cache.store.containsKey("esims_true_legacytrue_primaryany_qrfalse"))
+        assertTrue(cache.store.containsKey("esims_true_legacyunset_primaryany_qrfalse"))
     }
     // endregion
 
