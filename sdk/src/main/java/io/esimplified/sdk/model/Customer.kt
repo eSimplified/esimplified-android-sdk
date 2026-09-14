@@ -34,9 +34,6 @@ data class Customer(
     @SerialName("receive_purchase_email") val receivePurchaseEmail: Boolean? = null,
     @SerialName("receive_purchase_push") val receivePurchasePush: Boolean? = null,
     @SerialName("receive_viber_messages") val receiveViberMessages: Boolean? = null,
-    @SerialName("receive_emails") val receiveEmails: Boolean? = true,
-    @SerialName("receive_push_notifications") val receivePushNotifications: Boolean? = true,
-    @SerialName("receive_sms") val receiveSms: Boolean? = true,
 ) {
 
     companion object {

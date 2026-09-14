@@ -863,32 +863,6 @@ class ModelDecodingTest {
         assertFalse(detail.tracked)
     }
 
-    // MARK: - Notification Preferences
-
-    @Test
-    fun `Customer decodes receive_emails receive_push_notifications and receive_sms`() {
-        val payload = """
-            {
-                "customer_id": "u-1",
-                "receive_emails": false,
-                "receive_push_notifications": false,
-                "receive_sms": false
-            }
-        """.trimIndent()
-        val customer = json.decodeFromString<Customer>(payload)
-        assertEquals(false, customer.receiveEmails)
-        assertEquals(false, customer.receivePushNotifications)
-        assertEquals(false, customer.receiveSms)
-    }
-
-    @Test
-    fun `Customer defaults notification preferences to true when absent`() {
-        val customer = json.decodeFromString<Customer>("""{"customer_id": "u-1"}""")
-        assertEquals(true, customer.receiveEmails)
-        assertEquals(true, customer.receivePushNotifications)
-        assertEquals(true, customer.receiveSms)
-    }
-
     // MARK: - Payment Request
 
     @Test
