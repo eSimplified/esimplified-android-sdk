@@ -298,13 +298,34 @@ internal class AuthRepositoryImpl(
     // endregion
 
     // region User & Preferences
-    override suspend fun getUser(): Customer? {
+    override suspend fun getUser(): Customer? = fetchProfile()
+
+    override suspend fun fetchProfile(): Customer? {
         if (sessionManager.getAuthState() !is Auth.Authenticated) {
             return null
         }
-        val user = withLoyaltyProvider(apiService.getUser())
+        val user = mergedWithSessionUser(withLoyaltyProvider(apiService.getUser()))
         saveUserOnCurrentSession(user)
         return user
+    }
+
+    private fun mergedWithSessionUser(user: Customer): Customer {
+        val currentAuth = sessionManager.getAuthState()
+        if (currentAuth !is Auth.Authenticated) {
+            return user
+        }
+        return user.copy(
+            referralCode = user.referralCode ?: currentAuth.user.referralCode
+        )
+    }
+
+    private suspend fun refreshedProfileOrNull(): Customer? {
+        return try {
+            fetchProfile()
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to re-fetch the customer profile after a partial update")
+            null
+        }
     }
 
     private fun saveUserOnCurrentSession(user: Customer) {
@@ -337,6 +358,16 @@ internal class AuthRepositoryImpl(
                 preferredCurrency = preferredCurrency
             )
         )
+
+        val refreshed = refreshedProfileOrNull()
+        if (refreshed != null) {
+            val reconciled = refreshed.copy(
+                preferredLanguage = preferredLanguage ?: refreshed.preferredLanguage,
+                preferredCurrency = preferredCurrency ?: refreshed.preferredCurrency
+            )
+            saveUserOnCurrentSession(reconciled)
+            return reconciled
+        }
 
         val snapshot = sessionManager.getAuthState()
         if (snapshot is Auth.Authenticated) {
@@ -386,6 +417,20 @@ internal class AuthRepositoryImpl(
 
             if (response.success == false || response.updated == false) {
                 throw Exception(response.detail ?: response.message ?: UPDATE_FAILED_MESSAGE)
+            }
+
+            val refreshed = refreshedProfileOrNull()
+            if (refreshed != null) {
+                saveUserOnCurrentSession(
+                    refreshed.copy(
+                        email = email ?: refreshed.email,
+                        firstName = firstName ?: refreshed.firstName,
+                        lastName = lastName ?: refreshed.lastName,
+                        fullName = fullName ?: refreshed.fullName,
+                        phoneNumber = phoneNumber ?: refreshed.phoneNumber,
+                    )
+                )
+                return response
             }
 
             val snapshot = sessionManager.getAuthState()

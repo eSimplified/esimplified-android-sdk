@@ -58,10 +58,10 @@ class AuthRepositoryImplTest {
         mockWebServer.shutdown()
     }
 
-    private fun seedAuthenticatedSession(refreshToken: String) {
+    private fun seedAuthenticatedSession(refreshToken: String, referralCode: String? = null) {
         sessionManager.save(
             Auth.Authenticated(
-                user = Customer(id = "user-123", email = "test@example.com"),
+                user = Customer(id = "user-123", email = "test@example.com", referralCode = referralCode),
                 accessToken = "old-access-token",
                 refreshToken = refreshToken,
                 expires = LocalDateTime.now().plusSeconds(3600)
@@ -219,8 +219,8 @@ class AuthRepositoryImplTest {
     @Test
     fun `updateCustomerProfile can send a phone number on its own`() = runTest {
         seedAuthenticatedSession(refreshToken = "original-refresh-token")
-        mockWebServer.enqueue(
-            MockResponse().setResponseCode(200).setBody("{\"updated\": true}")
+        serveProfile(
+            """{ "customer_id": "user-123", "email": "test@example.com" }"""
         )
 
         authRepository.updateCustomerProfile(phoneNumber = "+27831234567")
@@ -238,8 +238,8 @@ class AuthRepositoryImplTest {
     @Test
     fun `updateCustomerProfile leaves the stored email alone when none is supplied`() = runTest {
         seedAuthenticatedSession(refreshToken = "original-refresh-token")
-        mockWebServer.enqueue(
-            MockResponse().setResponseCode(200).setBody("{\"updated\": true}")
+        serveProfile(
+            """{ "customer_id": "user-123", "email": "test@example.com" }"""
         )
 
         authRepository.updateCustomerProfile(firstName = "Kieran")
@@ -258,5 +258,147 @@ class AuthRepositoryImplTest {
         authRepository.getUser()
 
         assertEquals("interceptor-rotated-refresh-token", sessionManager.getRefreshToken())
+    }
+
+    private fun serveProfile(profileBody: String, preferencesBody: String = """{ "customer_id": "user-123" }""") {
+        mockWebServer.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val path = request.path.orEmpty()
+                return when {
+                    path.contains("customer/preferences") -> MockResponse()
+                        .setResponseCode(200)
+                        .setBody(preferencesBody)
+
+                    path.contains("customer/edit") -> MockResponse()
+                        .setResponseCode(200)
+                        .setBody("""{"updated": true, "success": true}""")
+
+                    path.contains("api/v2/customer/") -> MockResponse()
+                        .setResponseCode(200)
+                        .setBody(profileBody)
+
+                    else -> MockResponse().setResponseCode(404)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `fetchProfile requests the customer endpoint with a trailing slash`() = runTest {
+        seedAuthenticatedSession(refreshToken = "original-refresh-token")
+        serveProfile("""{ "customer_id": "user-123", "referral_code": "FETCH1" }""")
+
+        val user = authRepository.fetchProfile()
+
+        assertEquals("FETCH1", user?.referralCode)
+        val paths = (1..mockWebServer.requestCount).map { mockWebServer.takeRequest().path }
+        assertTrue(paths.contains("/api/v2/customer/"))
+    }
+
+    @Test
+    fun `fetchProfile reads a unique_referral_code payload into the referral code`() = runTest {
+        seedAuthenticatedSession(refreshToken = "original-refresh-token")
+        serveProfile("""{ "customer_id": "user-123", "unique_referral_code": "ALIAS9" }""")
+
+        assertEquals("ALIAS9", authRepository.fetchProfile()?.referralCode)
+        assertEquals(
+            "ALIAS9",
+            (sessionManager.getAuthState() as Auth.Authenticated).user.referralCode
+        )
+    }
+
+    @Test
+    fun `fetchProfile keeps the session referral code when the payload carries neither key`() = runTest {
+        seedAuthenticatedSession(refreshToken = "original-refresh-token", referralCode = "KEEPME")
+        serveProfile("""{ "customer_id": "user-123", "email": "test@example.com" }""")
+
+        assertEquals("KEEPME", authRepository.fetchProfile()?.referralCode)
+        assertEquals(
+            "KEEPME",
+            (sessionManager.getAuthState() as Auth.Authenticated).user.referralCode
+        )
+    }
+
+    @Test
+    fun `getUser still returns the profile and keeps the loyalty provider merge`() = runTest {
+        seedAuthenticatedSession(refreshToken = "original-refresh-token")
+        serveProfile(
+            profileBody = """{ "customer_id": "user-123", "referral_code": "LEGACY1" }""",
+            preferencesBody = """{ "customer_id": "user-123", "loyalty_provider": "mokafaa" }"""
+        )
+
+        val user = authRepository.getUser()
+
+        assertEquals("LEGACY1", user?.referralCode)
+        assertEquals("mokafaa", user?.loyaltyProvider)
+    }
+
+    @Test
+    fun `updatePreferences leaves the session customer holding the referral code`() = runTest {
+        seedAuthenticatedSession(refreshToken = "original-refresh-token")
+        serveProfile(
+            profileBody = """
+                {
+                    "customer_id": "user-123",
+                    "referral_code": "AFTERPATCH",
+                    "signed_in_with_provider": true,
+                    "receive_marketing_email": false
+                }
+            """.trimIndent(),
+            preferencesBody = """{ "customer_id": "user-123", "unique_referral_code": "AFTERPATCH" }"""
+        )
+
+        val returned = authRepository.updatePreferences(
+            preferredLanguage = "ar",
+            preferredCurrency = "SAR"
+        )
+
+        assertEquals("AFTERPATCH", returned.referralCode)
+        assertEquals("ar", returned.preferredLanguage)
+        assertEquals("SAR", returned.preferredCurrency)
+        val savedUser = (sessionManager.getAuthState() as Auth.Authenticated).user
+        assertEquals("AFTERPATCH", savedUser.referralCode)
+        assertEquals(true, savedUser.signedInWithProvider)
+        assertEquals(false, savedUser.receiveMarketingEmail)
+        assertEquals("ar", savedUser.preferredLanguage)
+        assertEquals("SAR", savedUser.preferredCurrency)
+    }
+
+    @Test
+    fun `updatePreferences falls back to language and currency when the re-fetch fails`() = runTest {
+        seedAuthenticatedSession(refreshToken = "original-refresh-token", referralCode = "FALLBACK")
+        mockWebServer.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val path = request.path.orEmpty()
+                return when {
+                    path.contains("customer/preferences") -> MockResponse()
+                        .setResponseCode(200)
+                        .setBody("""{ "customer_id": "user-123", "unique_referral_code": "FALLBACK" }""")
+
+                    else -> MockResponse().setResponseCode(500)
+                }
+            }
+        }
+
+        authRepository.updatePreferences(preferredLanguage = "fr", preferredCurrency = "EUR")
+
+        val savedUser = (sessionManager.getAuthState() as Auth.Authenticated).user
+        assertEquals("fr", savedUser.preferredLanguage)
+        assertEquals("EUR", savedUser.preferredCurrency)
+        assertEquals("FALLBACK", savedUser.referralCode)
+    }
+
+    @Test
+    fun `updateCustomerProfile re-fetches the full profile after a partial edit response`() = runTest {
+        seedAuthenticatedSession(refreshToken = "original-refresh-token")
+        serveProfile(
+            """{ "customer_id": "user-123", "email": "test@example.com", "referral_code": "EDIT7" }"""
+        )
+
+        authRepository.updateCustomerProfile(firstName = "Kieran")
+
+        val savedUser = (sessionManager.getAuthState() as Auth.Authenticated).user
+        assertEquals("EDIT7", savedUser.referralCode)
+        assertEquals("Kieran", savedUser.firstName)
     }
 }

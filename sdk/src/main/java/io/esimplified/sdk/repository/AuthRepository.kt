@@ -52,6 +52,7 @@ interface AuthRepository {
 
     // region User & Preferences
     suspend fun getUser(): Customer?
+    suspend fun fetchProfile(): Customer? = getUser()
     suspend fun updatePreferences(preferredLanguage: String?, preferredCurrency: String?): Customer
     suspend fun updateProfile(
         email: String,

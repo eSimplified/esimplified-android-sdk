@@ -1567,6 +1567,129 @@ class ModelDecodingTest {
             ${if (country == null) "" else ", \"country\": $country"}
         }
     """.trimIndent()
+
+    // MARK: - Customer live payload parity
+
+    @Test
+    fun `Customer decodes unique_referral_code as the referral code`() {
+        val payload = """
+            {
+                "customer_id": "u-1",
+                "unique_referral_code": "UNIQUE99"
+            }
+        """.trimIndent()
+        val customer = json.decodeFromString<Customer>(payload)
+        assertEquals("UNIQUE99", customer.referralCode)
+    }
+
+    @Test
+    fun `Customer decodes referral_code as the referral code`() {
+        val payload = """
+            {
+                "customer_id": "u-1",
+                "referral_code": "PLAIN42"
+            }
+        """.trimIndent()
+        val customer = json.decodeFromString<Customer>(payload)
+        assertEquals("PLAIN42", customer.referralCode)
+    }
+
+    @Test
+    fun `Customer prefers a present alias over an absent referral code`() {
+        val payload = """
+            {
+                "customer_id": "u-1",
+                "referral_code": null,
+                "unique_referral_code": "PRESENT2"
+            }
+        """.trimIndent()
+        val customer = json.decodeFromString<Customer>(payload)
+        assertEquals("PRESENT2", customer.referralCode)
+    }
+
+    @Test
+    fun `Customer leaves the referral code null when neither key is present`() {
+        val customer = json.decodeFromString<Customer>("""{"customer_id": "u-1"}""")
+        assertNull(customer.referralCode)
+    }
+
+    @Test
+    fun `Customer encodes the referral code as referral_code only`() {
+        val encoded = productionJson.encodeToString(Customer(id = "u-1", referralCode = "ROUND1"))
+        assertTrue(encoded.contains("\"referral_code\":\"ROUND1\""))
+        assertFalse(encoded.contains("unique_referral_code"))
+        assertEquals("ROUND1", productionJson.decodeFromString<Customer>(encoded).referralCode)
+    }
+
+    @Test
+    fun `Customer decodes acquisition_source`() {
+        val payload = """
+            {
+                "customer_id": "u-1",
+                "acquisition_source": "referral"
+            }
+        """.trimIndent()
+        assertEquals("referral", json.decodeFromString<Customer>(payload).acquisitionSource)
+    }
+
+    @Test
+    fun `Customer decodes all eight live notification flags`() {
+        val payload = """
+            {
+                "customer_id": "u-1",
+                "receive_marketing_email": true,
+                "receive_marketing_push": false,
+                "receive_account_email": true,
+                "receive_account_sms": false,
+                "receive_account_push": true,
+                "receive_purchase_email": false,
+                "receive_purchase_push": true,
+                "receive_viber_messages": false
+            }
+        """.trimIndent()
+        val customer = json.decodeFromString<Customer>(payload)
+        assertEquals(true, customer.receiveMarketingEmail)
+        assertEquals(false, customer.receiveMarketingPush)
+        assertEquals(true, customer.receiveAccountEmail)
+        assertEquals(false, customer.receiveAccountSms)
+        assertEquals(true, customer.receiveAccountPush)
+        assertEquals(false, customer.receivePurchaseEmail)
+        assertEquals(true, customer.receivePurchasePush)
+        assertEquals(false, customer.receiveViberMessages)
+    }
+
+    @Test
+    fun `Customer decodes when the live notification flags are absent`() {
+        val customer = json.decodeFromString<Customer>("""{"customer_id": "u-1"}""")
+        assertNull(customer.receiveMarketingEmail)
+        assertNull(customer.receiveMarketingPush)
+        assertNull(customer.receiveAccountEmail)
+        assertNull(customer.receiveAccountSms)
+        assertNull(customer.receiveAccountPush)
+        assertNull(customer.receivePurchaseEmail)
+        assertNull(customer.receivePurchasePush)
+        assertNull(customer.receiveViberMessages)
+    }
+
+    @Test
+    fun `Customer decodes the live preferences payload without losing the referral code`() {
+        val payload = """
+            {
+                "customer_id": "u-1",
+                "unique_referral_code": "PREFS7",
+                "acquisition_source": "organic",
+                "loyalty_provider": "mokafaa",
+                "preferred_language": "ar",
+                "preferred_currency": "SAR"
+            }
+        """.trimIndent()
+        val customer = json.decodeFromString<Customer>(payload)
+        assertEquals("PREFS7", customer.referralCode)
+        assertEquals("organic", customer.acquisitionSource)
+        assertEquals("mokafaa", customer.loyaltyProvider)
+        assertNull(customer.signedInWithProvider)
+    }
+
 }
 
 private val countryObjectJson = """
