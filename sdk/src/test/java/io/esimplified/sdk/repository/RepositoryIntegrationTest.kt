@@ -120,7 +120,7 @@ class RepositoryIntegrationTest {
         """.trimIndent()
         enqueueJson(payload)
 
-        val repo = AuthRepositoryImpl(apiService, sessionManager, storage)
+        val repo = AuthRepositoryImpl(apiService, sessionManager, storage, SdkCache())
         val customer = repo.login("u2@e.com", "p")
 
         assertEquals("u-2", customer.id)
@@ -133,7 +133,7 @@ class RepositoryIntegrationTest {
 
     @Test
     fun `AuthRepository logout clears session`() = runTest {
-        val repo = AuthRepositoryImpl(apiService, sessionManager, storage)
+        val repo = AuthRepositoryImpl(apiService, sessionManager, storage, SdkCache())
         assertTrue(sessionManager.isAuthenticated())
 
         repo.logout()

@@ -16,6 +16,7 @@ import io.esimplified.sdk.model.GetTokenResponse
 import io.esimplified.sdk.model.Customer
 import io.esimplified.sdk.network.ApiErrorMessage
 import io.esimplified.sdk.network.ApiService
+import io.esimplified.sdk.network.SdkCache
 import io.esimplified.sdk.auth.Auth
 import io.esimplified.sdk.auth.SessionManager
 import io.esimplified.sdk.auth.SecureStorageProvider
@@ -27,7 +28,8 @@ import java.time.LocalDateTime
 internal class AuthRepositoryImpl(
     private val apiService: ApiService,
     private val sessionManager: SessionManager,
-    private val secureStorage: SecureStorageProvider
+    private val secureStorage: SecureStorageProvider,
+    private val cache: SdkCache
 ) : AuthRepository {
 
     private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
@@ -512,6 +514,8 @@ internal class AuthRepositoryImpl(
     // region Session
     override suspend fun logout() {
         sessionManager.save(Auth.Unauthenticated)
+        cache.clear()
+        Timber.d("Logged out and cleared all cached responses")
     }
     // endregion
 

@@ -5,7 +5,10 @@ import io.esimplified.sdk.auth.DefaultSessionManager
 import io.esimplified.sdk.fake.FakeSecureStorage
 import io.esimplified.sdk.model.Customer
 import io.esimplified.sdk.network.ApiService
+import io.esimplified.sdk.network.SdkCache
 import io.esimplified.sdk.repository.impl.AuthRepositoryImpl
+import io.esimplified.sdk.repository.impl.EsimRepositoryImpl
+import io.esimplified.sdk.repository.impl.OrdersRepositoryImpl
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -32,6 +35,7 @@ class AuthRepositoryImplTest {
     private lateinit var sessionManager: DefaultSessionManager
     private lateinit var apiService: ApiService
     private lateinit var authRepository: AuthRepositoryImpl
+    private lateinit var cache: SdkCache
 
     @Before
     fun setup() {
@@ -40,6 +44,7 @@ class AuthRepositoryImplTest {
 
         fakeStorage = FakeSecureStorage()
         sessionManager = DefaultSessionManager(fakeStorage)
+        cache = SdkCache()
 
         val json = Json { ignoreUnknownKeys = true; explicitNulls = false; coerceInputValues = true }
         val client = OkHttpClient.Builder().build()
@@ -50,7 +55,7 @@ class AuthRepositoryImplTest {
             .build()
             .create()
 
-        authRepository = AuthRepositoryImpl(apiService, sessionManager, fakeStorage)
+        authRepository = AuthRepositoryImpl(apiService, sessionManager, fakeStorage, cache)
     }
 
     @After
@@ -401,4 +406,66 @@ class AuthRepositoryImplTest {
         assertEquals("EDIT7", savedUser.referralCode)
         assertEquals("Kieran", savedUser.firstName)
     }
+
+    // region Logout
+    @Test
+    fun `logout clears the cached eSIM list so the next customer is not served the previous one's`() = runTest {
+        seedAuthenticatedSession(refreshToken = "first-user-refresh-token")
+        enqueueEsimList(iccid = "first-user-iccid")
+        val esimRepository = EsimRepositoryImpl(apiService, cache)
+        assertEquals("first-user-iccid", esimRepository.getActiveEsims().single().iccid)
+
+        authRepository.logout()
+
+        enqueueEsimList(iccid = "second-user-iccid")
+        assertEquals("second-user-iccid", esimRepository.getActiveEsims().single().iccid)
+        assertEquals(2, mockWebServer.requestCount)
+    }
+
+    @Test
+    fun `logout clears the cached order history so the next customer is not served the previous one's`() = runTest {
+        seedAuthenticatedSession(refreshToken = "first-user-refresh-token")
+        enqueueOrderHistory(orderNumber = 111)
+        val ordersRepository = OrdersRepositoryImpl(apiService, cache)
+        assertEquals(111, ordersRepository.getOrderHistory().single().orderNumber)
+
+        authRepository.logout()
+
+        enqueueOrderHistory(orderNumber = 222)
+        assertEquals(222, ordersRepository.getOrderHistory().single().orderNumber)
+        assertEquals(2, mockWebServer.requestCount)
+    }
+
+    @Test
+    fun `logout leaves the session unauthenticated`() = runTest {
+        seedAuthenticatedSession(refreshToken = "first-user-refresh-token")
+
+        authRepository.logout()
+
+        assertFalse(sessionManager.isAuthenticated())
+        assertEquals(Auth.Unauthenticated, sessionManager.getAuthState())
+    }
+
+    private fun enqueueEsimList(iccid: String) {
+        mockWebServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"count":1,"results":[{"iccid":"$iccid","esim_name":null}]}""")
+        )
+    }
+
+    private fun enqueueOrderHistory(orderNumber: Int) {
+        mockWebServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    """{"count":1,"results":[{"order_number":$orderNumber,"final_price":"10.00",""" +
+                        """"purchase_price":"10.00","discount_amount":"0.00","package_type_id":1}]}"""
+                )
+        )
+    }
+    // endregion
+
 }

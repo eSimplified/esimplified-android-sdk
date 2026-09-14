@@ -63,7 +63,7 @@ internal fun createSdkModule(): Module = module {
             .create<ApiService>()
     }
 
-    single<AuthRepository> { AuthRepositoryImpl(get(), get(), get()) }
+    single<AuthRepository> { AuthRepositoryImpl(get(), get(), get(), get()) }
     single<CountryRepository> { CountryRepositoryImpl(get(), get()) }
     single<PackagesRepository> { PackagesRepositoryImpl(get(), get()) }
     single<EsimRepository> { EsimRepositoryImpl(get(), get()) }
