@@ -8,7 +8,7 @@
 
 Kotlin SDK for integrating the eSIMplified eSIM platform into Android applications. Provides typed repository interfaces for authentication, eSIM management, package browsing, orders, payments, and more. All networking, authentication, and token management are handled internally -- consuming apps interact only with clean Kotlin interfaces.
 
-**Coordinates:** `io.github.esimplified:android-sdk:1.0.9`
+**Coordinates:** `io.github.esimplified:android-sdk:2.0.0`
 
 ## Requirements
 
@@ -34,11 +34,13 @@ The SDK is published to Maven Central. No extra repositories or authentication n
 ```kotlin
 // build.gradle.kts (app)
 dependencies {
-    implementation("io.github.esimplified:android-sdk:1.0.9")
+    implementation("io.github.esimplified:android-sdk:2.0.0")
 }
 ```
 
 Maven Central is included by default in all Gradle projects. No changes to `settings.gradle.kts` required.
+
+> **Upgrading from 1.x?** 2.0 changes the type of every money field and makes several model fields nullable. Read [Migrating from 1.x to 2.0](#migrating-from-1x-to-20) before you bump the version.
 
 ## Quick Start
 
@@ -153,8 +155,12 @@ SdkConfig(
     awsWafToken: String = "",                            // AWS WAF validation token
     enableLogging: Boolean = false,                      // enable OkHttp request/response logging
     customHeadersProvider: (() -> Map<String, String>)?, // optional extra headers per request
+    enableCaching: Boolean = true,                       // in-memory response cache (see Caching)
+    defaultCacheTtlSeconds: Long = 3600,                 // fallback TTL when a call doesn't pass one
 )
 ```
+
+Setting `enableCaching = false` gives every cache entry a zero TTL, so every read goes to the network. Per-call `cacheTTL` arguments still apply when caching is on.
 
 ## SDK Structure
 
@@ -173,6 +179,9 @@ sdk/src/main/java/io/esimplified/sdk/
 |-- network/
 |   |-- ApiService.kt                     # Retrofit API endpoint definitions
 |   |-- BaseResponse.kt                   # Paginated response wrapper
+|   |-- ApiErrorMessage.kt                # Shared API error-body parser
+|   |-- SdkCache.kt                       # Internal keyed in-memory cache
+|   |-- SdkError.kt                       # Public error type (sealed, extends IOException)
 |   +-- SdkAuthInterceptor.kt            # OkHttp interceptor for auth + token refresh
 |-- model/                                # All API data models (see table below)
 |-- repository/                           # Public repository interfaces
@@ -188,10 +197,39 @@ sdk/src/main/java/io/esimplified/sdk/
 |   |-- NotificationRepository.kt
 |   |-- VisaRewardsRepository.kt
 |   |-- VouchersRepository.kt
+|   |-- ThemeRepository.kt
+|   |-- FaqAndSupportRepository.kt
+|   |-- StoreReviewRepository.kt
+|   |-- RepositoryResult.kt               # Value + isStale + failure wrapper
 |   +-- impl/                             # Internal implementations (not public API)
 +-- di/
     +-- SdkModule.kt                      # Koin module wiring all dependencies
 ```
+
+## Money fields
+
+Every money amount the API returns is exposed as a **`String`**, holding the server's decimal text verbatim (`"12.50"`). This matches the eSIMplified iOS SDK field for field, and it means a price you render is exactly the price the server sent — no float rounding, no locale drift.
+
+Each money field has a companion `…Value: Double` accessor for arithmetic:
+
+```kotlin
+Text("${plan.currencyObject.symbol}${plan.purchasePrice}")   // display: use the String
+val total = plan.purchasePriceValue * quantity                // arithmetic: use the …Value
+```
+
+| Model | String field | `Double` accessor |
+|---|---|---|
+| `PackagePlan` | `price` | `priceValue: Double` |
+| `PackagePlan` | `discountedPrice: String?` | `discountedPriceValue: Double?` |
+| `PackagePlan` | `purchasePrice` (computed: `discountedPrice ?: price`) | `purchasePriceValue: Double` |
+| `OrderDetail` | `price` (`purchase_price`) | `priceValue: Double` |
+| `OrderDetail` | `finalPrice` | `finalPriceValue: Double` |
+| `OrderDetail` | `discountAmount` | `discountAmountValue: Double` |
+| `Country` | `fromPrice: String?` | `fromPriceValue: Double?` |
+
+Decoding accepts either a JSON string (`"12.50"`) or a bare number (`12.5`) for these fields, so a backend that changes its mind about quoting will not break the client.
+
+`PackagePlan.convertedPrice` stays `Double?` — it is a `Double?` in the iOS SDK too. `OrderHistoryItem.finalPrice` / `purchasePrice` / `discountAmount` were already `String` before 2.0 and are unchanged; they have no `…Value` accessors.
 
 ## All Models
 
@@ -199,17 +237,18 @@ Every model is a `@Serializable` data class in `io.esimplified.sdk.model`.
 
 | Model | Description |
 |---|---|
-| `Customer` | Authenticated user profile (id, email, name, phone, wallet, referral code, preferences) |
+| `Customer` | Authenticated user profile (id, email, name, phone, wallet, referral code, acquisition source, notification flags) |
 | `CustomerDetails` | Mutable customer fields for registration and profile updates |
 | `CustomerSignIn` | Login request payload (email + password) |
 | `CustomerForgetPassword` | Forgot password request (email) |
 | `CustomerForgetPasswordResponse` | Forgot password API response |
 | `CustomerChangePassword` | Change/reset password request payload |
-| `Country` | Destination country (name, code, flag, slug, supported countries, pricing) |
+| `Country` | Destination country (name, code, flag, slug, supported countries, `fromPrice`) |
 | `CountryCode` | Phone number country code (dial code, pattern, emoji flag) |
 | `SupportedCountry` | Minimal country reference (name + code) within a region/package |
 | `Destination` | Query parameters for fetching packages (code, name, slug, region) |
 | `PackagePlan` | eSIM data plan (name, price, data GB, validity, country, networks, discounts) |
+| `PackagesPage` | A page of packages plus its total count and any active promo code |
 | `PackageDetail` | Detailed package info with activation status and expiry |
 | `CheckStockResponse` | Stock availability check result |
 | `EsimInfo` | Basic eSIM metadata (ICCID, matching ID, SM-DP+ address) |
@@ -219,11 +258,13 @@ Every model is a `@Serializable` data class in `io.esimplified.sdk.model`.
 | `EsimRequest` | Request parameters for eSIM list queries |
 | `EsimPackageListRequest` | Request for eSIM-specific package list |
 | `OrderDetail` | Full order with pricing, eSIM profile, QR code, payment info, loyalty points |
+| `OrdersPage` | A page of order history plus its total count and a `hasMore` flag |
 | `OrderHistoryItem` | Summary order for history lists |
+| `PurchaseCountry` | Country the purchase was made from (on `OrderHistoryItem`) |
 | `OrderInfo` | Order info with customer details and QR code |
 | `OrderRequest` | Order query parameters |
 | `PaymentRequest` | Payment intent creation payload (package, customer, payment method, loyalty points) |
-| `PaymentMethod` | Enum: STRIPE_INTENT, GOOGLE_PAY, FREE, WALLET, LOYALTY |
+| `PaymentMethod` | Enum: STRIPE_INTENT, STRIPE_CHECKOUT, AGENT_PAYMENT, COMPLIMENTARY, VOUCHER, SPLIT_PAYMENT, PAY_WITH_POINTS, UNKNOWN (with `displayName` and `shouldShowAmount`) |
 | `CurrencyObject` | Currency with symbol and ISO code |
 | `QrCode` | QR code image (base64 + URL) |
 | `NotificationSettings` | Notification preference (type + enabled flag) |
@@ -253,16 +294,76 @@ Every model is a `@Serializable` data class in `io.esimplified.sdk.model`.
 | `KredsLoyaltyBalanceResponse` | Loyalty balance (total points + detail) |
 | `UserLocationResponse` | User's detected location (country, city, coordinates) |
 | `RestrictedCountry` | Country with purchase restrictions |
-| `RatingApiResponse` | App store rating data |
+| `RatingApiResponse` | Store review summary (verdict, counts, average rating, reviews, stats) |
+| `Review` | A single store review (rating, title, comments, author, date) |
+| `Author` | Review author (name, location) |
+| `Stats` | Review statistics (company totals and per-star ratings) |
+| `CompanyStats` | Company-level review count and average rating |
+| `Ratings` | Per-star review counts |
+| `Faq` | A single destination FAQ (question + answer) |
+| `DestinationFaqResponse` | FAQ list for a destination (slug, name, language, faqs) |
+| `ThemePage` | Theme for a page (url path, featured image, accent colour) |
+| `ThemeDestination` | Theme for a destination (image, gallery, country code) |
+| `ThemeImage` | Theme image (url + accent colour) |
 | `ApiErrorResponse` | Standardized API error (detail, error, message) |
 | `SearchBody` | Search query payload |
 | `IframeRequest` | Iframe vendor request |
 | `BaseResponse<T>` | Paginated response wrapper (count, next, previous, results) |
+| `RepositoryResult<T>` | Read result: `value`, `isStale`, `failure` (in `io.esimplified.sdk.repository`) |
+| `SdkError` | Sealed error type returned in `RepositoryResult.failure` (in `io.esimplified.sdk.network`) |
 | `ProfileReusePolicy` | eSIM profile reuse policy |
+
+## Caching and offline reads
+
+Every list and detail read is served through an in-process cache keyed by call and arguments. Two optional arguments appear on those methods:
+
+- **`forceRefresh: Boolean = false`** — skip the cache and go to the network. (`LoyaltyRepository.getLoyaltyBalance` defaults to `true`; a points balance is never served from cache unless you ask for it.)
+- **`cacheTTL: Duration`** — how long this read stays fresh. Each repository exposes its own default as a constant, e.g. `EsimRepository.ESIM_LIST_TTL`.
+
+Each cached method has a `…Result` twin returning `RepositoryResult<T>` instead of throwing:
+
+```kotlin
+data class RepositoryResult<T>(
+    val value: T,
+    val isStale: Boolean = false,   // value came from an expired cache entry
+    val failure: SdkError? = null,  // what the refresh failed with, if it did
+) {
+    val didFail: Boolean
+    val isOffline: Boolean          // failure is SdkError.NoInternetConnection
+}
+```
+
+That lets a screen show last-known data with an "offline" banner rather than an error page:
+
+```kotlin
+val result = esimRepo.getEsimsResult()
+render(result.value)
+if (result.isStale && result.isOffline) showOfflineBanner()
+```
+
+The plain (non-`Result`) methods keep the old behaviour: a cache miss plus a failed refresh throws. When a stale entry exists they return it rather than throwing.
+
+`SdkError` (in `io.esimplified.sdk.network`) is a sealed subclass of `IOException`:
+
+| Case | Meaning |
+|---|---|
+| `NetworkError(statusCode, message)` | Server responded with an error status |
+| `AuthenticationRequired` | No valid session |
+| `NoInternetConnection` | Host unreachable / connection refused |
+| `DecodingError(cause)` | Response did not match the model |
+| `InvalidURL(url)` | Malformed URL |
+| `Unknown(cause)` | Anything else |
+
+Cache control:
+
+- `EsimplifiedSdk.clearAllCaches()` — drop everything (call this on logout).
+- `repository.invalidateCache()` — drop just that repository's entries.
 
 ## All Repository Methods
 
 All repositories are provided as Koin singletons. Inject them by interface type.
+
+Where a signature below shows `forceRefresh` / `cacheTTL`, see [Caching and offline reads](#caching-and-offline-reads). Every such method also has a `…Result` twin returning `RepositoryResult<…>`; they are listed once per repository rather than repeated per method.
 
 ### AuthRepository
 
@@ -279,10 +380,14 @@ Authentication, registration, password management, profile operations, and sessi
 | `resetPassword` | `suspend fun resetPassword(email: String, token: String, newPassword: String): ChangePasswordResponse` | Reset password using email token |
 | `verifyEmail` | `suspend fun verifyEmail(email: String, token: String, orderUUID: String?): VerifyEmailResponse` | Verify email address with token |
 | `deleteProfile` | `suspend fun deleteProfile(): DeleteProfileResponse` | Delete the authenticated user's account |
-| `getUser` | `suspend fun getUser(): Customer?` | Fetch the current authenticated user profile |
-| `updatePreferences` | `suspend fun updatePreferences(preferredLanguage: String?, preferredCurrency: String?): Customer` | Update language/currency preferences |
+| `fetchProfile` | `suspend fun fetchProfile(): Customer?` | `GET api/v2/customer/` — the customer of record. Returns `null` when unauthenticated, otherwise fetches the full profile, merges in the loyalty provider and enrolment from `customer/preferences/`, and saves it to the session |
+| `getUser` | `suspend fun getUser(): Customer?` | Alias for `fetchProfile()` |
+| `updatePreferences` | `suspend fun updatePreferences(preferredLanguage: String?, preferredCurrency: String?): Customer` | Update language/currency preferences, then re-fetch the full customer |
 | `updateProfile` | `suspend fun updateProfile(email, firstName?, lastName?, phoneNumber?, password): ProfileResponse` | Update profile fields (requires password confirmation) |
+| `updateCustomerProfile` | `suspend fun updateCustomerProfile(firstName?, lastName?, phoneNumber?, email?, password?): ProfileResponse` | Partial profile update — every field optional — then re-fetch the full customer |
 | `logout` | `suspend fun logout()` | Clear stored session and tokens |
+
+**On `fetchProfile` and the re-fetch:** `updatePreferences` and `updateCustomerProfile` call `fetchProfile()` after a successful write, so the `Customer` you hold afterwards is the server's, not a locally patched copy. If that re-fetch fails the SDK falls back to the 1.x behaviour — patching the cached customer with the fields you just sent — so an update never fails because the follow-up read did.
 
 ### CountryRepository
 
@@ -290,10 +395,13 @@ Destination country browsing and search.
 
 | Method | Signature | Description |
 |---|---|---|
-| `getCountries` | `suspend fun getCountries(): List<Country>` | Fetch all supported destination countries |
-| `getCountriesBy` | `suspend fun getCountriesBy(destination: Destination): List<Country>` | Filter countries by code, name, or region |
-| `search` | `suspend fun search(query: String): List<Country>` | Search countries by name |
-| `getUserLocation` | `suspend fun getUserLocation(): UserLocationResponse` | Detect user's current country via IP |
+| `getCountries` | `suspend fun getCountries(forceRefresh: Boolean = false, cacheTTL: Duration = COUNTRIES_TTL): List<Country>` | Fetch all supported destination countries |
+| `getCountriesBy` | `suspend fun getCountriesBy(destination: Destination, forceRefresh: Boolean = false, cacheTTL: Duration = COUNTRIES_TTL): List<Country>` | Filter countries by code, name, or region |
+| `search` | `suspend fun search(query: String): List<Country>` | Search countries by name (never cached) |
+| `getUserLocation` | `suspend fun getUserLocation(): UserLocationResponse` | Detect user's current country via IP (never cached) |
+| `invalidateCache` | `suspend fun invalidateCache()` | Drop this repository's cache entries |
+
+`…Result` twins: `getCountriesResult`, `getCountriesByResult`. Default TTL: `COUNTRIES_TTL` = 24 h.
 
 ### PackagesRepository
 
@@ -301,10 +409,15 @@ eSIM data package browsing and stock checks.
 
 | Method | Signature | Description |
 |---|---|---|
-| `getPackages` | `suspend fun getPackages(destination: Destination): List<PackagePlan>` | Fetch packages for a destination |
-| `getTopUpPackages` | `suspend fun getTopUpPackages(iccid: String): List<PackagePlan>` | Fetch top-up packages for an existing eSIM |
-| `checkStock` | `suspend fun checkStock(packageTypeId: Int): CheckStockResponse` | Check if a specific package is in stock |
-| `getPackageRating` | `suspend fun getPackageRating(): RatingApiResponse` | Fetch app store rating data |
+| `getPackages` | `suspend fun getPackages(destination: Destination, forceRefresh: Boolean = false, cacheTTL: Duration = PACKAGES_TTL): List<PackagePlan>` | Fetch packages for a destination |
+| `getPackagesPage` | `suspend fun getPackagesPage(destination: Destination, forceRefresh: Boolean = false, cacheTTL: Duration = PACKAGES_TTL): PackagesPage` | Same read, but also returns the total count and any promo code the API attached to the page |
+| `getTopUpPackages` | `suspend fun getTopUpPackages(iccid: String, forceRefresh: Boolean = false, cacheTTL: Duration = PACKAGES_TTL): List<PackagePlan>` | Fetch top-up packages for an existing eSIM |
+| `checkStock` | `suspend fun checkStock(packageTypeId: Int, forceRefresh: Boolean = false, cacheTTL: Duration = PACKAGES_TTL): CheckStockResponse` | Check if a specific package is in stock |
+| `invalidateCache` | `suspend fun invalidateCache()` | Drop this repository's cache entries |
+
+`…Result` twins: `getPackagesResult`, `getPackagesPageResult`, `getTopUpPackagesResult`, `checkStockResult`. Default TTL: `PACKAGES_TTL` = 1 h.
+
+> `getPackageRating()` moved to [`StoreReviewRepository.fetchStoreReview()`](#storereviewrepository) in 2.0.
 
 ### EsimRepository
 
@@ -312,22 +425,45 @@ eSIM lifecycle management for authenticated users.
 
 | Method | Signature | Description |
 |---|---|---|
-| `getEsims` | `suspend fun getEsims(): List<AssignedEsim>` | Fetch all eSIMs assigned to the customer |
-| `getActiveEsims` | `suspend fun getActiveEsims(): List<AssignedEsim>` | Fetch only non-archived eSIMs |
-| `getArchivedEsims` | `suspend fun getArchivedEsims(): List<AssignedEsim>` | Fetch only archived eSIMs |
-| `getEsimByIccid` | `suspend fun getEsimByIccid(iccid: String): AssignedEsim` | Fetch a specific eSIM by ICCID |
-| `updateEsim` | `suspend fun updateEsim(iccid: String, name: String?, isAutoTopUp: Boolean?, isArchived: Boolean?)` | Update eSIM settings (name, auto top-up, archive) |
+| `getEsims` | `suspend fun getEsims(showLegacy: Boolean = true, isPrimary: Boolean? = null, forceRefresh: Boolean = false, cacheTTL: Duration = ESIM_LIST_TTL, includeBase64QrCode: Boolean = false): List<AssignedEsim>` | Fetch all eSIMs assigned to the customer |
+| `getActiveEsims` | same parameters as `getEsims` | Fetch only non-archived eSIMs |
+| `getArchivedEsims` | same parameters as `getEsims` | Fetch only archived eSIMs |
+| `getEsimByIccid` | `suspend fun getEsimByIccid(iccid: String, forceRefresh: Boolean = false, cacheTTL: Duration = ESIM_DETAILS_TTL, includeBase64QrCode: Boolean = false): AssignedEsim` | Fetch a single eSIM from `customer/esims/{iccid}/details/` |
+| `updateEsim` | `suspend fun updateEsim(iccid: String, name: String? = null, isAutoTopUp: Boolean? = null, isArchived: Boolean? = null, isPrimary: Boolean? = null)` | Update eSIM settings. Throws if the server rejects the write |
+| `updateEsimPrimaryStatus` | `suspend fun updateEsimPrimaryStatus(iccid: String, isPrimary: Boolean)` | Convenience wrapper for the primary flag |
+| `invalidateCache` | `suspend fun invalidateCache()` | Drop both the list and detail cache entries |
+
+`…Result` twins: `getEsimsResult`, `getActiveEsimsResult`, `getArchivedEsimsResult`, `getEsimByIccidResult`. Default TTLs: `ESIM_LIST_TTL` = 24 h, `ESIM_DETAILS_TTL` = 5 min.
+
+**`includeBase64QrCode`** asks the API to embed the QR code image with the eSIM, so an install screen needs one request rather than two. When it is set, `AssignedEsim.qrCodeImageBase64` is populated alongside `smDpAddress` and `activationCode`, and `AssignedEsim.canInstallDirectly` reports whether the eSIM carries enough to hand straight to the Android eSIM installer — no order lookup required:
+
+```kotlin
+val esim = esimRepo.getEsimByIccid(iccid, includeBase64QrCode = true)
+if (esim.canInstallDirectly) {
+    val activation = listOf("LPA:1", esim.smDpAddress, esim.activationCode).joinToString("$")
+    install(activation)
+}
+```
+
+Lists are requested newest-first (`order_by=-assigned_date`) and capped at 1000 entries, matching the iOS SDK.
 
 ### OrdersRepository
 
-Order history and tracking.
+Order history, order details, invoices, and conversion tracking.
 
 | Method | Signature | Description |
 |---|---|---|
-| `getOrderHistory` | `suspend fun getOrderHistory(): List<OrderHistoryItem>` | Fetch all past orders |
-| `getOrderHistory` | `suspend fun getOrderHistory(withLoyaltyPoints: Boolean): List<OrderHistoryItem>` | Fetch orders with optional loyalty points data |
-| `getOrderDetails` | `suspend fun getOrderDetails(orderUuid: String): OrderDetail` | Fetch full order details including eSIM profile and QR code |
-| `trackOrder` | `suspend fun trackOrder(orderUuid: String)` | Mark an order's conversion as tracked |
+| `getOrderHistory` | `suspend fun getOrderHistory(forceRefresh: Boolean = false, cacheTTL: Duration = ORDERS_LIST_TTL): List<OrderHistoryItem>` | Fetch past orders |
+| `getOrderHistory` | `suspend fun getOrderHistory(withLoyaltyPoints: Boolean, forceRefresh: Boolean = false, cacheTTL: Duration = ORDERS_LIST_TTL): List<OrderHistoryItem>` | Fetch orders with loyalty points data |
+| `getOrderDetails` | `suspend fun getOrderDetails(orderUuid: String, forceRefresh: Boolean = false, cacheTTL: Duration = ORDER_DETAIL_TTL): OrderDetail` | Fetch full order details including eSIM profile and QR code |
+| `getOrdersPageResult` | `suspend fun getOrdersPageResult(limit: Int = ORDERS_PAGE_LIMIT, offset: Int = 0, withLoyaltyPoints: Boolean = false, forceRefresh: Boolean = false, cacheTTL: Duration = ORDERS_LIST_TTL): RepositoryResult<OrdersPage>` | Paged order read |
+| `getOrderInvoice` | `suspend fun getOrderInvoice(orderUuid: String): ByteArray` | Download the order's PDF invoice bytes |
+| `trackOrder` | `suspend fun trackOrder(orderUuid: String)` | Mark an order's conversion as tracked (never throws) |
+| `invalidateCache` | `suspend fun invalidateCache()` | Drop this repository's cache entries |
+
+`…Result` twins: `getOrderHistoryResult` (both overloads), `getOrderDetailsResult`. Default TTLs: `ORDERS_LIST_TTL` = 10 min, `ORDER_DETAIL_TTL` = 5 min.
+
+**Pending orders:** `getOrderDetails` retries an order whose `orderStatus` is still `pending` up to 5 times, one second apart, before returning it. A checkout screen can call it straight after Stripe confirms without polling itself.
 
 ### PaymentsRepository
 
@@ -353,11 +489,50 @@ Loyalty program balance, quotes, and Mokafaa OTP flows (enrollment and checkout 
 
 | Method | Signature | Description |
 |---|---|---|
-| `getLoyaltyBalance` | `suspend fun getLoyaltyBalance(): KredsLoyaltyBalanceResponse` | Fetch the customer's current loyalty balance |
+| `getLoyaltyBalance` | `suspend fun getLoyaltyBalance(forceRefresh: Boolean = true, cacheTTL: Duration = KREDS_BALANCE_TTL): KredsLoyaltyBalanceResponse` | Fetch the customer's current loyalty balance. Note `forceRefresh` defaults to `true` |
 | `getKredsQuote` | `suspend fun getKredsQuote(packageTypeId: Int, loyaltyPointsAmount: Double): KredsQuoteResponse` | Get a discount quote for applying Kreds to a package |
 | `getMokafaaQuote` | `suspend fun getMokafaaQuote(packageTypeId: Int, loyaltyPointsToUse: Int): KredsQuoteResponse` | Get a discount quote for applying Mokafaa points to a package |
 | `initiateMokafaaOtp` | `suspend fun initiateMokafaaOtp(purpose: String, platform: String = "android"): MokafaaOtpInitiateResponse` | Start a Mokafaa OTP session (`purpose`: `enrollment` or `checkout`) |
 | `validateMokafaaOtp` | `suspend fun validateMokafaaOtp(sessionId: String, otp: String, points: Int? = null, packageTypeId: Int? = null): MokafaaOtpValidateResponse` | Validate the SMS OTP; `points` is required for checkout, omitted for enrollment |
+| `invalidateCache` | `suspend fun invalidateCache()` | Drop this repository's cache entries |
+
+`…Result` twin: `getLoyaltyBalanceResult`. Default TTL: `KREDS_BALANCE_TTL` = 1 h.
+
+Mokafaa methods throw `LoyaltyApiException(httpCode, message)` on HTTP errors — `message` is the backend error verbatim, `httpCode` lets callers branch on 400/401/503.
+
+### ThemeRepository
+
+Brand theming served by the API, so imagery and accent colours change without an app release.
+
+| Method | Signature | Description |
+|---|---|---|
+| `fetchPageTheme` | `suspend fun fetchPageTheme(page: String, forceRefresh: Boolean = false, cacheTTL: Duration = THEME_TTL): ThemePage?` | Theme for a named page. `null` when the API has no theme for it |
+| `fetchDestinationTheme` | `suspend fun fetchDestinationTheme(countryCode: String, forceRefresh: Boolean = false, cacheTTL: Duration = THEME_TTL): ThemeDestination?` | Theme for a destination, matched case-insensitively on country code |
+| `invalidateCache` | `suspend fun invalidateCache()` | Drop this repository's cache entries |
+
+`…Result` twins: `fetchPageThemeResult`, `fetchDestinationThemeResult`. Default TTL: `THEME_TTL` = 1 h.
+
+### FaqAndSupportRepository
+
+Destination FAQ content.
+
+| Method | Signature | Description |
+|---|---|---|
+| `fetchDestinationFaqs` | `suspend fun fetchDestinationFaqs(countryNameSlug: String, forceRefresh: Boolean = false, cacheTTL: Duration = FAQS_TTL): List<Faq>` | FAQs for a destination slug |
+| `invalidateCache` | `suspend fun invalidateCache()` | Drop this repository's cache entries |
+
+`…Result` twin: `fetchDestinationFaqsResult`. Default TTL: `FAQS_TTL` = 24 h.
+
+### StoreReviewRepository
+
+App store review summary, used to drive rating prompts and social proof.
+
+| Method | Signature | Description |
+|---|---|---|
+| `fetchStoreReview` | `suspend fun fetchStoreReview(forceRefresh: Boolean = false, cacheTTL: Duration = STORE_REVIEW_TTL): RatingApiResponse` | Store review summary, reviews, and stats |
+| `invalidateCache` | `suspend fun invalidateCache()` | Drop this repository's cache entries |
+
+`…Result` twin: `fetchStoreReviewResult`. Default TTL: `STORE_REVIEW_TTL` = 24 h.
 
 ### UserRepository
 
@@ -397,6 +572,20 @@ Voucher code redemption.
 |---|---|---|
 | `redeemVoucher` | `suspend fun redeemVoucher(code: String): Result<VoucherRedeemResponse>` | Redeem a voucher code |
 
+## Errors and exceptions
+
+Reads taken through a `…Result` method report failure in `RepositoryResult.failure` as an [`SdkError`](#caching-and-offline-reads) and do not throw. Everything else throws. These are the SDK's own public exception types:
+
+| Exception | Thrown by | Meaning |
+|---|---|---|
+| `SdkError` (sealed, extends `IOException`) | cached reads, `getOrderInvoice`, the auth interceptor | Transport or decoding failure. See the case table under [Caching and offline reads](#caching-and-offline-reads) |
+| `InvalidRefreshTokenException` | `AuthRepository.loginWithRefreshToken` | The stored refresh token was rejected. The session has already been cleared — send the user to sign-in |
+| `LoyaltyApiException(httpCode, message)` | `LoyaltyRepository` Mokafaa methods | Backend error, `message` verbatim. Branch on `httpCode` (400 / 401 / 503) |
+| `PaymentApiException(httpCode, type, message)` | `PaymentsRepository.getPaymentIntent` | Payment rejected. `type` is `"VALIDATION_ERROR"` for a bad request |
+| `SecureStorageInitException` | `EsimplifiedSdk.initialize()` | `EncryptedSharedPreferences` could not be initialised. The SDK refuses to fall back to plaintext — sign the user out and re-prompt |
+
+Other API failures surface as a plain `Exception` whose message is the backend's error text, parsed out of the response body.
+
 ## Authentication Flow
 
 The SDK handles the complete authentication lifecycle internally.
@@ -414,7 +603,9 @@ App calls AuthRepository.login(email, password)
 
 ### Token Storage
 
-Tokens and user data are persisted in `EncryptedSharedPreferences` (AES-256-GCM encryption, AES-256-SIV key encryption). The `DefaultSecureStorage` class handles all read/write operations with automatic fallback to regular `SharedPreferences` if encrypted storage initialization fails.
+Tokens and user data are persisted in `EncryptedSharedPreferences` (AES-256-GCM encryption, AES-256-SIV key encryption), handled by the internal `DefaultSecureStorage`.
+
+If encrypted storage cannot be initialised, the SDK **throws `SecureStorageInitException` and does not fall back to plaintext `SharedPreferences`** — auth tokens would otherwise be written unencrypted to the device. Handle it where you call `EsimplifiedSdk.initialize()`: sign the user out and prompt them to authenticate again.
 
 ### Automatic Token Refresh
 
@@ -425,7 +616,10 @@ The `SdkAuthInterceptor` (an OkHttp interceptor) handles token refresh transpare
    - Sends a refresh token request to `POST /auth/token/` (grant_type=refresh_token)
    - Updates the stored tokens via `SessionManager.save()`
    - Retries the original request with the new access token
-3. If the refresh also fails, the `401` response is returned to the caller
+3. If the refresh **is rejected** — HTTP 400, 401 or 403, or there is no refresh token to send — the session ends and the user is signed out
+4. If the refresh fails for any other reason — a 500, a gateway error, a dropped connection — the session is **kept** and the failure is surfaced to the caller as an `SdkError.NetworkError`
+
+Point 4 is a behaviour change in 2.0. Before, any non-2xx refresh response ended the session, so a brief server-side blip signed users out.
 
 The interceptor also adds:
 - `Authorization: Basic {base64(clientId:clientSecret)}` for unauthenticated requests
@@ -459,6 +653,13 @@ authRepo.logout()
 ```
 
 Clears all stored tokens and user data from `EncryptedSharedPreferences`, resets `SessionManager` state to `Auth.Unauthenticated`.
+
+Cached reads are **not** cleared by `logout()`. Call `EsimplifiedSdk.clearAllCaches()` alongside it so the next user does not see the previous user's eSIMs or orders:
+
+```kotlin
+authRepo.logout()
+EsimplifiedSdk.clearAllCaches()
+```
 
 ## Custom Storage
 
@@ -499,6 +700,136 @@ EsimplifiedSdk.initialize(
     )
 )
 ```
+
+## Migrating from 1.x to 2.0
+
+2.0 is a major release because model field types changed. The compiler catches most of it. **One category it does not catch is described under [The silent trap](#2-the-silent-trap-analytics-and-anything-typed-any) — read that section even if your build is green.**
+
+### 1. Money fields are now `String`
+
+Every money amount now carries the server's decimal text verbatim instead of a parsed `Double`. Display sites use the `String` as-is; arithmetic uses the new `…Value` accessor.
+
+| Model | Field | 1.x | 2.0 | Fix |
+|---|---|---|---|---|
+| `PackagePlan` | `price` | `Double` | `String` | display: use as-is · arithmetic: `price` → `priceValue` |
+| `PackagePlan` | `discountedPrice` | `Double?` | `String?` | display: use as-is · arithmetic: `discountedPrice` → `discountedPriceValue` |
+| `PackagePlan` | `purchasePrice` | `Double` | `String` | display: use as-is · arithmetic: `purchasePrice` → `purchasePriceValue` |
+| `OrderDetail` | `price` | `Double` | `String` | display: use as-is · arithmetic: `price` → `priceValue` |
+| `OrderDetail` | `finalPrice` | `Double` | `String` | display: use as-is · arithmetic: `finalPrice` → `finalPriceValue` |
+| `OrderDetail` | `discountAmount` | `Double` | `String` | display: use as-is · arithmetic: `discountAmount` → `discountAmountValue` |
+| `Country` | `fromPrice` | `Double?` | `String?` | display: use as-is · arithmetic: `fromPrice` → `fromPriceValue` |
+
+```kotlin
+// 1.x
+Text("$" + String.format("%.2f", plan.price))
+val total = plan.purchasePrice * quantity
+
+// 2.0
+Text("$" + plan.price)                          // already formatted by the server
+val total = plan.purchasePriceValue * quantity  // Double, for arithmetic
+```
+
+`PackagePlan.convertedPrice` is still `Double?` — it is `Double?` in the iOS SDK too, and did not change.
+
+`PackagePlan.purchasePrice`, `isFreePurchase` and `hasDiscount` are now computed properties (`get()`) rather than values fixed at construction. Behaviour is the same; only `copy()` on a hand-built instance now recomputes them.
+
+### 2. The silent trap: analytics, and anything typed `Any`
+
+A `Map<String, Any>` accepts a `String` exactly as happily as it accepted a `Double`. **Nothing fails to compile, nothing throws at runtime, and the event ships with the wrong type.** Analytics payloads, `Bundle.putString`/`putDouble` pairs, JSON built by hand, and any `Any`-typed builder are all affected.
+
+```kotlin
+// Compiles before AND after. Before: numeric 9.99. After: the string "9.99".
+analytics.logEvent("purchase", mapOf("value" to order.finalPrice))
+
+// 2.0 — be explicit about the numeric type
+analytics.logEvent("purchase", mapOf("value" to order.finalPriceValue))
+```
+
+Grep your app for every use of the seven fields in the table above and check each one by hand — not just the ones the compiler flagged:
+
+```bash
+grep -rn "\.price\b\|\.finalPrice\b\|\.discountedPrice\b\|\.purchasePrice\b\|\.discountAmount\b\|\.fromPrice\b" app/src
+```
+
+This is the one that nearly shipped wrong. Revenue reporting silently changing type is not something a green build will tell you about.
+
+### 3. `Customer` notification flags (additive — nothing to fix)
+
+`Customer` now carries the eight notification flags the live API actually sends. This is purely additive; no existing `Customer` field was removed or retyped.
+
+| Field | JSON key |
+|---|---|
+| `receiveMarketingEmail` | `receive_marketing_email` |
+| `receiveMarketingPush` | `receive_marketing_push` |
+| `receiveAccountEmail` | `receive_account_email` |
+| `receiveAccountSms` | `receive_account_sms` |
+| `receiveAccountPush` | `receive_account_push` |
+| `receivePurchaseEmail` | `receive_purchase_email` |
+| `receivePurchasePush` | `receive_purchase_push` |
+| `receiveViberMessages` | `receive_viber_messages` |
+
+All eight are `Boolean?` defaulting to `null`, so `null` means "the API did not say", which is distinct from `false`. Treat `null` as unknown, not as off:
+
+```kotlin
+val marketingOn = customer.receiveMarketingEmail ?: false
+```
+
+Also added: `acquisitionSource: String?`, and `referralCode` now also decodes from the API's `unique_referral_code` key as well as `referral_code`.
+
+### 4. `getPackageRating()` moved
+
+`PackagesRepository.getPackageRating()` is gone. Use `StoreReviewRepository.fetchStoreReview()`, injected the same way:
+
+```kotlin
+// 1.x
+val rating = packagesRepo.getPackageRating()
+
+// 2.0
+val rating = storeReviewRepo.fetchStoreReview()
+```
+
+`RatingApiResponse` gained `reviews: List<Review>?` and `stats: Stats?`, and its previously-required fields now have defaults.
+
+### 5. Fields that became nullable
+
+Existing call sites need a null check.
+
+| Model | Field | 1.x | 2.0 | Why |
+|---|---|---|---|---|
+| `AssignedEsim` | `profile` | `EsimProfile` | `EsimProfile?` | An eSIM that has not been provisioned yet has no profile; the whole response used to fail to decode |
+| `OrderHistoryItem` | `country` | `Country` | `Country?` | Same — one order without a country used to fail the whole history |
+| `CheckStockResponse` | `packageInfo` | `PackagePlan` | `PackagePlan?` | An out-of-stock response may omit the package |
+| `VisaRewardsResponse` | `used`, `allowed`, `remaining` | `Int` (default 0) | `Int?` (default `null`) | Distinguishes "the API sent zero" from "the API sent nothing" |
+
+For `VisaRewardsResponse`, use the new `remainingOrAllowed: Int?` (`remaining ?: allowed`) where you previously read `remaining`.
+
+### 6. New optional parameters on existing methods
+
+All have defaults, so existing calls still compile. They are worth adopting:
+
+- `getEsims` / `getActiveEsims` / `getArchivedEsims`: `showLegacy`, `isPrimary`, `forceRefresh`, `cacheTTL`, `includeBase64QrCode`
+- `getEsimByIccid`: `forceRefresh`, `cacheTTL`, `includeBase64QrCode`
+- `updateEsim`: `isPrimary`
+- `getPackages` / `getTopUpPackages` / `checkStock` / `getCountries` / `getCountriesBy` / `getOrderHistory` / `getOrderDetails` / `getLoyaltyBalance`: `forceRefresh`, `cacheTTL`
+- `SdkConfig`: `enableCaching`, `defaultCacheTtlSeconds`
+
+### 7. Behaviour changes with no signature change
+
+- **`updateEsim` now throws** when the server rejects the write. 1.x called an endpoint typed `Response<…>` and never checked `isSuccessful`, so a rejected rename or archive returned normally and looked like a success. 2.0 throws on a non-2xx response, and also when the success body is not the API's `eSIM updated successfully`. Wrap existing calls in the error handling you already use for other writes.
+- **A failed token refresh no longer always ends the session.** Only 400/401/403 (or a missing refresh token) sign the user out; transient server and network failures keep the session and surface an error. If your app has a workaround that re-logs users in after a blip, you can remove it.
+- **`updatePreferences()` and `updateCustomerProfile()` now return the server's customer**, re-fetched from `GET api/v2/customer/` after the write, rather than a locally patched copy. If the re-fetch fails, the 1.x local-copy behaviour is used as a fallback, so an update never fails because the follow-up read did. `getUser()` already read from `GET api/v2/customer/` in 1.x and is unchanged apart from keeping a referral code the profile response omits.
+- **`getOrderDetails` retries a `pending` order** up to 5 times, one second apart. A checkout screen that polls on its own can stop.
+- **Reads are cached in memory.** If your app relies on every call hitting the network, pass `forceRefresh = true` or set `enableCaching = false` in `SdkConfig`. Add `EsimplifiedSdk.clearAllCaches()` to your logout path.
+
+### Checklist
+
+- [ ] Build, and fix every money-field type error with the `…Value` accessor or the `String` verbatim
+- [ ] Grep for the seven money fields and check every `Any`-typed / analytics use by hand
+- [ ] Treat the eight new notification flags' `null` as unknown, not `false`
+- [ ] Move `getPackageRating()` to `StoreReviewRepository.fetchStoreReview()`
+- [ ] Null-check `AssignedEsim.profile`, `OrderHistoryItem.country`, `CheckStockResponse.packageInfo`
+- [ ] Handle the exception `updateEsim` can now throw
+- [ ] Add `EsimplifiedSdk.clearAllCaches()` to logout
 
 ## Support
 
