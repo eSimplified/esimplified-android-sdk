@@ -40,7 +40,7 @@ dependencies {
 
 Maven Central is included by default in all Gradle projects. No changes to `settings.gradle.kts` required.
 
-> **Upgrading from 1.x?** 2.0 changes the type of every money field and makes several model fields nullable. Read [Migrating from 1.x to 2.0](#migrating-from-1x-to-20) before you bump the version.
+> **Upgrading from 1.x?** 2.0 changes the type of every money field, makes several model fields nullable, and removes seven unused request types. Read [Migrating from 1.x to 2.0](#migrating-from-1x-to-20) before you bump the version.
 
 ## Quick Start
 
@@ -229,7 +229,7 @@ val total = plan.purchasePriceValue * quantity                // arithmetic: use
 
 Decoding accepts either a JSON string (`"12.50"`) or a bare number (`12.5`) for these fields, so a backend that changes its mind about quoting will not break the client.
 
-`PackagePlan.convertedPrice` stays `Double?` — it is a `Double?` in the iOS SDK too. `OrderHistoryItem.finalPrice` / `purchasePrice` / `discountAmount` were already `String` before 2.0 and are unchanged; they have no `…Value` accessors.
+`PackagePlan.convertedPrice` stays `Double?` — it is a `Double?` in the iOS SDK too. `OrderHistoryItem.finalPrice` / `purchasePrice` / `discountAmount` were already `String` before 2.0 and are unchanged; they have no `…Value` accessors, and neither does the iOS SDK's order-history model.
 
 ## All Models
 
@@ -239,7 +239,6 @@ Every model is a `@Serializable` data class in `io.esimplified.sdk.model`.
 |---|---|
 | `Customer` | Authenticated user profile (id, email, name, phone, wallet, referral code, acquisition source, notification flags) |
 | `CustomerDetails` | Mutable customer fields for registration and profile updates |
-| `CustomerSignIn` | Login request payload (email + password) |
 | `CustomerForgetPassword` | Forgot password request (email) |
 | `CustomerForgetPasswordResponse` | Forgot password API response |
 | `CustomerChangePassword` | Change/reset password request payload |
@@ -255,14 +254,11 @@ Every model is a `@Serializable` data class in `io.esimplified.sdk.model`.
 | `AssignedEsim` | Full eSIM assigned to a customer (ICCID, packages, balance, settings) |
 | `EsimProfile` | eSIM profile state from the SM-DP+ platform |
 | `EsimProfileState` | Enum: ENABLED, DOWNLOADED, INSTALLED, DISABLED, DELETED, RELEASED, ERROR |
-| `EsimRequest` | Request parameters for eSIM list queries |
-| `EsimPackageListRequest` | Request for eSIM-specific package list |
 | `OrderDetail` | Full order with pricing, eSIM profile, QR code, payment info, loyalty points |
 | `OrdersPage` | A page of order history plus its total count and a `hasMore` flag |
 | `OrderHistoryItem` | Summary order for history lists |
 | `PurchaseCountry` | Country the purchase was made from (on `OrderHistoryItem`) |
 | `OrderInfo` | Order info with customer details and QR code |
-| `OrderRequest` | Order query parameters |
 | `PaymentRequest` | Payment intent creation payload (package, customer, payment method, loyalty points) |
 | `PaymentMethod` | Enum: STRIPE_INTENT, STRIPE_CHECKOUT, AGENT_PAYMENT, COMPLIMENTARY, VOUCHER, SPLIT_PAYMENT, PAY_WITH_POINTS, UNKNOWN (with `displayName` and `shouldShowAmount`) |
 | `CurrencyObject` | Currency with symbol and ISO code |
@@ -280,7 +276,6 @@ Every model is a `@Serializable` data class in `io.esimplified.sdk.model`.
 | `MokafaaElection` | Mokafaa election flag returned on registration |
 | `VisaRewardsIframeResponse` | Visa rewards verification iframe URL and token |
 | `VisaRewardsResponse` | Visa rewards eligibility, status, and reward details |
-| `RewardActivationRequest` | Reward activation payload |
 | `VoucherRedeemRequest` | Voucher code redemption request |
 | `VoucherRedeemResponse` | Voucher redemption result (success flag + redirect URL) |
 | `VerifyEmailRequest` | Email verification payload (email + token) |
@@ -306,7 +301,6 @@ Every model is a `@Serializable` data class in `io.esimplified.sdk.model`.
 | `ThemeDestination` | Theme for a destination (image, gallery, country code) |
 | `ThemeImage` | Theme image (url + accent colour) |
 | `ApiErrorResponse` | Standardized API error (detail, error, message) |
-| `SearchBody` | Search query payload |
 | `IframeRequest` | Iframe vendor request |
 | `BaseResponse<T>` | Paginated response wrapper (count, next, previous, results) |
 | `RepositoryResult<T>` | Read result: `value`, `isStale`, `failure` (in `io.esimplified.sdk.repository`) |
@@ -356,7 +350,7 @@ The plain (non-`Result`) methods keep the old behaviour: a cache miss plus a fai
 
 Cache control:
 
-- `EsimplifiedSdk.clearAllCaches()` — drop everything (call this on logout).
+- `EsimplifiedSdk.clearAllCaches()` — drop everything. `logout()` already does this for you; call it directly only when you want a clean slate without ending the session.
 - `repository.invalidateCache()` — drop just that repository's entries.
 
 ## All Repository Methods
@@ -385,7 +379,7 @@ Authentication, registration, password management, profile operations, and sessi
 | `updatePreferences` | `suspend fun updatePreferences(preferredLanguage: String?, preferredCurrency: String?): Customer` | Update language/currency preferences, then re-fetch the full customer |
 | `updateProfile` | `suspend fun updateProfile(email, firstName?, lastName?, phoneNumber?, password): ProfileResponse` | Update profile fields (requires password confirmation) |
 | `updateCustomerProfile` | `suspend fun updateCustomerProfile(firstName?, lastName?, phoneNumber?, email?, password?): ProfileResponse` | Partial profile update — every field optional — then re-fetch the full customer |
-| `logout` | `suspend fun logout()` | Clear stored session and tokens |
+| `logout` | `suspend fun logout()` | Clear stored session, tokens and every cached read |
 
 **On `fetchProfile` and the re-fetch:** `updatePreferences` and `updateCustomerProfile` call `fetchProfile()` after a successful write, so the `Customer` you hold afterwards is the server's, not a locally patched copy. If that re-fetch fails the SDK falls back to the 1.x behaviour — patching the cached customer with the fields you just sent — so an update never fails because the follow-up read did.
 
@@ -427,7 +421,7 @@ eSIM lifecycle management for authenticated users.
 |---|---|---|
 | `getEsims` | `suspend fun getEsims(showLegacy: Boolean = true, isPrimary: Boolean? = null, forceRefresh: Boolean = false, cacheTTL: Duration = ESIM_LIST_TTL, includeBase64QrCode: Boolean = false): List<AssignedEsim>` | Fetch all eSIMs assigned to the customer |
 | `getActiveEsims` | same parameters as `getEsims` | Fetch only non-archived eSIMs |
-| `getArchivedEsims` | same parameters as `getEsims` | Fetch only archived eSIMs |
+| `getArchivedEsims` | same parameters as `getEsims`, except `showLegacy: Boolean? = null` | Fetch only archived eSIMs. `showLegacy = null` leaves `show_legacy` out of the request entirely |
 | `getEsimByIccid` | `suspend fun getEsimByIccid(iccid: String, forceRefresh: Boolean = false, cacheTTL: Duration = ESIM_DETAILS_TTL, includeBase64QrCode: Boolean = false): AssignedEsim` | Fetch a single eSIM from `customer/esims/{iccid}/details/` |
 | `updateEsim` | `suspend fun updateEsim(iccid: String, name: String? = null, isAutoTopUp: Boolean? = null, isArchived: Boolean? = null, isPrimary: Boolean? = null)` | Update eSIM settings. Throws if the server rejects the write |
 | `updateEsimPrimaryStatus` | `suspend fun updateEsimPrimaryStatus(iccid: String, isPrimary: Boolean)` | Convenience wrapper for the primary flag |
@@ -652,14 +646,9 @@ Check auth state via:
 authRepo.logout()
 ```
 
-Clears all stored tokens and user data from `EncryptedSharedPreferences`, resets `SessionManager` state to `Auth.Unauthenticated`.
+Clears all stored tokens and user data from `EncryptedSharedPreferences`, resets `SessionManager` state to `Auth.Unauthenticated`, and drops every cached read so the next user on the device cannot be served the previous user's eSIMs or orders.
 
-Cached reads are **not** cleared by `logout()`. Call `EsimplifiedSdk.clearAllCaches()` alongside it so the next user does not see the previous user's eSIMs or orders:
-
-```kotlin
-authRepo.logout()
-EsimplifiedSdk.clearAllCaches()
-```
+You no longer need to call `EsimplifiedSdk.clearAllCaches()` alongside it; leaving an existing call in place is harmless.
 
 ## Custom Storage
 
@@ -807,7 +796,7 @@ For `VisaRewardsResponse`, use the new `remainingOrAllowed: Int?` (`remaining ?:
 
 All have defaults, so existing calls still compile. They are worth adopting:
 
-- `getEsims` / `getActiveEsims` / `getArchivedEsims`: `showLegacy`, `isPrimary`, `forceRefresh`, `cacheTTL`, `includeBase64QrCode`
+- `getEsims` / `getActiveEsims` / `getArchivedEsims`: `showLegacy`, `isPrimary`, `forceRefresh`, `cacheTTL`, `includeBase64QrCode` (on the archived reads `showLegacy` is `Boolean?` — see section 9)
 - `getEsimByIccid`: `forceRefresh`, `cacheTTL`, `includeBase64QrCode`
 - `updateEsim`: `isPrimary`
 - `getPackages` / `getTopUpPackages` / `checkStock` / `getCountries` / `getCountriesBy` / `getOrderHistory` / `getOrderDetails` / `getLoyaltyBalance`: `forceRefresh`, `cacheTTL`
@@ -819,7 +808,43 @@ All have defaults, so existing calls still compile. They are worth adopting:
 - **A failed token refresh no longer always ends the session.** Only 400/401/403 (or a missing refresh token) sign the user out; transient server and network failures keep the session and surface an error. If your app has a workaround that re-logs users in after a blip, you can remove it.
 - **`updatePreferences()` and `updateCustomerProfile()` now return the server's customer**, re-fetched from `GET api/v2/customer/` after the write, rather than a locally patched copy. If the re-fetch fails, the 1.x local-copy behaviour is used as a fallback, so an update never fails because the follow-up read did. `getUser()` already read from `GET api/v2/customer/` in 1.x and is unchanged apart from keeping a referral code the profile response omits.
 - **`getOrderDetails` retries a `pending` order** up to 5 times, one second apart. A checkout screen that polls on its own can stop.
-- **Reads are cached in memory.** If your app relies on every call hitting the network, pass `forceRefresh = true` or set `enableCaching = false` in `SdkConfig`. Add `EsimplifiedSdk.clearAllCaches()` to your logout path.
+- **Reads are cached in memory.** If your app relies on every call hitting the network, pass `forceRefresh = true` or set `enableCaching = false` in `SdkConfig`.
+- **`logout()` now clears every cached read** as well as the session, so a second customer on the same device is never served the first one's eSIMs or orders. 1.x left the cache in place, which is why the 1.x advice was to call `EsimplifiedSdk.clearAllCaches()` on logout. That call is now redundant, and harmless if you keep it.
+
+### 8. Seven unused request types were removed
+
+These were declared but never used — no repository method took or returned any of them, and no endpoint referenced them. They are gone from `io.esimplified.sdk.model` in 2.0.
+
+| Removed type | Was |
+|---|---|
+| `EsimRequest` | Request parameters for eSIM list queries |
+| `EsimPackageListRequest` | Request for eSIM-specific package list |
+| `OrderRequest` | Order query parameters |
+| `SearchBody` | Search query payload |
+| `CustomerSignIn` | Login request payload (email + password) |
+| `AuthResponse` | Legacy session-auth response |
+| `RewardActivationRequest` | Reward activation payload |
+
+Nothing replaces them: the repository methods that cover these flows (`EsimRepository.getEsims`, `PackagesRepository.getTopUpPackages`, `OrdersRepository.getOrderDetails`, `CountryRepository.search`, `AuthRepository.login`, `VisaRewardsRepository.activate`) take plain arguments and always did. If your app constructs one of these types, delete the construction — the argument it was feeding is already a parameter on the method you call.
+
+`RestrictedCountry`, `RestrictionType` and `RestrictedFor` are **not** removed. They are decoded by the app from remote config rather than by the SDK, which is why they look unused from inside the SDK.
+
+### 9. `getArchivedEsims` no longer sends `show_legacy`
+
+`getArchivedEsims` and `getArchivedEsimsResult` now take `showLegacy: Boolean? = null` instead of `showLegacy: Boolean = true`, and `null` means the SDK leaves `show_legacy` out of the request altogether. The archived read now sends `show_archived_esims=true` and no legacy flag, which is what the API expects for that list.
+
+| | 1.x and 2.0-beta | 2.0 |
+|---|---|---|
+| `getArchivedEsims()` | `…&show_archived_esims=true&show_legacy=true` | `…&show_archived_esims=true` |
+| `getArchivedEsims(showLegacy = true)` | `…&show_legacy=true` | `…&show_legacy=true` (unchanged) |
+| `getActiveEsims()` | `…&show_legacy=true` | `…&show_legacy=true` (unchanged) |
+| `getEsims()` | both legs send `show_legacy=true` | both legs send `show_legacy=true` (unchanged) |
+
+Existing calls that pass `showLegacy = true` to an archived read still compile and still send the flag; they are now redundant and can be dropped. Calls that pass nothing get the new behaviour.
+
+**If you implement `EsimRepository` yourself** — a test fake, for instance — update those two overrides to `showLegacy: Boolean?`, or they will no longer override the interface.
+
+The archived list's cache key changed with it: `esims_true_legacyunset_…` when the flag is omitted, `esims_true_legacytrue_…` when it is passed. Only in-memory keys, nothing persisted.
 
 ### Checklist
 
@@ -829,7 +854,9 @@ All have defaults, so existing calls still compile. They are worth adopting:
 - [ ] Move `getPackageRating()` to `StoreReviewRepository.fetchStoreReview()`
 - [ ] Null-check `AssignedEsim.profile`, `OrderHistoryItem.country`, `CheckStockResponse.packageInfo`
 - [ ] Handle the exception `updateEsim` can now throw
-- [ ] Add `EsimplifiedSdk.clearAllCaches()` to logout
+- [ ] Delete any construction of the seven removed request types
+- [ ] Drop the `EsimplifiedSdk.clearAllCaches()` call from your logout path — `logout()` does it
+- [ ] Widen any `EsimRepository` implementation of `getArchivedEsims` / `getArchivedEsimsResult` to `showLegacy: Boolean?`
 
 ## Support
 

@@ -2,7 +2,7 @@
 
 Documents `io.github.esimplified:android-sdk:2.0.0`.
 
-Upgrading from 1.x? Start with [Migrating from 1.x to 2.0](README.md#migrating-from-1x-to-20) in the README — money fields changed type, and the compiler does not catch every call site.
+Upgrading from 1.x? Start with [Migrating from 1.x to 2.0](README.md#migrating-from-1x-to-20) in the README — money fields changed type, seven unused request types were removed (`EsimRequest`, `EsimPackageListRequest`, `OrderRequest`, `SearchBody`, `CustomerSignIn`, `AuthResponse`, `RewardActivationRequest`), and the compiler does not catch every call site.
 
 ## Initialization
 
@@ -61,7 +61,7 @@ startKoin {
 
 ### EsimplifiedSdk.clearAllCaches()
 
-Drops every cached read. Call it on logout.
+Drops every cached read. `AuthRepository.logout()` already does this, so call it directly only when you want a clean slate without ending the session.
 
 ### EsimplifiedSdk.sessionManager
 
@@ -137,7 +137,7 @@ val authRepo: AuthRepository = koinInject()
 | `updatePreferences` | `preferredLanguage: String?, preferredCurrency: String?` | `Customer` | Update language/currency prefs, then re-fetch the customer |
 | `verifyEmail` | `email: String, token: String, orderUUID: String?` | `VerifyEmailResponse` | Verify email address |
 | `deleteProfile` | — | `DeleteProfileResponse` | Delete user account |
-| `logout` | — | `Unit` | End session |
+| `logout` | — | `Unit` | End the session and drop every cached read, so the next customer on the device is not served the previous one's data |
 
 ---
 
@@ -175,9 +175,9 @@ All cached (`PACKAGES_TTL` = 1 h). `…Result` twins: `getPackagesResult`, `getP
 |----------|-----------|---------|-------------|
 | `getEsims` | `showLegacy: Boolean = true, isPrimary: Boolean? = null, includeBase64QrCode: Boolean = false` | `List<AssignedEsim>` | Get all user's eSIMs |
 | `getActiveEsims` | same as `getEsims` | `List<AssignedEsim>` | Non-archived eSIMs only |
-| `getArchivedEsims` | same as `getEsims` | `List<AssignedEsim>` | Archived eSIMs only |
+| `getArchivedEsims` | same as `getEsims`, but `showLegacy: Boolean? = null` | `List<AssignedEsim>` | Archived eSIMs only. The default omits `show_legacy` from the request; pass `true`/`false` to send it |
 | `getEsimByIccid` | `iccid: String, includeBase64QrCode: Boolean = false` | `AssignedEsim` | Get one eSIM from `customer/esims/{iccid}/details/` |
-| `updateEsim` | `iccid: String, name: String? = null, isAutoTopUp: Boolean? = null, isArchived: Boolean? = null, isPrimary: Boolean? = null` | `Unit` | Update eSIM settings. **Throws if the server rejects the write** |
+| `updateEsim` | `iccid: String, name: String? = null, isAutoTopUp: Boolean? = null, isArchived: Boolean? = null, isPrimary: Boolean? = null` | `Unit` | Update eSIM settings. **Throws if the server rejects the write** — on a non-2xx response, or when the success body is not the API's `eSIM updated successfully`, matching the iOS SDK |
 | `updateEsimPrimaryStatus` | `iccid: String, isPrimary: Boolean` | `Unit` | Convenience wrapper for the primary flag |
 
 Cached: `ESIM_LIST_TTL` = 24 h for lists, `ESIM_DETAILS_TTL` = 5 min for details. `…Result` twins: `getEsimsResult`, `getActiveEsimsResult`, `getArchivedEsimsResult`, `getEsimByIccidResult`.
