@@ -17,6 +17,7 @@ data class PackageDetail(
     @SerialName("date_terminated_epoch")
     val dateTerminatedEpoch: Long? = null,
     @SerialName("supported_countries")
+    @Serializable(with = TolerantSupportedCountriesSerializer::class)
     val supportedCountries: List<SupportedCountry> = listOf(),
     @SerialName("date_created_utc")
     val dateCreatedUTC: String? = null,

@@ -24,7 +24,9 @@ data class PackagePlan(
     @SerialName("package_type_id") val packageTypeId: Long,
     @SerialName("best_connectivity") val bestConnectivity: String = "",
     @SerialName("activation_policy") val activationPolicy: String = "",
-    @SerialName("supported_countries") val supportedCountries: List<SupportedCountry> = listOf(),
+    @SerialName("supported_countries")
+    @Serializable(with = TolerantSupportedCountriesSerializer::class)
+    val supportedCountries: List<SupportedCountry> = listOf(),
     @SerialName("name_additional_text") val nameAdditionalText: String = "",
     @SerialName("discounted_price")
     @Serializable(with = LenientStringSerializer::class)

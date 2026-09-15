@@ -23,6 +23,7 @@ data class Country(
     @SerialName("country_name_slug")
     val slug: String = "",
     @SerialName("supported_countries")
+    @Serializable(with = TolerantSupportedCountriesSerializer::class)
     val destinations: List<SupportedCountry> = listOf(),
     @SerialName("is_region")
     val isRegion: Boolean = false,

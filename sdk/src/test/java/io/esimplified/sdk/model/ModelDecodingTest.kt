@@ -1462,6 +1462,171 @@ class ModelDecodingTest {
         assertEquals("""{"value":"9.99"}""", productionJson.encodeToString(LenientHolder("9.99")))
     }
 
+    // MARK: - Tolerant supported countries
+
+    @Test
+    fun `PackagePlan decodes a supported_countries array of empty strings as an empty list`() {
+        val plan = productionJson.decodeFromString<PackagePlan>(
+            packagePlanJson(extra = ", \"supported_countries\": [\"\"]")
+        )
+
+        assertTrue(plan.supportedCountries.isEmpty())
+        assertEquals("1 GB / 7 Days", plan.name)
+        assertEquals("9.99", plan.price)
+        assertEquals("au-1gb-7d", plan.packageSlug)
+        assertEquals("Australia", plan.country.name)
+    }
+
+    @Test
+    fun `PackagePlan decodes an empty supported_countries array`() {
+        val plan = productionJson.decodeFromString<PackagePlan>(
+            packagePlanJson(extra = ", \"supported_countries\": []")
+        )
+
+        assertTrue(plan.supportedCountries.isEmpty())
+        assertEquals("1 GB / 7 Days", plan.name)
+    }
+
+    @Test
+    fun `PackagePlan decodes a well formed supported_countries list in full`() {
+        val plan = productionJson.decodeFromString<PackagePlan>(
+            packagePlanJson(extra = ", \"supported_countries\": $supportedCountriesJson")
+        )
+
+        assertEquals(2, plan.supportedCountries.size)
+        assertEquals("Australia", plan.supportedCountries[0].name)
+        assertEquals("AU", plan.supportedCountries[0].code)
+        assertEquals("New Zealand", plan.supportedCountries[1].name)
+        assertEquals("NZ", plan.supportedCountries[1].code)
+    }
+
+    @Test
+    fun `PackagePlan drops the whole supported_countries list when one element is a primitive`() {
+        val mixed = """[{"country_name": "Australia", "country_code": "AU"}, ""]"""
+        val plan = productionJson.decodeFromString<PackagePlan>(
+            packagePlanJson(extra = ", \"supported_countries\": $mixed")
+        )
+
+        assertTrue(plan.supportedCountries.isEmpty())
+        assertEquals("1 GB / 7 Days", plan.name)
+        assertEquals(42L, plan.packageTypeId)
+    }
+
+    @Test
+    fun `PackagePlan decodes a supported_countries value that is not a list at all`() {
+        val plan = productionJson.decodeFromString<PackagePlan>(
+            packagePlanJson(extra = ", \"supported_countries\": \"AU, NZ\"")
+        )
+
+        assertTrue(plan.supportedCountries.isEmpty())
+        assertEquals("1 GB / 7 Days", plan.name)
+    }
+
+    @Test
+    fun `OrderDetail decodes in full when its package carries a malformed supported_countries`() {
+        val detail = productionJson.decodeFromString<OrderDetail>(
+            orderDetailJson(
+                packagePlan = packagePlanJson(extra = ", \"supported_countries\": [\"\"]")
+            )
+        )
+
+        assertEquals("u-1", detail.customerId)
+        assertEquals(1001, detail.orderNumber)
+        assertEquals("1 GB / 7 Days", detail.packageName)
+        assertEquals("9.99", detail.finalPrice)
+        assertNotNull(detail.packageInfo)
+        assertEquals("1 GB / 7 Days", detail.packageInfo?.name)
+        assertTrue(detail.packageInfo?.supportedCountries?.isEmpty() == true)
+    }
+
+    @Test
+    fun `OrderDetail keeps a well formed supported_countries inside its package`() {
+        val detail = productionJson.decodeFromString<OrderDetail>(
+            orderDetailJson(
+                packagePlan = packagePlanJson(
+                    extra = ", \"supported_countries\": $supportedCountriesJson"
+                )
+            )
+        )
+
+        assertEquals(2, detail.packageInfo?.supportedCountries?.size)
+        assertEquals("AU", detail.packageInfo?.supportedCountries?.first()?.code)
+    }
+
+    @Test
+    fun `PackageDetail decodes in full when supported_countries holds an empty string`() {
+        val payload = """
+            {
+                "status": "ACTIVE",
+                "date_created_epoch": 1735689600,
+                "package_country_name": "Australia",
+                "package_country_code": "AU",
+                "supported_countries": [""],
+                "status_message": "Package Activated"
+            }
+        """.trimIndent()
+
+        val detail = productionJson.decodeFromString<PackageDetail>(payload)
+
+        assertTrue(detail.supportedCountries.isEmpty())
+        assertEquals("ACTIVE", detail.status)
+        assertEquals("AU", detail.packageCountryCode)
+        assertEquals("Package Activated", detail.statusMessage)
+    }
+
+    @Test
+    fun `PackageDetail decodes a well formed supported_countries list in full`() {
+        val payload = """
+            {
+                "status": "ACTIVE",
+                "date_created_epoch": 1735689600,
+                "package_country_name": "Australia",
+                "supported_countries": $supportedCountriesJson
+            }
+        """.trimIndent()
+
+        val detail = productionJson.decodeFromString<PackageDetail>(payload)
+
+        assertEquals(2, detail.supportedCountries.size)
+        assertEquals("NZ", detail.supportedCountries[1].code)
+    }
+
+    @Test
+    fun `Country decodes in full when supported_countries holds an empty string`() {
+        val payload = """
+            {
+                "country_name": "Australia",
+                "country_code": "AU",
+                "country_name_slug": "australia",
+                "supported_countries": [""],
+                "is_region": true
+            }
+        """.trimIndent()
+
+        val country = productionJson.decodeFromString<Country>(payload)
+
+        assertTrue(country.destinations.isEmpty())
+        assertEquals("Australia", country.name)
+        assertEquals("AU", country.code)
+        assertTrue(country.isRegion)
+    }
+
+    @Test
+    fun `Country decodes a well formed supported_countries list in full`() {
+        val payload = """
+            {
+                "country_name": "Oceania",
+                "country_code": "2A",
+                "supported_countries": $supportedCountriesJson
+            }
+        """.trimIndent()
+
+        val country = productionJson.decodeFromString<Country>(payload)
+
+        assertEquals(2, country.destinations.size)
+        assertEquals("Australia", country.destinations.first().name)
+    }
+
     // MARK: - Null tolerance fixtures
 
     private fun packagePlanJson(
@@ -1520,6 +1685,7 @@ class ModelDecodingTest {
         discountAmount: String = "0.0",
         finalPrice: String = "9.99",
         purchasePrice: String = "9.99",
+        packagePlan: String? = null,
     ): String = """
         {
             "customer_id": "u-1",
@@ -1539,6 +1705,7 @@ class ModelDecodingTest {
             "purchase_price": $purchasePrice,
             "payment_method": $paymentMethod
             ${if (country == null) "" else ", \"country\": $country"}
+            ${if (packagePlan == null) "" else ", \"package\": $packagePlan"}
         }
     """.trimIndent()
 
@@ -1665,6 +1832,13 @@ class ModelDecodingTest {
     }
 
 }
+
+private val supportedCountriesJson = """
+    [
+        {"country_name": "Australia", "country_code": "AU"},
+        {"country_name": "New Zealand", "country_code": "NZ"}
+    ]
+""".trimIndent()
 
 private val countryObjectJson = """
     {
