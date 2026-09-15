@@ -8,6 +8,7 @@
 .externalNativeBuild
 .cxx
 local.properties
+.kotlin/
 
 # AI-assistant artifacts and internal-only docs — kept locally, not for version control
 CLAUDE.md
