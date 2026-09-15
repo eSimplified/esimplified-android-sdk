@@ -51,7 +51,7 @@ class SdkAuthInterceptorExtendedTest {
             clientSecret = "secret",
             awsWafToken = awsWafToken,
             customHeadersProvider = customHeaders,
-        )
+        ).copy(baseUrlOverride = mockWebServer.url("/").toString().trimEnd('/'))
         val interceptor = SdkAuthInterceptor(sessionManager, config)
         return OkHttpClient.Builder().addInterceptor(interceptor).build()
     }

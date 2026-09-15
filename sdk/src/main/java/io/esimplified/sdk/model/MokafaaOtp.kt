@@ -41,7 +41,7 @@ data class MokafaaOtpValidateRequest(
 
 @Serializable
 data class MokafaaEnrollment(
-    @SerialName("state") val state: String,
+    @SerialName("state") val state: String = "",
     @SerialName("session_expires_at") val sessionExpiresAt: String? = null,
 ) {
 
@@ -61,7 +61,7 @@ data class MokafaaElection(
 
 @Serializable
 data class MokafaaOtpValidateResponse(
-    @SerialName("status") val status: String,
+    @SerialName("status") val status: String = "",
     @SerialName("points_redeemed") val pointsRedeemed: Int? = null,
 ) {
 

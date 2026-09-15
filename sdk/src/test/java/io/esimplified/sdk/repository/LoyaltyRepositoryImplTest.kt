@@ -5,6 +5,7 @@ import io.esimplified.sdk.model.MokafaaOtpInitiateRequest
 import io.esimplified.sdk.model.MokafaaOtpValidateResponse
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.LoyaltyApiException
+import io.esimplified.sdk.network.SdkCache
 import io.esimplified.sdk.repository.impl.LoyaltyRepositoryImpl
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -41,7 +42,7 @@ class LoyaltyRepositoryImplTest {
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
             .build()
             .create<ApiService>()
-        repository = LoyaltyRepositoryImpl(apiService)
+        repository = LoyaltyRepositoryImpl(apiService, SdkCache())
     }
 
     @After

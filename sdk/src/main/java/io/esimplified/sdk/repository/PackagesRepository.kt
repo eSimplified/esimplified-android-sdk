@@ -3,11 +3,74 @@ package io.esimplified.sdk.repository
 import io.esimplified.sdk.model.CheckStockResponse
 import io.esimplified.sdk.model.Destination
 import io.esimplified.sdk.model.PackagePlan
-import io.esimplified.sdk.model.RatingApiResponse
+import io.esimplified.sdk.model.PackagesPage
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 interface PackagesRepository {
-    suspend fun getPackages(destination: Destination): List<PackagePlan>
-    suspend fun getTopUpPackages(iccid: String): List<PackagePlan>
-    suspend fun checkStock(packageTypeId: Int): CheckStockResponse
-    suspend fun getPackageRating(): RatingApiResponse
+
+    // region Reads
+    suspend fun getPackages(
+        destination: Destination,
+        forceRefresh: Boolean = false,
+        cacheTTL: Duration = PACKAGES_TTL,
+    ): List<PackagePlan>
+
+    suspend fun getTopUpPackages(
+        iccid: String,
+        forceRefresh: Boolean = false,
+        cacheTTL: Duration = PACKAGES_TTL,
+    ): List<PackagePlan>
+
+    suspend fun getPackagesPage(
+        destination: Destination,
+        forceRefresh: Boolean = false,
+        cacheTTL: Duration = PACKAGES_TTL,
+    ): PackagesPage
+
+    suspend fun checkStock(
+        packageTypeId: Int,
+        forceRefresh: Boolean = false,
+        cacheTTL: Duration = PACKAGES_TTL,
+    ): CheckStockResponse
+
+    // endregion
+
+    // region Result reads
+    suspend fun getPackagesResult(
+        destination: Destination,
+        forceRefresh: Boolean = false,
+        cacheTTL: Duration = PACKAGES_TTL,
+    ): RepositoryResult<List<PackagePlan>> =
+        RepositoryResult(getPackages(destination, forceRefresh, cacheTTL))
+
+    suspend fun getTopUpPackagesResult(
+        iccid: String,
+        forceRefresh: Boolean = false,
+        cacheTTL: Duration = PACKAGES_TTL,
+    ): RepositoryResult<List<PackagePlan>> =
+        RepositoryResult(getTopUpPackages(iccid, forceRefresh, cacheTTL))
+
+    suspend fun getPackagesPageResult(
+        destination: Destination,
+        forceRefresh: Boolean = false,
+        cacheTTL: Duration = PACKAGES_TTL,
+    ): RepositoryResult<PackagesPage> =
+        RepositoryResult(getPackagesPage(destination, forceRefresh, cacheTTL))
+
+    suspend fun checkStockResult(
+        packageTypeId: Int,
+        forceRefresh: Boolean = false,
+        cacheTTL: Duration = PACKAGES_TTL,
+    ): RepositoryResult<CheckStockResponse?> =
+        RepositoryResult(checkStock(packageTypeId, forceRefresh, cacheTTL))
+    // endregion
+
+    // region Cache
+    suspend fun invalidateCache() = Unit
+    // endregion
+
+    companion object {
+        val PACKAGES_TTL: Duration = 3600.seconds
+    }
 }

@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class PackageDetail(
-    val status: String,
+    val status: String = "",
     @SerialName("package_id")
     val packageID: String? = null,
     @SerialName("package_type_id")
@@ -17,13 +17,14 @@ data class PackageDetail(
     @SerialName("date_terminated_epoch")
     val dateTerminatedEpoch: Long? = null,
     @SerialName("supported_countries")
+    @Serializable(with = TolerantSupportedCountriesSerializer::class)
     val supportedCountries: List<SupportedCountry> = listOf(),
     @SerialName("date_created_utc")
     val dateCreatedUTC: String? = null,
     @SerialName("date_created_epoch")
     val dateCreatedEpoch: Long,
     @SerialName("package_country_name")
-    val packageCountryName: String,
+    val packageCountryName: String = "",
     @SerialName("voice_usage_remaining_seconds")
     val voiceUsageRemainingSeconds: Long = 0,
     @SerialName("data_usage_remaining_gigabytes")
@@ -47,5 +48,17 @@ data class PackageDetail(
     @SerialName("time_allowance_seconds")
     val timeAllowanceSeconds: Double = 0.0,
     @SerialName("time_allowance_days")
-    val timeAllowanceDays: Double = 0.0
-)
+    val timeAllowanceDays: Double = 0.0,
+    @SerialName("data_usage_bytes")
+    val dataUsedBytes: Double? = null,
+    @SerialName("package_country_code")
+    val packageCountryCode: String? = null,
+    @SerialName("status_message")
+    val statusMessage: String = ""
+) {
+    val hasUnlimitedPackage: Boolean
+        get() = dataAllowanceGigabytes == UNLIMITED_GIGABYTES ||
+            dataUsageRemainingGigabytes == UNLIMITED_GIGABYTES
+}
+
+internal const val UNLIMITED_GIGABYTES = -1.0

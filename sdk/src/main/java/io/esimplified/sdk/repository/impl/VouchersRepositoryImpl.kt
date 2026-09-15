@@ -8,7 +8,7 @@ import io.esimplified.sdk.model.VoucherRedeemResponse
 import io.esimplified.sdk.network.ApiService
 import kotlinx.serialization.json.Json
 import retrofit2.HttpException
-import timber.log.Timber
+import io.esimplified.sdk.SdkLog
 
 internal class VouchersRepositoryImpl(
     private val apiService: ApiService
@@ -19,14 +19,14 @@ internal class VouchersRepositoryImpl(
     override suspend fun redeemVoucher(code: String): Result<VoucherRedeemResponse> {
         return try {
             val request = VoucherRedeemRequest(voucherCode = code)
-            Timber.d("Attempting to redeem voucher with code: $code")
+            SdkLog.d("Attempting to redeem a voucher")
             val response = apiService.redeemVoucher(request)
-            Timber.d("Successfully redeemed voucher: redeemed=${response.redeemed}, orderUUID=${response.orderUUID}")
+            SdkLog.d("Voucher redemption returned redeemed=${response.redeemed}")
             Result.success(response)
         } catch (e: HttpException) {
             val errorMessage = try {
                 val errorBody = e.response()?.errorBody()?.string()
-                Timber.d("HTTP ${e.code()} error body: $errorBody")
+                SdkLog.d("Voucher redemption rejected with HTTP ${e.code()}")
 
                 if (!errorBody.isNullOrEmpty()) {
                     val errorResponse = json.decodeFromString<ApiErrorResponse>(errorBody)
@@ -34,20 +34,20 @@ internal class VouchersRepositoryImpl(
                         ?: errorResponse.message
                         ?: errorResponse.error
                         ?: e.message()
-                    Timber.d("Parsed error message: $message")
+                    SdkLog.d("Voucher redemption carried a server error message")
                     message
                 } else {
-                    Timber.d("Empty error body, no specific error message from server")
+                    SdkLog.d("Empty error body, no specific error message from server")
                     null
                 }
             } catch (parseError: Exception) {
-                Timber.e(parseError, "Error parsing error response")
+                SdkLog.e("Error parsing error response", parseError)
                 null
             }
-            Timber.e(e, "Error redeeming voucher (HTTP ${e.code()}): $errorMessage")
+            SdkLog.e("Error redeeming voucher (HTTP ${e.code()})", e)
             Result.failure(Exception(errorMessage))
         } catch (e: Exception) {
-            Timber.e(e, "Error redeeming voucher: ${e.message}")
+            SdkLog.e("Error redeeming voucher", e)
             Result.failure(Exception(e.message))
         }
     }

@@ -7,7 +7,7 @@ import java.net.URI
 @Serializable
 data class VoucherRedeemResponse(
     @SerialName("redeemed")
-    val redeemed: Boolean,
+    val redeemed: Boolean = false,
     @SerialName("redirect_url")
     val redirectUrl: String? = null
 ) {

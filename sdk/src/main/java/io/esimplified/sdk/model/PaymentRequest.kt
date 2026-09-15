@@ -16,6 +16,7 @@ data class PaymentRequest(
     @SerialName("loyalty_points_amount") val loyaltyPointsAmount: Double? = null,
     @SerialName("loyalty_provider") val loyaltyProvider: String? = null,
     @SerialName("loyalty_points_to_use") val loyaltyPointsToUse: Int? = null,
+    @SerialName("coupon_id") val couponId: String? = null,
 ) {
 
     object Type {

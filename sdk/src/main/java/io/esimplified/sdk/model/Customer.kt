@@ -1,8 +1,11 @@
 package io.esimplified.sdk.model
 
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonNames
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class Customer(
     @SerialName("customer_id") val id: String,
@@ -14,7 +17,8 @@ data class Customer(
     @SerialName("full_name") val fullName: String? = null,
     val wallet: Double? = null,
     @SerialName("wallet_currency") val walletCurrency: String? = null,
-    @SerialName("referral_code") val referralCode: String? = null,
+    @SerialName("referral_code") @JsonNames("unique_referral_code") val referralCode: String? = null,
+    @SerialName("acquisition_source") val acquisitionSource: String? = null,
     @SerialName("signed_in_with_provider") val signedInWithProvider: Boolean? = null,
     @SerialName("preferred_language") val preferredLanguage: String? = null,
     @SerialName("preferred_currency") val preferredCurrency: String? = null,
@@ -22,6 +26,14 @@ data class Customer(
     @SerialName("mokafaa_cic_no") val mokafaaCicNo: String? = null,
     @SerialName("mokafaa_enabled") val mokafaaEnabled: Boolean? = null,
     @SerialName("mokafaa_enrollment") val mokafaaEnrollment: MokafaaEnrollment? = null,
+    @SerialName("receive_marketing_email") val receiveMarketingEmail: Boolean? = null,
+    @SerialName("receive_marketing_push") val receiveMarketingPush: Boolean? = null,
+    @SerialName("receive_account_email") val receiveAccountEmail: Boolean? = null,
+    @SerialName("receive_account_sms") val receiveAccountSms: Boolean? = null,
+    @SerialName("receive_account_push") val receiveAccountPush: Boolean? = null,
+    @SerialName("receive_purchase_email") val receivePurchaseEmail: Boolean? = null,
+    @SerialName("receive_purchase_push") val receivePurchasePush: Boolean? = null,
+    @SerialName("receive_viber_messages") val receiveViberMessages: Boolean? = null,
 ) {
 
     companion object {

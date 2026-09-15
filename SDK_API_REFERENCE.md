@@ -1,11 +1,15 @@
 # eSimplified Android SDK — API Reference
 
+Documents `io.github.esimplified:android-sdk:2.0.0`.
+
+Upgrading from 1.x? Start with [Migrating from 1.x to 2.0](README.md#migrating-from-1x-to-20) in the README — money fields changed type, seven unused request types were removed (`EsimRequest`, `EsimPackageListRequest`, `OrderRequest`, `SearchBody`, `CustomerSignIn`, `AuthResponse`, `RewardActivationRequest`), and the compiler does not catch every call site.
+
 ## Initialization
 
-### EsimSdk.initialize()
+### EsimplifiedSdk.initialize()
 
 ```kotlin
-EsimSdk.initialize(
+EsimplifiedSdk.initialize(
     context: Context,
     config: SdkConfig,
     storageProvider: SecureStorageProvider? = null,
@@ -31,7 +35,10 @@ SdkConfig(
     apiVersion: String = "v2",
     awsWafToken: String = "",
     enableLogging: Boolean = false,
-    customHeadersProvider: (() -> Map<String, String>)? = null
+    customHeadersProvider: (() -> Map<String, String>)? = null,
+    enableCaching: Boolean = true,
+    defaultCacheTtlSeconds: Long = 3600,
+    logger: SdkLogger? = null
 )
 ```
 
@@ -40,17 +47,58 @@ SdkConfig(
 | Value | Description |
 |-------|-------------|
 | `STAGING` | `https://{clientName}.stage.esimplified.io` |
+| `TESTING` | `https://{clientName}.test.esimplified.io` (short token lifetimes, for auth testing) |
 | `PRODUCTION` | `https://{clientName}.live.esimplified.io` |
 
-### EsimSdk.koinModule()
+### EsimplifiedSdk.koinModule()
 
 Returns a Koin `Module` containing all SDK dependencies. Add to your Koin setup:
 
 ```kotlin
 startKoin {
-    modules(EsimSdk.koinModule(), yourAppModule)
+    modules(EsimplifiedSdk.koinModule(), yourAppModule)
 }
 ```
+
+### EsimplifiedSdk.clearAllCaches()
+
+Drops every cached read. `AuthRepository.logout()` already does this, so call it directly only when you want a clean slate without ending the session.
+
+### SdkLogger
+
+`SdkConfig(logger = …)` takes a `fun interface SdkLogger { fun log(level: SdkLogLevel, message: String, throwable: Throwable?) }`, with `SdkLogLevel` of `DEBUG`, `WARNING` or `ERROR`. Supply one to route the SDK's own diagnostics into your logging; leave it null and the SDK writes to `android.util.Log` under the tag `EsimplifiedSdk` only when the app is debuggable or `enableLogging = true`. The SDK has no logging dependency, and no line carries an email, token, ICCID, customer id, order UUID, voucher code or raw body.
+
+### EsimplifiedSdk.sessionManager
+
+The active `SessionManager`, for reading auth state outside a repository.
+
+---
+
+## Reads, caching and errors
+
+Cached reads take two optional arguments, omitted from the tables below for brevity:
+
+| Parameter | Default | Meaning |
+|-----------|---------|---------|
+| `forceRefresh: Boolean` | `false` (`true` on `getLoyaltyBalance`) | Skip the cache and go to the network |
+| `cacheTTL: Duration` | the repository's own constant | How long this read stays fresh |
+
+Each such method also has a `…Result` twin returning `RepositoryResult<T>` rather than throwing:
+
+```kotlin
+data class RepositoryResult<T>(
+    val value: T,
+    val isStale: Boolean = false,   // served from an expired cache entry
+    val failure: SdkError? = null,  // why the refresh failed, if it did
+) {
+    val didFail: Boolean
+    val isOffline: Boolean
+}
+```
+
+`SdkError` is a sealed subclass of `IOException`: `NetworkError(statusCode, message)`, `AuthenticationRequired`, `NoInternetConnection`, `DecodingError(cause)`, `InvalidURL(url)`, `Unknown(cause)`.
+
+Every cached repository also exposes `suspend fun invalidateCache()`.
 
 ---
 
@@ -73,7 +121,7 @@ val authRepo: AuthRepository = koinInject()
 | `login` | `email: String, password: String` | `Customer` | Email/password login |
 | `loginWithRefreshToken` | `refreshToken: String` | `Customer` | Login using stored refresh token |
 | `signInWithGoogle` | `email: String, firstName: String, lastName: String, fullName: String, phoneNumber: String, providerAccountId: String, idToken: String` | `Customer` | Google OAuth sign-in |
-| `register` | `email: String, password: String, firstName: String, lastName: String, phoneNumber: String, marketingConsent: Boolean, referredBy: String? = null` | `ProfileResponse` | Create new account |
+| `register` | `email: String, password: String, firstName: String, lastName: String, phoneNumber: String, marketingConsent: Boolean?, referredBy: String? = null, loyaltyElection: String? = null` | `ProfileResponse` | Create new account |
 
 #### Password Management
 
@@ -87,12 +135,14 @@ val authRepo: AuthRepository = koinInject()
 
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
-| `getUser` | — | `Customer?` | Get current user profile |
-| `updateProfile` | `email: String, firstName: String?, lastName: String?, phoneNumber: String?, password: String` | `ProfileResponse` | Update user profile |
-| `updatePreferences` | `preferredLanguage: String?, preferredCurrency: String?` | `Customer` | Update language/currency prefs |
+| `fetchProfile` | — | `Customer?` | `GET api/v2/customer/` — the customer of record. `null` when unauthenticated |
+| `getUser` | — | `Customer?` | Alias for `fetchProfile()` |
+| `updateProfile` | `email: String, firstName: String?, lastName: String?, phoneNumber: String?, password: String` | `ProfileResponse` | Update user profile, then re-fetch the customer |
+| `updateCustomerProfile` | `firstName: String? = null, lastName: String? = null, phoneNumber: String? = null, email: String? = null, password: String? = null` | `ProfileResponse` | Partial profile update, then re-fetch the customer |
+| `updatePreferences` | `preferredLanguage: String?, preferredCurrency: String?` | `Customer` | Update language/currency prefs, then re-fetch the customer |
 | `verifyEmail` | `email: String, token: String, orderUUID: String?` | `VerifyEmailResponse` | Verify email address |
 | `deleteProfile` | — | `DeleteProfileResponse` | Delete user account |
-| `logout` | — | `Unit` | End session |
+| `logout` | — | `Unit` | End the session and drop every cached read, so the next customer on the device is not served the previous one's data |
 
 ---
 
@@ -103,7 +153,9 @@ val authRepo: AuthRepository = koinInject()
 | `getCountries` | — | `List<Country>` | Get all available countries |
 | `getCountriesBy` | `destination: Destination` | `List<Country>` | Filter by code, name, slug, or region |
 | `search` | `query: String` | `List<Country>` | Search countries by name/code |
-| `getUserLocation` | — | `UserLocationResponse` | Get user's location by IP |
+| `getUserLocation` | — | `UserLocationResponse` | Get user's location by IP (never cached) |
+
+Cached: `getCountries`, `getCountriesBy` (`COUNTRIES_TTL` = 24 h). `…Result` twins: `getCountriesResult`, `getCountriesByResult`.
 
 ---
 
@@ -112,9 +164,13 @@ val authRepo: AuthRepository = koinInject()
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
 | `getPackages` | `destination: Destination` | `List<PackagePlan>` | Get eSIM packages for a destination |
+| `getPackagesPage` | `destination: Destination` | `PackagesPage` | Same read plus total count and the page's promo code |
 | `getTopUpPackages` | `iccid: String` | `List<PackagePlan>` | Get top-up packages for an existing eSIM |
 | `checkStock` | `packageTypeId: Int` | `CheckStockResponse` | Check package availability |
-| `getPackageRating` | — | `RatingApiResponse` | Get store ratings |
+
+All cached (`PACKAGES_TTL` = 1 h). `…Result` twins: `getPackagesResult`, `getPackagesPageResult`, `getTopUpPackagesResult`, `checkStockResult`.
+
+`getPackageRating()` moved to `StoreReviewRepository.fetchStoreReview()` in 2.0.
 
 ---
 
@@ -122,9 +178,16 @@ val authRepo: AuthRepository = koinInject()
 
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
-| `getEsims` | — | `List<AssignedEsim>` | Get all user's eSIMs |
-| `getEsimByIccid` | `iccid: String` | `AssignedEsim` | Get specific eSIM |
-| `updateEsim` | `iccid: String, name: String? = null, isAutoTopUp: Boolean? = null, isArchived: Boolean? = null` | `Unit` | Update eSIM settings |
+| `getEsims` | `showLegacy: Boolean = true, isPrimary: Boolean? = null, includeBase64QrCode: Boolean = false` | `List<AssignedEsim>` | Get all user's eSIMs |
+| `getActiveEsims` | same as `getEsims` | `List<AssignedEsim>` | Non-archived eSIMs only |
+| `getArchivedEsims` | same as `getEsims`, but `showLegacy: Boolean? = null` | `List<AssignedEsim>` | Archived eSIMs only. The default omits `show_legacy` from the request; pass `true`/`false` to send it |
+| `getEsimByIccid` | `iccid: String, includeBase64QrCode: Boolean = false` | `AssignedEsim` | Get one eSIM from `customer/esims/{iccid}/details/` |
+| `updateEsim` | `iccid: String, name: String? = null, isAutoTopUp: Boolean? = null, isArchived: Boolean? = null, isPrimary: Boolean? = null` | `Unit` | Update eSIM settings. **Throws if the server rejects the write** — on a non-2xx response, or when the success body is not the API's `eSIM updated successfully`, matching the iOS SDK |
+| `updateEsimPrimaryStatus` | `iccid: String, isPrimary: Boolean` | `Unit` | Convenience wrapper for the primary flag |
+
+Cached: `ESIM_LIST_TTL` = 24 h for lists, `ESIM_DETAILS_TTL` = 5 min for details. `…Result` twins: `getEsimsResult`, `getActiveEsimsResult`, `getArchivedEsimsResult`, `getEsimByIccidResult`.
+
+`includeBase64QrCode = true` asks the API to embed the QR image, populating `AssignedEsim.qrCodeImageBase64` alongside `smDpAddress` and `activationCode`. `AssignedEsim.canInstallDirectly` reports whether those are enough to install without an order lookup. Lists are requested newest-first (`order_by=-assigned_date`), capped at 1000.
 
 ---
 
@@ -132,10 +195,16 @@ val authRepo: AuthRepository = koinInject()
 
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
-| `getOrderHistory` | — | `List<OrderHistoryItem>` | Get all orders |
-| `getOrderHistory` | `withLoyaltyPoints: Boolean` | `List<OrderHistoryItem>` | Get orders filtered by loyalty points |
+| `getOrderHistory` | — | `List<OrderHistoryItem>` | Get past orders |
+| `getOrderHistory` | `withLoyaltyPoints: Boolean` | `List<OrderHistoryItem>` | Get orders with loyalty points data |
 | `getOrderDetails` | `orderUuid: String` | `OrderDetail` | Get detailed order info |
-| `trackOrder` | `orderUuid: String` | `Unit` | Track an order |
+| `getOrdersPageResult` | `limit: Int = 100, offset: Int = 0, withLoyaltyPoints: Boolean = false` | `RepositoryResult<OrdersPage>` | Paged order read |
+| `getOrderInvoice` | `orderUuid: String` | `ByteArray` | Download the order's PDF invoice bytes |
+| `trackOrder` | `orderUuid: String` | `Unit` | Mark the order's conversion as tracked (never throws) |
+
+Cached: `ORDERS_LIST_TTL` = 10 min, `ORDER_DETAIL_TTL` = 5 min. `…Result` twins: `getOrderHistoryResult` (both overloads), `getOrderDetailsResult`.
+
+`getOrderDetails` retries an order still in `pending` status up to 5 times, one second apart, before returning it.
 
 ---
 
@@ -176,13 +245,44 @@ PaymentRequest(
 
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
-| `getLoyaltyBalance` | — | `KredsLoyaltyBalanceResponse` | Get Kreds points balance |
+| `getLoyaltyBalance` | `forceRefresh: Boolean = true` | `KredsLoyaltyBalanceResponse` | Get Kreds points balance. Note `forceRefresh` defaults to `true` |
 | `getKredsQuote` | `packageTypeId: Int, loyaltyPointsAmount: Double` | `KredsQuoteResponse` | Get pricing quote with Kreds |
 | `getMokafaaQuote` | `packageTypeId: Int, loyaltyPointsToUse: Int` | `KredsQuoteResponse` | Get pricing quote with Mokafaa points |
 | `initiateMokafaaOtp` | `purpose: String, platform: String = "android"` | `MokafaaOtpInitiateResponse` | Start a Mokafaa OTP session (`purpose`: `enrollment` or `checkout`); countdown should be driven by `expiresAt` |
-| `validateMokafaaOtp` | `sessionId: String, otp: String, points: Int? = null` | `MokafaaOtpValidateResponse` | Validate the SMS OTP; `points` required for checkout, omitted for enrollment |
+| `validateMokafaaOtp` | `sessionId: String, otp: String, points: Int? = null, packageTypeId: Int? = null` | `MokafaaOtpValidateResponse` | Validate the SMS OTP; `points` required for checkout, omitted for enrollment |
 
 Mokafaa methods throw `LoyaltyApiException(httpCode, message)` on HTTP errors — `message` is the backend error verbatim, `httpCode` lets callers branch on 400/401/503.
+
+---
+
+### ThemeRepository
+
+| Function | Parameters | Returns | Description |
+|----------|-----------|---------|-------------|
+| `fetchPageTheme` | `page: String` | `ThemePage?` | Theme for a named page; `null` if the API has none |
+| `fetchDestinationTheme` | `countryCode: String` | `ThemeDestination?` | Theme for a destination, matched case-insensitively |
+
+Cached (`THEME_TTL` = 1 h). `…Result` twins: `fetchPageThemeResult`, `fetchDestinationThemeResult`.
+
+---
+
+### FaqAndSupportRepository
+
+| Function | Parameters | Returns | Description |
+|----------|-----------|---------|-------------|
+| `fetchDestinationFaqs` | `countryNameSlug: String` | `List<Faq>` | FAQs for a destination slug |
+
+Cached (`FAQS_TTL` = 24 h). `…Result` twin: `fetchDestinationFaqsResult`.
+
+---
+
+### StoreReviewRepository
+
+| Function | Parameters | Returns | Description |
+|----------|-----------|---------|-------------|
+| `fetchStoreReview` | — | `RatingApiResponse` | Store review summary, reviews and stats |
+
+Cached (`STORE_REVIEW_TTL` = 24 h). `…Result` twin: `fetchStoreReviewResult`.
 
 ---
 
@@ -237,6 +337,7 @@ Implement this to control how auth state is managed in your app.
 | `getRefreshToken` | — | `String` | Get current refresh token |
 | `getAuthState` | — | `Auth` | Get full auth state |
 | `save` | `auth: Auth` | `Unit` | Save auth state |
+| `onAuthenticationFailed` | — | `Unit` | Called when the server rejects a token refresh; defaults to saving `Auth.Unauthenticated` |
 
 ### SecureStorageProvider
 
@@ -279,10 +380,21 @@ Auth.Authenticated(
 | phoneNumber | String? | Phone number |
 | wallet | Double? | Wallet balance |
 | walletCurrency | String? | Wallet currency |
-| referralCode | String? | User's referral code |
+| referralCode | String? | User's referral code (decodes `referral_code` or `unique_referral_code`) |
+| acquisitionSource | String? | How the customer was acquired |
 | signedInWithProvider | Boolean? | Social sign-in flag |
 | preferredLanguage | String? | Language preference |
 | preferredCurrency | String? | Currency preference |
+| loyaltyProvider | String? | `kreds` or `mokafaa` |
+| mokafaaEnrollment | MokafaaEnrollment? | Mokafaa enrolment state |
+| receiveMarketingEmail | Boolean? | `null` = the API did not say |
+| receiveMarketingPush | Boolean? | `null` = the API did not say |
+| receiveAccountEmail | Boolean? | `null` = the API did not say |
+| receiveAccountSms | Boolean? | `null` = the API did not say |
+| receiveAccountPush | Boolean? | `null` = the API did not say |
+| receivePurchaseEmail | Boolean? | `null` = the API did not say |
+| receivePurchasePush | Boolean? | `null` = the API did not say |
+| receiveViberMessages | Boolean? | `null` = the API did not say |
 
 ### Country
 
@@ -294,7 +406,8 @@ Auth.Authenticated(
 | slug | String | URL slug |
 | destinations | List\<SupportedCountry\> | Supported countries in region |
 | isRegion | Boolean | True if this is a region (not a single country) |
-| fromPrice | Double? | Starting price |
+| fromPrice | String? | Starting price, server text verbatim |
+| fromPriceValue | Double? | `fromPrice` parsed, for arithmetic (computed) |
 | currency | String? | Currency code |
 | currencyObject | CurrencyObject? | Currency details |
 
@@ -312,7 +425,8 @@ Auth.Authenticated(
 | Field | Type | Description |
 |-------|------|-------------|
 | name | String | Package name |
-| price | Double | Full price |
+| price | String | Full price, server text verbatim |
+| convertedPrice | Double? | Price in the user's currency (still a `Double?`) |
 | data | Double | Data in GB (-1 = unlimited) |
 | country | Country | Associated country |
 | currency | String | Currency code |
@@ -322,13 +436,17 @@ Auth.Authenticated(
 | validityDays | Long | Validity in days |
 | packageTypeId | Long | Unique package ID |
 | supportedCountries | List\<SupportedCountry\> | Countries covered |
-| discountedPrice | Double? | Discounted price |
+| discountedPrice | String? | Discounted price, server text verbatim |
 | earnPercentage | Double? | Kreds earn percentage |
 | dataCap | String? | Fair usage data cap |
 | throttleSpeed | String? | Throttled speed after cap |
 | **Computed:** | | |
 | isUnlimited | Boolean | True if data is -1 |
-| purchasePrice | Double | Discounted or full price |
+| purchasePrice | String | `discountedPrice ?: price` |
+| priceValue | Double | `price` parsed |
+| discountedPriceValue | Double? | `discountedPrice` parsed |
+| purchasePriceValue | Double | `purchasePrice` parsed |
+| isFreePurchase | Boolean | True if `purchasePriceValue` is 0 |
 | hasDiscount | Boolean | True if discounted |
 
 ### AssignedEsim
@@ -339,24 +457,38 @@ Auth.Authenticated(
 | name | String? | Custom name |
 | country | Country? | Associated country |
 | orderUUID | String? | Order reference |
-| profile | EsimProfile | eSIM profile details |
+| profile | EsimProfile? | eSIM profile details (nullable since 2.0) |
 | assignedDate | String | Date assigned |
 | packages | List\<PackageDetail\> | Active packages |
 | dataUsageRemainingBytes | Double | Remaining data (bytes) |
 | dataUsageRemainingGigabytes | Double | Remaining data (GB) |
 | isArchived | Boolean | Archived flag |
 | isAutoTopUp | Boolean | Auto top-up enabled |
+| isPrimary | Boolean | Primary eSIM flag |
+| isUniversal | Boolean | Universal eSIM flag |
+| androidSha | Boolean | Android SHA support |
+| orderNumber | String? | Order number |
+| dateActivatedEpoch | Long? | Activation timestamp |
+| dateExpiryEpoch | Long? | Expiry timestamp |
+| daysLeftToExpiry | Int? | Days until expiry |
+| smDpAddress | String? | SM-DP+ address, for direct install |
+| activationCode | String? | Activation code, for direct install |
+| qrCodeImageBase64 | String? | QR image, when `includeBase64QrCode = true` |
+| esimProvider | String? | Provider name |
+| **Computed:** | | |
+| canInstallDirectly | Boolean | True when `smDpAddress` and `activationCode` are both present |
+| hasUnlimitedPackage | Boolean | True when remaining GB is -1 |
 
 ### OrderDetail
 
 | Field | Type | Description |
 |-------|------|-------------|
 | iccid | String? | eSIM ICCID |
-| country | Country | Country |
+| country | Country? | Country |
 | qrCode | String? | QR code string |
 | qrCodeImageBase64 | String? | QR code as base64 image |
 | activationCode | String? | eSIM activation code |
-| finalPrice | Double | Final charged price |
+| finalPrice | String | Final charged price, server text verbatim |
 | orderDate | String | Purchase date |
 | orderNumber | Int | Order number |
 | orderStatus | String | Current status |
@@ -367,12 +499,16 @@ Auth.Authenticated(
 | packageValidity | Int | Validity days |
 | currency | String | Currency code |
 | currencyObject | CurrencyObject | Currency details |
-| price | Double | Original price |
-| discountAmount | Double | Discount applied |
+| price | String | Original price (`purchase_price`), server text verbatim |
+| discountAmount | String | Discount applied, server text verbatim |
 | discountCode | String | Promo code used |
 | paymentMethod | PaymentMethod | How it was paid |
 | loyaltyPointsEarned | LoyaltyPointsDetail? | Kreds earned |
 | loyaltyPointsSpent | LoyaltyPointsDetail? | Kreds spent |
+| **Computed:** | | |
+| priceValue | Double | `price` parsed |
+| finalPriceValue | Double | `finalPrice` parsed |
+| discountAmountValue | Double | `discountAmount` parsed |
 
 ### PaymentResponse
 
@@ -408,7 +544,7 @@ Auth.Authenticated(
 | Field | Type | Description |
 |-------|------|-------------|
 | stock | Boolean | In stock |
-| packageInfo | PackagePlan | Package details |
+| packageInfo | PackagePlan? | Package details (nullable since 2.0) |
 | promoCode | CheckoutCouponResponse | Active promo |
 
 ### KredsLoyaltyBalanceResponse
@@ -436,16 +572,16 @@ Auth.Authenticated(
 
 ### PaymentMethod (Enum)
 
-| Value | Display Name |
-|-------|-------------|
-| STRIPE_INTENT | Credit Card |
-| STRIPE_CHECKOUT | Credit Card |
-| AGENT_PAYMENT | Agent Payment |
-| COMPLIMENTARY | Complimentary |
-| VOUCHER | Voucher |
-| SPLIT_PAYMENT | Split Payment |
-| PAY_WITH_POINTS | Paid with Kreds |
-| UNKNOWN | Unknown |
+| Value | `displayName` | `shouldShowAmount` |
+|-------|---------------|--------------------|
+| STRIPE_INTENT | Stripe | true |
+| STRIPE_CHECKOUT | Stripe | true |
+| AGENT_PAYMENT | Agent Payment | true |
+| COMPLIMENTARY | Complimentary | false |
+| VOUCHER | Voucher | false |
+| SPLIT_PAYMENT | Split Payment | true |
+| PAY_WITH_POINTS | Pay with Points | true |
+| UNKNOWN | Payment | false |
 
 ### NotificationSettings
 
@@ -490,8 +626,10 @@ Auth.Authenticated(
 | detail | String? | Detail message |
 | redeemed | Boolean | Already redeemed |
 | reward | String? | Reward description |
-| allowed | Int | Total allowed |
-| remaining | Int | Remaining claims |
+| used | Int? | Claims used (nullable since 2.0) |
+| allowed | Int? | Total allowed (nullable since 2.0) |
+| remaining | Int? | Remaining claims (nullable since 2.0) |
+| remainingOrAllowed | Int? | `remaining ?: allowed` (computed) |
 | validityDays | Int? | Reward validity |
 | dataGB | Double? | Data reward amount |
 
@@ -502,3 +640,67 @@ Auth.Authenticated(
 | redeemed | Boolean | Success flag |
 | redirectUrl | String? | Redirect URL after redeem |
 | orderUUID | String? | Extracted order ID (computed) |
+
+### RatingApiResponse
+
+| Field | Type | Description |
+|-------|------|-------------|
+| storeName | String | Store name |
+| verdict | String | Summary verdict |
+| reviewCount | Int | Review count |
+| resultsCount | Int | Results count |
+| rating | Double? | Average rating |
+| reviews | List\<Review\>? | Individual reviews |
+| stats | Stats? | Company totals and per-star counts |
+
+### Review
+
+| Field | Type | Description |
+|-------|------|-------------|
+| type | String? | Review type |
+| typeLabel | String? | Human-readable type |
+| rating | Int? | Star rating |
+| title | String? | Review title |
+| comments | String? | Review body |
+| author | Author? | Author name and location |
+| dateCreated | String? | Creation date |
+| timeAgo | String? | Relative date |
+
+### Faq
+
+| Field | Type | Description |
+|-------|------|-------------|
+| question | String | FAQ question |
+| answer | String | FAQ answer |
+
+### ThemePage
+
+| Field | Type | Description |
+|-------|------|-------------|
+| urlPath | String? | Path the theme applies to |
+| featuredImage | ThemeImage? | Featured image (url + accent) |
+| color | String? | Accent colour |
+
+### ThemeDestination
+
+| Field | Type | Description |
+|-------|------|-------------|
+| image | ThemeImage? | Destination image |
+| gallery | List\<String\>? | Gallery image URLs |
+| countryCode | String? | Country code the theme belongs to |
+
+### OrdersPage
+
+| Field | Type | Description |
+|-------|------|-------------|
+| orders | List\<OrderHistoryItem\> | Orders in this page |
+| totalCount | Int | Total orders |
+| hasMore | Boolean | More pages available |
+
+### PackagesPage
+
+| Field | Type | Description |
+|-------|------|-------------|
+| packages | List\<PackagePlan\> | Packages in this page |
+| totalCount | Int | Total packages |
+| promoCode | CheckoutCouponResponse? | Promo code attached to the page |

@@ -5,8 +5,8 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class LoyaltyPointsOriginal(
-    @SerialName("amount_usd") val amountUSD: String,
-    @SerialName("currency") val currency: CurrencyObject,
+    @SerialName("amount_usd") val amountUSD: String = "",
+    @SerialName("currency") val currency: CurrencyObject = CurrencyObject(),
 )
 
 @Serializable
@@ -14,7 +14,7 @@ data class LoyaltyPointsDetail(
     @SerialName("amount") val amount: String? = null,
     @SerialName("amount_local_currency") val amountLocalCurrency: String? = null,
     @SerialName("amount_local_currency_cents") val amountLocalCurrencyCents: Int? = null,
-    @SerialName("currency") val currency: CurrencyObject,
+    @SerialName("currency") val currency: CurrencyObject = CurrencyObject(),
     @SerialName("original") val original: LoyaltyPointsOriginal? = null,
 ) {
     /**
@@ -42,7 +42,7 @@ data class LoyaltyPointsDetail(
 @Serializable
 data class KredsLoyaltyBalanceResponse(
     @SerialName("total_loyalty_points")
-    val totalLoyaltyPoints: Int,
+    val totalLoyaltyPoints: Int = 0,
     @SerialName("total_loyalty_points_detail")
-    val totalLoyaltyPointsDetail: LoyaltyPointsDetail,
+    val totalLoyaltyPointsDetail: LoyaltyPointsDetail = LoyaltyPointsDetail(),
 )

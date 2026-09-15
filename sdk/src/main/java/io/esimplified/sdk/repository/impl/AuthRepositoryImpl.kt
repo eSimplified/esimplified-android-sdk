@@ -13,21 +13,23 @@ import io.esimplified.sdk.model.UpdateCustomerPreferencesRequest
 import io.esimplified.sdk.model.VerifyEmailRequest
 import io.esimplified.sdk.model.VerifyEmailResponse
 import io.esimplified.sdk.model.GetTokenResponse
-import io.esimplified.sdk.model.ApiErrorResponse
 import io.esimplified.sdk.model.Customer
+import io.esimplified.sdk.network.ApiErrorMessage
 import io.esimplified.sdk.network.ApiService
+import io.esimplified.sdk.network.SdkCache
 import io.esimplified.sdk.auth.Auth
 import io.esimplified.sdk.auth.SessionManager
 import io.esimplified.sdk.auth.SecureStorageProvider
 import kotlinx.serialization.json.Json
 import retrofit2.HttpException
-import timber.log.Timber
+import io.esimplified.sdk.SdkLog
 import java.time.LocalDateTime
 
 internal class AuthRepositoryImpl(
     private val apiService: ApiService,
     private val sessionManager: SessionManager,
-    private val secureStorage: SecureStorageProvider
+    private val secureStorage: SecureStorageProvider,
+    private val cache: SdkCache
 ) : AuthRepository {
 
     private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
@@ -35,22 +37,23 @@ internal class AuthRepositoryImpl(
     companion object {
         private const val KEY_USER_ID = "user_id"
         private const val KEY_USER_EMAIL = "email"
+        private const val UPDATE_FAILED_MESSAGE = "Update failed"
     }
 
     // region Authentication
     override suspend fun login(email: String, password: String): Customer {
-        Timber.d("Login attempt for: $email")
+        SdkLog.d("Login attempt")
         val response = apiService.getAuthToken(
             grantType = "password",
             username = email,
             password = password
         )
 
-        Timber.d("Login response code: ${response.code()}")
+        SdkLog.d("Login response code: ${response.code()}")
 
         if (!response.isSuccessful) {
             val errorBody = response.errorBody()?.string().orEmpty()
-            Timber.e("Login failed [${response.code()}]: $errorBody")
+            SdkLog.e("Login failed [${response.code()}]")
             val message = try {
                 val errorResponse = json.decodeFromString<GetTokenResponse>(errorBody)
                 errorResponse.description ?: errorResponse.detail ?: errorResponse.error
@@ -77,22 +80,22 @@ internal class AuthRepositoryImpl(
         )
         sessionManager.save(auth)
 
-        Timber.d("Login successful for: ${user.email}")
+        SdkLog.d("Login successful")
         return user
     }
 
     override suspend fun loginWithRefreshToken(refreshToken: String): Customer {
-        Timber.d("Refreshing token")
+        SdkLog.d("Refreshing token")
         val response = apiService.getAuthToken(
             grantType = "refresh_token",
             refreshToken = refreshToken
         )
 
-        Timber.d("Refresh response code: ${response.code()}")
+        SdkLog.d("Refresh response code: ${response.code()}")
 
         if (!response.isSuccessful) {
             val errorBody = response.errorBody()?.string().orEmpty()
-            Timber.e("Token refresh failed [${response.code()}]: $errorBody")
+            SdkLog.e("Token refresh failed [${response.code()}]")
             sessionManager.onAuthenticationFailed()
             throw InvalidRefreshTokenException()
         }
@@ -124,7 +127,7 @@ internal class AuthRepositoryImpl(
         )
         sessionManager.save(auth)
 
-        Timber.d("Token refresh successful")
+        SdkLog.d("Token refresh successful")
         return user
     }
 
@@ -168,7 +171,7 @@ internal class AuthRepositoryImpl(
 
             return user
         } catch (e: HttpException) {
-            throw Exception(parseHttpError(e) ?: "Google sign-in failed")
+            throw Exception(ApiErrorMessage.parseOrNull(e) ?: "Google sign-in failed")
         }
     }
     // endregion
@@ -205,7 +208,7 @@ internal class AuthRepositoryImpl(
 
             return response
         } catch (e: HttpException) {
-            throw Exception(parseHttpError(e) ?: e.message)
+            throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
         }
     }
     // endregion
@@ -221,7 +224,7 @@ internal class AuthRepositoryImpl(
 
             return response
         } catch (e: HttpException) {
-            throw Exception(parseHttpError(e) ?: e.message)
+            throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
         }
     }
 
@@ -285,7 +288,7 @@ internal class AuthRepositoryImpl(
             }
             return response
         } catch (e: HttpException) {
-            throw Exception(parseHttpError(e) ?: "Email verification failed")
+            throw Exception(ApiErrorMessage.parseOrNull(e) ?: "Email verification failed")
         }
     }
     // endregion
@@ -297,13 +300,34 @@ internal class AuthRepositoryImpl(
     // endregion
 
     // region User & Preferences
-    override suspend fun getUser(): Customer? {
+    override suspend fun getUser(): Customer? = fetchProfile()
+
+    override suspend fun fetchProfile(): Customer? {
         if (sessionManager.getAuthState() !is Auth.Authenticated) {
             return null
         }
-        val user = withLoyaltyProvider(apiService.getUser())
+        val user = mergedWithSessionUser(withLoyaltyProvider(apiService.getUser()))
         saveUserOnCurrentSession(user)
         return user
+    }
+
+    private fun mergedWithSessionUser(user: Customer): Customer {
+        val currentAuth = sessionManager.getAuthState()
+        if (currentAuth !is Auth.Authenticated) {
+            return user
+        }
+        return user.copy(
+            referralCode = user.referralCode ?: currentAuth.user.referralCode
+        )
+    }
+
+    private suspend fun refreshedProfileOrNull(): Customer? {
+        return try {
+            fetchProfile()
+        } catch (e: Exception) {
+            SdkLog.e("Failed to re-fetch the customer profile after a partial update", e)
+            null
+        }
     }
 
     private fun saveUserOnCurrentSession(user: Customer) {
@@ -321,7 +345,7 @@ internal class AuthRepositoryImpl(
                 mokafaaEnrollment = preferences.mokafaaEnrollment ?: user.mokafaaEnrollment,
             )
         } catch (e: Exception) {
-            Timber.e(e, "Failed to fetch customer preferences for loyalty provider")
+            SdkLog.e("Failed to fetch customer preferences for loyalty provider", e)
             user
         }
     }
@@ -337,6 +361,16 @@ internal class AuthRepositoryImpl(
             )
         )
 
+        val refreshed = refreshedProfileOrNull()
+        if (refreshed != null) {
+            val reconciled = refreshed.copy(
+                preferredLanguage = preferredLanguage ?: refreshed.preferredLanguage,
+                preferredCurrency = preferredCurrency ?: refreshed.preferredCurrency
+            )
+            saveUserOnCurrentSession(reconciled)
+            return reconciled
+        }
+
         val snapshot = sessionManager.getAuthState()
         if (snapshot is Auth.Authenticated) {
             sessionManager.save(
@@ -350,6 +384,76 @@ internal class AuthRepositoryImpl(
         }
 
         return response
+    }
+
+    override suspend fun updateCustomerProfile(
+        firstName: String?,
+        lastName: String?,
+        phoneNumber: String?,
+        email: String?,
+        password: String?,
+    ): ProfileResponse {
+        try {
+            val userId = secureStorage.secureLoad(KEY_USER_ID, "")
+            val userEmail = secureStorage.secureLoad(KEY_USER_EMAIL, "")
+            val fullName = listOfNotNull(firstName, lastName)
+                .joinToString(" ")
+                .takeIf { it.isNotEmpty() }
+
+            val response = apiService.update(
+                CustomerDetails(
+                    id = userId,
+                    email = email,
+                    firstName = firstName,
+                    lastName = lastName,
+                    fullName = fullName,
+                    phoneNumber = phoneNumber,
+                    newEmail = email?.takeIf { it != userEmail },
+                    password = password,
+                )
+            )
+
+            if (response.detail != null) {
+                throw Exception(response.detail)
+            }
+
+            if (response.success == false || response.updated == false) {
+                throw Exception(response.detail ?: response.message ?: UPDATE_FAILED_MESSAGE)
+            }
+
+            val refreshed = refreshedProfileOrNull()
+            if (refreshed != null) {
+                saveUserOnCurrentSession(
+                    refreshed.copy(
+                        email = email ?: refreshed.email,
+                        firstName = firstName ?: refreshed.firstName,
+                        lastName = lastName ?: refreshed.lastName,
+                        fullName = fullName ?: refreshed.fullName,
+                        phoneNumber = phoneNumber ?: refreshed.phoneNumber,
+                    )
+                )
+                return response
+            }
+
+            val snapshot = sessionManager.getAuthState()
+            if (snapshot is Auth.Authenticated) {
+                sessionManager.save(
+                    snapshot.copy(
+                        user = snapshot.user.copy(
+                            email = email ?: snapshot.user.email,
+                            firstName = firstName ?: snapshot.user.firstName,
+                            lastName = lastName ?: snapshot.user.lastName,
+                            fullName = fullName ?: snapshot.user.fullName,
+                            phoneNumber = phoneNumber ?: snapshot.user.phoneNumber,
+                        )
+                    )
+                )
+            }
+
+            return response
+        } catch (e: HttpException) {
+            throw Exception(ApiErrorMessage.parseOrNull(e) ?: UPDATE_FAILED_MESSAGE)
+        }
     }
 
     override suspend fun updateProfile(
@@ -402,7 +506,7 @@ internal class AuthRepositoryImpl(
 
             return response
         } catch (e: HttpException) {
-            throw Exception(parseHttpError(e) ?: "Update failed")
+            throw Exception(ApiErrorMessage.parseOrNull(e) ?: "Update failed")
         }
     }
     // endregion
@@ -410,6 +514,8 @@ internal class AuthRepositoryImpl(
     // region Session
     override suspend fun logout() {
         sessionManager.save(Auth.Unauthenticated)
+        cache.clear()
+        SdkLog.d("Logged out and cleared all cached responses")
     }
     // endregion
 
@@ -418,18 +524,5 @@ internal class AuthRepositoryImpl(
         return LocalDateTime.now().plusSeconds(expiresIn.toLong())
     }
 
-    private fun parseHttpError(e: HttpException): String? {
-        return try {
-            val errorBody = e.response()?.errorBody()?.string()
-            if (errorBody != null) {
-                val errorResponse = json.decodeFromString<ApiErrorResponse>(errorBody)
-                errorResponse.detail ?: errorResponse.message ?: errorResponse.error
-            } else {
-                null
-            }
-        } catch (_: Exception) {
-            null
-        }
-    }
     // endregion
 }
