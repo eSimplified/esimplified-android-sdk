@@ -117,7 +117,7 @@ EsimplifiedSdk.initialize(
 | context | Context | Yes | Application context |
 | config | SdkConfig | Yes | SDK configuration |
 | storageProvider | SecureStorageProvider | No | Custom token storage (defaults to EncryptedSharedPreferences) |
-| sessionManager | SessionManager | No | Custom session handler (defaults to DefaultSessionManager) |
+| sessionManager | SessionManager | No | Custom session handler. Omit it and the SDK uses its own, backed by `storageProvider` |
 
 ### SdkConfig
 
@@ -216,7 +216,35 @@ Drops every cached read. `AuthRepository.logout()` already does this, so call it
 
 ### SdkLogger
 
-`SdkConfig(logger = …)` takes a `fun interface SdkLogger { fun log(level: SdkLogLevel, message: String, throwable: Throwable?) }`, with `SdkLogLevel` of `DEBUG`, `WARNING` or `ERROR`. Supply one to route the SDK's own diagnostics into your logging; leave it null and the SDK writes to `android.util.Log` under the tag `EsimplifiedSdk` only when the app is debuggable or `enableLogging = true`. The SDK has no logging dependency, and no line carries an email, token, ICCID, customer id, order UUID, voucher code or raw body.
+`SdkConfig(logger = …)` takes an implementation of:
+
+```kotlin
+fun interface SdkLogger {
+    fun log(level: SdkLogLevel, message: String, throwable: Throwable?)
+}
+
+enum class SdkLogLevel { DEBUG, WARNING, ERROR }
+```
+
+Supply one to route the SDK's own diagnostics into your logging, and it receives every line regardless of build type:
+
+```kotlin
+SdkConfig(
+    environment = SdkEnvironment.PRODUCTION,
+    clientName = "acme",
+    clientId = clientId,
+    clientSecret = clientSecret,
+    logger = { level, message, throwable ->
+        when (level) {
+            SdkLogLevel.ERROR -> Log.e("MyApp", message, throwable)
+            SdkLogLevel.WARNING -> Log.w("MyApp", message, throwable)
+            SdkLogLevel.DEBUG -> Log.d("MyApp", message, throwable)
+        }
+    },
+)
+```
+
+Leave it null and the SDK writes to `android.util.Log` under the tag `EsimplifiedSdk`, only when the app is debuggable or `enableLogging = true`. The SDK has no logging dependency, and no line carries an email, token, ICCID, customer id, order UUID, voucher code or raw body.
 
 ### EsimplifiedSdk.sessionManager
 
@@ -228,8 +256,8 @@ The active `SessionManager`, for reading auth state outside a repository.
 
 The SDK persists the session for you. `EsimplifiedSdk.initialize` takes two optional collaborators, and supplying neither is a valid choice:
 
-- **`SecureStorageProvider`** — where tokens are written. The default, `DefaultSecureStorage`, uses `EncryptedSharedPreferences`. Supply your own only if you already own a secure store. It never falls back to plaintext: if `EncryptedSharedPreferences` cannot be initialised the default implementation throws `SecureStorageInitException`, and the right response is to sign the customer out and ask them to authenticate again.
-- **`SessionManager`** — how auth state is decided and observed. The default, `DefaultSessionManager`, reads and writes through whichever `SecureStorageProvider` is in play. Supply your own when the session already lives in your app.
+- **`SecureStorageProvider`** — where tokens are written. Omit it and the SDK uses `EncryptedSharedPreferences` (AES-256-GCM values, AES-256-SIV keys). Supply your own only if you already own a secure store. It never falls back to plaintext: if `EncryptedSharedPreferences` cannot be initialised the default implementation throws `SecureStorageInitException`, and the right response is to sign the customer out and ask them to authenticate again.
+- **`SessionManager`** — how auth state is decided and observed. Omit it and the SDK uses its own, which reads and writes through whichever `SecureStorageProvider` is in play. Supply your own when the session already lives in your app.
 
 ```kotlin
 EsimplifiedSdk.initialize(
@@ -427,27 +455,27 @@ render(result.value)
 if (result.isStale && result.isOffline) showOfflineBanner()
 ```
 
-`SdkError`, in `io.esimplified.sdk.network`, is a sealed subclass of `IOException`:
+`SdkError`, in `io.esimplified.sdk.network`, is a sealed subclass of `IOException`. These six cases are the whole hierarchy:
 
-| Case | Meaning |
-|---|---|
-| `NetworkError(statusCode, message)` | Server responded with an error status |
-| `AuthenticationRequired` | No valid session |
-| `NoInternetConnection` | Host unreachable or connection refused |
-| `DecodingError(cause)` | Response did not match the model |
-| `InvalidURL(url)` | Malformed URL |
-| `Unknown(cause)` | Anything else |
+| Case | Constructor | Meaning |
+|---|---|---|
+| `NetworkError` | `NetworkError(statusCode: Int, message: String)` | Server responded with an error status |
+| `AuthenticationRequired` | `AuthenticationRequired()` | No valid session |
+| `NoInternetConnection` | `NoInternetConnection()` | Host unreachable or connection refused |
+| `DecodingError` | `DecodingError(cause: Throwable)` | Response did not match the model. `cause` names the field that broke |
+| `InvalidURL` | `InvalidURL(url: String)` | Malformed URL |
+| `Unknown` | `Unknown(cause: Throwable)` | Anything else |
 
 `SdkError.isOffline` is shorthand for `this is NoInternetConnection`.
 
 The SDK's other public exception types, all thrown rather than returned:
 
-| Exception | Thrown by | Meaning |
-|---|---|---|
-| `InvalidRefreshTokenException` | `AuthRepository.loginWithRefreshToken` | The stored refresh token was rejected. The session has already been cleared — send the customer to sign-in |
-| `LoyaltyApiException(httpCode, message)` | `LoyaltyRepository`'s Mokafaa methods | Backend error, `message` verbatim. Branch on `httpCode` (400 / 401 / 503) |
-| `PaymentApiException(httpCode, type, message)` | `PaymentsRepository.getPaymentIntent` | Payment rejected. `type` is `PaymentApiException.TYPE_VALIDATION_ERROR` for a bad request |
-| `SecureStorageInitException` | `EsimplifiedSdk.initialize()`, via the default storage provider | `EncryptedSharedPreferences` could not be initialised. The SDK refuses to fall back to plaintext — sign the customer out and re-prompt |
+| Exception | Package | Thrown by | Meaning |
+|---|---|---|---|
+| `InvalidRefreshTokenException()` | `io.esimplified.sdk.repository` | `AuthRepository.loginWithRefreshToken` | The stored refresh token was rejected. The session has already been cleared — send the customer to sign-in. Its message is `"Session expired. Please sign in again."` |
+| `LoyaltyApiException(httpCode: Int, message: String?)` | `io.esimplified.sdk.network` | `LoyaltyRepository`'s Mokafaa methods | Backend error, `message` verbatim. Branch on `httpCode` (400 / 401 / 503) |
+| `PaymentApiException(httpCode: Int, type: String?, message: String?)` | `io.esimplified.sdk.network` | `PaymentsRepository.getPaymentIntent` | Payment rejected. `type` is `PaymentApiException.TYPE_VALIDATION_ERROR` for a bad request |
+| `SecureStorageInitException(cause: Throwable)` | `io.esimplified.sdk.auth` | `EsimplifiedSdk.initialize()`, via the default storage provider | `EncryptedSharedPreferences` could not be initialised. The SDK refuses to fall back to plaintext — sign the customer out and re-prompt |
 
 `VouchersRepository.redeemVoucher` is the one method that returns Kotlin's own `Result<T>` instead. Other API failures surface as a plain `Exception` whose message is the backend's error text, parsed out of the response body.
 
@@ -470,6 +498,33 @@ Cache control:
 - `SdkConfig(defaultCacheTtlSeconds = …)` — the fallback lifetime, 3600 seconds by default, used where a call passes no TTL of its own.
 
 The cache lives in memory for the life of the process. Nothing is written to disk, so a cold start always goes to the network.
+
+### Every `…Result` twin
+
+One row per `…Result` method in the SDK. They take the same arguments as the method they wrap. Five of them return a **nullable** inner type where the plain method returns non-null — that is the case where nothing was ever cached and the refresh failed, so read those rows carefully.
+
+| Repository | Result method | Plain method | Returns |
+|---|---|---|---|
+| `CountryRepository` | `getCountriesResult` | `getCountries` | `RepositoryResult<List<Country>>` |
+| `CountryRepository` | `getCountriesByResult` | `getCountriesBy` | `RepositoryResult<List<Country>>` |
+| `EsimRepository` | `getEsimsResult` | `getEsims` | `RepositoryResult<List<AssignedEsim>>` |
+| `EsimRepository` | `getActiveEsimsResult` | `getActiveEsims` | `RepositoryResult<List<AssignedEsim>>` |
+| `EsimRepository` | `getArchivedEsimsResult` | `getArchivedEsims` | `RepositoryResult<List<AssignedEsim>>` |
+| `EsimRepository` | `getEsimByIccidResult` | `getEsimByIccid` | `RepositoryResult<AssignedEsim?>` |
+| `FaqAndSupportRepository` | `fetchDestinationFaqsResult` | `fetchDestinationFaqs` | `RepositoryResult<List<Faq>>` |
+| `LoyaltyRepository` | `getLoyaltyBalanceResult` | `getLoyaltyBalance` | `RepositoryResult<KredsLoyaltyBalanceResponse?>` |
+| `OrdersRepository` | `getOrderHistoryResult` | `getOrderHistory` | `RepositoryResult<List<OrderHistoryItem>>` |
+| `OrdersRepository` | `getOrderDetailsResult` | `getOrderDetails` | `RepositoryResult<OrderDetail?>` |
+| `OrdersRepository` | `getOrdersPageResult` | — none; this one is `Result`-only | `RepositoryResult<OrdersPage>` |
+| `PackagesRepository` | `getPackagesResult` | `getPackages` | `RepositoryResult<List<PackagePlan>>` |
+| `PackagesRepository` | `getTopUpPackagesResult` | `getTopUpPackages` | `RepositoryResult<List<PackagePlan>>` |
+| `PackagesRepository` | `getPackagesPageResult` | `getPackagesPage` | `RepositoryResult<PackagesPage>` |
+| `PackagesRepository` | `checkStockResult` | `checkStock` | `RepositoryResult<CheckStockResponse?>` |
+| `StoreReviewRepository` | `fetchStoreReviewResult` | `fetchStoreReview` | `RepositoryResult<RatingApiResponse?>` |
+| `ThemeRepository` | `fetchPageThemeResult` | `fetchPageTheme` | `RepositoryResult<ThemePage?>` |
+| `ThemeRepository` | `fetchDestinationThemeResult` | `fetchDestinationTheme` | `RepositoryResult<ThemeDestination?>` |
+
+`RepositoryResult` itself is in [Supporting types](#repositoryresult).
 
 ---
 
@@ -561,8 +616,8 @@ All cached (`PACKAGES_TTL` = 1 h). `…Result` twins: `getPackagesResult`, `getP
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
 | `getEsims` | `showLegacy: Boolean = true, isPrimary: Boolean? = null, includeBase64QrCode: Boolean = false` | `List<AssignedEsim>` | Get all user's eSIMs |
-| `getActiveEsims` | same as `getEsims` | `List<AssignedEsim>` | Non-archived eSIMs only |
-| `getArchivedEsims` | same as `getEsims`, but `showLegacy: Boolean? = null` | `List<AssignedEsim>` | Archived eSIMs only. The default omits `show_legacy` from the request; pass `true`/`false` to send it |
+| `getActiveEsims` | `showLegacy: Boolean = true, isPrimary: Boolean? = null, includeBase64QrCode: Boolean = false` | `List<AssignedEsim>` | Non-archived eSIMs only |
+| `getArchivedEsims` | `showLegacy: Boolean? = null, isPrimary: Boolean? = null, includeBase64QrCode: Boolean = false` | `List<AssignedEsim>` | Archived eSIMs only. `showLegacy` is nullable here and defaults to `null`, which omits `show_legacy` from the request; pass `true`/`false` to send it |
 | `getEsimByIccid` | `iccid: String, includeBase64QrCode: Boolean = false` | `AssignedEsim` | Get one eSIM from `customer/esims/{iccid}/details/` |
 | `updateEsim` | `iccid: String, name: String? = null, isAutoTopUp: Boolean? = null, isArchived: Boolean? = null, isPrimary: Boolean? = null` | `Unit` | Update eSIM settings. **Throws if the server rejects the write** — on a non-2xx response, or when the success body is not the API's `eSIM updated successfully`, matching the iOS SDK |
 | `updateEsimPrimaryStatus` | `iccid: String, isPrimary: Boolean` | `Unit` | Convenience wrapper for the primary flag |
@@ -733,7 +788,18 @@ Cached (`STORE_REVIEW_TTL` = 24 h). `…Result` twin: `fetchStoreReviewResult`.
 
 ## 9b. Supporting types
 
-Declared outside the model layer, but you will meet them in signatures.
+Types you meet in signatures that are not models. Each is defined once; the first table says where the rest live.
+
+### Defined elsewhere in this document
+
+| Type | Defined in |
+|---|---|
+| `SdkEnvironment` | [Configuring and creating the SDK](#sdkenvironment) |
+| `SdkLogger`, `SdkLogLevel` | [Configuring and creating the SDK](#sdklogger) |
+| `SdkError` and its six cases | [Error handling](#7-error-handling) |
+| `InvalidRefreshTokenException`, `LoyaltyApiException`, `PaymentApiException`, `SecureStorageInitException` | [Error handling](#7-error-handling) |
+| `OrdersPage` | [Order and payment models](#orderspage) |
+| `PackagesPage` | [Catalogue and eSIM models](#packagespage) |
 
 ### RepositoryResult
 
@@ -757,53 +823,6 @@ data class RepositoryResult<T>(
 | `failure` | `SdkError?` | Why the network call failed, or `null` if it did not |
 | `didFail` | `Boolean` | `failure != null` |
 | `isOffline` | `Boolean` | `failure` is `SdkError.NoInternetConnection` |
-
-### SdkError
-
-`io.esimplified.sdk.network.SdkError`, a sealed subclass of `IOException`. Cases and their meanings are in [Error handling](#7-error-handling).
-
-| Case | Constructor |
-|---|---|
-| `NetworkError` | `NetworkError(statusCode: Int, message: String)` |
-| `AuthenticationRequired` | `AuthenticationRequired()` |
-| `NoInternetConnection` | `NoInternetConnection()` |
-| `DecodingError` | `DecodingError(cause: Throwable)` |
-| `InvalidURL` | `InvalidURL(url: String)` |
-| `Unknown` | `Unknown(cause: Throwable)` |
-
-`SdkError.isOffline` is `true` only for `NoInternetConnection`.
-
-### InvalidRefreshTokenException
-
-`io.esimplified.sdk.repository.InvalidRefreshTokenException`. No properties; its message is `"Session expired. Please sign in again."`. Thrown by `AuthRepository.loginWithRefreshToken`.
-
-### LoyaltyApiException
-
-`io.esimplified.sdk.network.LoyaltyApiException(httpCode: Int, message: String?)`. Thrown by the Mokafaa methods on `LoyaltyRepository`.
-
-### PaymentApiException
-
-`io.esimplified.sdk.network.PaymentApiException(httpCode: Int, type: String?, message: String?)`. Thrown by `PaymentsRepository.getPaymentIntent`. `PaymentApiException.TYPE_VALIDATION_ERROR` is the `type` value for a rejected request.
-
-### SecureStorageInitException
-
-`io.esimplified.sdk.auth.SecureStorageInitException(cause: Throwable)`. Thrown when `EncryptedSharedPreferences` cannot be initialised. The SDK does not fall back to plaintext storage.
-
-### SdkEnvironment
-
-Enum: `STAGING`, `TESTING`, `PRODUCTION`. Selects the API host together with `clientName` — see [Configuring and creating the SDK](#4-configuring-and-creating-the-sdk).
-
-### SdkLogger and SdkLogLevel
-
-```kotlin
-fun interface SdkLogger {
-    fun log(level: SdkLogLevel, message: String, throwable: Throwable?)
-}
-
-enum class SdkLogLevel { DEBUG, WARNING, ERROR }
-```
-
-See [`SdkLogger`](#sdklogger) in section 4 for what is and is not logged.
 
 ### SessionManager
 
@@ -860,10 +879,6 @@ interface TokenProvider {
 
 Public but unused: nothing in the SDK consumes a `TokenProvider`, and supplying one has no effect. Token storage is `SecureStorageProvider` and session state is `SessionManager`. Listed here only because it is visible on the public surface.
 
-### OrdersPage and PackagesPage
-
-Paged wrappers returned by `getOrdersPageResult` and `getPackagesPage`. Their fields are in [Model reference](#10-model-reference).
-
 ---
 
 ## 10. Model reference
@@ -889,6 +904,9 @@ Every type the SDK returns or accepts, with its Kotlin properties and the JSON k
 | preferredCurrency | String? | Currency preference |
 | loyaltyProvider | String? | `kreds` or `mokafaa` |
 | mokafaaEnrollment | MokafaaEnrollment? | Mokafaa enrolment state |
+| mokafaaEnabled | Boolean? | Whether Mokafaa is available to this customer (`mokafaa_enabled`) |
+| mokafaaCicNo | String? | The customer's Mokafaa identifier (`mokafaa_cic_no`) |
+| externalReference | String? | Your own reference for this customer, if the tenant sets one (`external_reference`) |
 | receiveMarketingEmail | Boolean? | `null` = the API did not say |
 | receiveMarketingPush | Boolean? | `null` = the API did not say |
 | receiveAccountEmail | Boolean? | `null` = the API did not say |
@@ -909,9 +927,12 @@ Every type the SDK returns or accepts, with its Kotlin properties and the JSON k
 | destinations | List\<SupportedCountry\> | Supported countries in region |
 | isRegion | Boolean | True if this is a region (not a single country) |
 | fromPrice | String? | Starting price, server text verbatim |
-| fromPriceValue | Double? | `fromPrice` parsed, for arithmetic (computed) |
 | currency | String? | Currency code |
 | currencyObject | CurrencyObject? | Currency details |
+| flagCss | String | CSS class for a sprite-sheet flag, for web reuse (`flag_css`) |
+| **Computed properties** | — | Derived in Kotlin from the fields above; not part of the JSON |
+| fromPriceValue | Double? | `fromPrice` parsed, for arithmetic |
+| isGlobal | Boolean | True when `code` is the global destination code `2A` |
 
 ### Destination
 
@@ -934,6 +955,7 @@ Every type the SDK returns or accepts, with its Kotlin properties and the JSON k
 | currency | String | Currency code |
 | currencyObject | CurrencyObject | Currency details |
 | planType | String | Plan type |
+| network | List\<String\>? | Carrier networks the plan roams on |
 | packageSlug | String | URL slug |
 | validityDays | Long | Validity in days |
 | packageTypeId | Long | Unique package ID |
@@ -942,7 +964,15 @@ Every type the SDK returns or accepts, with its Kotlin properties and the JSON k
 | earnPercentage | Double? | Kreds earn percentage |
 | dataCap | String? | Fair usage data cap |
 | throttleSpeed | String? | Throttled speed after cap |
-| **Computed:** | | |
+| kycDisplay | String | KYC requirement text to show before purchase (`kyc_display`) |
+| bestConnectivity | String | Network the API recommends for this destination (`best_connectivity`) |
+| activationPolicy | String | When validity starts, e.g. on first connection (`activation_policy`) |
+| nameAdditionalText | String | Qualifier shown after the package name (`name_additional_text`) |
+| validityDaysDisplay | String | Validity already formatted for display (`validity_days_display`) |
+| discountLabel | String | Badge text for the discount, when there is one (`discount_label`) |
+| discountPercentage | String? | Discount percentage as server text (`discount_percentage`) |
+| promoCode | CheckoutCouponResponse? | The promo code already applied to this price, if any (`promo_code`) |
+| **Computed properties** | — | Derived in Kotlin from the fields above; not part of the JSON |
 | isUnlimited | Boolean | True if data is -1 |
 | purchasePrice | String | `discountedPrice ?: price` |
 | priceValue | Double | `price` parsed |
@@ -977,7 +1007,7 @@ Every type the SDK returns or accepts, with its Kotlin properties and the JSON k
 | activationCode | String? | Activation code, for direct install |
 | qrCodeImageBase64 | String? | QR image, when `includeBase64QrCode = true` |
 | esimProvider | String? | Provider name |
-| **Computed:** | | |
+| **Computed properties** | — | Derived in Kotlin from the fields above; not part of the JSON |
 | canInstallDirectly | Boolean | True when `smDpAddress` and `activationCode` are both present |
 | hasUnlimitedPackage | Boolean | True when remaining GB is -1 |
 
@@ -1007,7 +1037,17 @@ Every type the SDK returns or accepts, with its Kotlin properties and the JSON k
 | paymentMethod | PaymentMethod | How it was paid |
 | loyaltyPointsEarned | LoyaltyPointsDetail? | Kreds earned |
 | loyaltyPointsSpent | LoyaltyPointsDetail? | Kreds spent |
-| **Computed:** | | |
+| customerId | String | Customer the order belongs to (`customer_id`) |
+| countryCode | String? | Destination country code (`country_code`) |
+| countryName | String? | Destination country name (`country_name`) |
+| smDpAddress | String? | SM-DP+ server address — half of what the eSIM install needs (`sm_dp_address`) |
+| esimProfile | EsimProfile? | The provisioned profile, once the order completes (`profile`) |
+| packageInfo | PackagePlan? | The package that was bought (`package`) |
+| transactionId | String? | Payment gateway transaction reference (`transaction_id`) |
+| tracked | Boolean | Whether the conversion has already been reported by `trackOrder` (`conversion_tracked`) |
+| detail | String? | Message returned instead of an order when the lookup failed |
+| passwordResetEncoded | String? | Token for the set-a-password flow after a guest purchase (`password_reset_encoded`) |
+| **Computed properties** | — | Derived in Kotlin from the fields above; not part of the JSON |
 | priceValue | Double | `price` parsed |
 | finalPriceValue | Double | `finalPrice` parsed |
 | discountAmountValue | Double | `discountAmount` parsed |
@@ -1018,6 +1058,8 @@ Every type the SDK returns or accepts, with its Kotlin properties and the JSON k
 |-------|------|-------------|
 | detail | String? | Error detail |
 | transaction | Transaction? | Transaction info |
+| type | String? | Error classification when the request was rejected |
+| message | String? | Human-readable error message when the request was rejected |
 
 ### Transaction
 
@@ -1040,6 +1082,8 @@ Every type the SDK returns or accepts, with its Kotlin properties and the JSON k
 | discount | String? | Discount description |
 | percentage | Double? | Discount percentage |
 | productType | String? | Product type restriction |
+| **Computed properties** | — | Derived in Kotlin from the fields above; not part of the JSON |
+| isRemovable | Boolean | Whether the customer may clear this code — valid, a non-zero percentage, and not a Visa reward |
 
 ### CheckStockResponse
 
@@ -1118,11 +1162,23 @@ Decoding is total: any wire value the enum does not recognise becomes `UNKNOWN` 
 
 | Field | Type | Description |
 |-------|------|-------------|
-| state | EsimProfileState? | ENABLED, DOWNLOADED, INSTALLED, DISABLED, DELETED, RELEASED, ERROR |
-| activationCode | String? | Activation code |
+| eid | String? | eUICC identifier of the device the profile is on |
+| imsi | Long? | IMSI assigned to the profile |
 | iccid | String? | ICCID |
-| installed | Boolean | True if state is ENABLED/DOWNLOADED/INSTALLED/DISABLED (computed) |
-| isDeleted | Boolean | True if state is DELETED (computed) |
+| state | EsimProfileState? | ENABLED, DOWNLOADED, INSTALLED, DISABLED, DELETED, RELEASED, ERROR |
+| status | String? | State as server text, more detailed than `state` (`state_message`) |
+| activationCode | String? | Activation code |
+| ccRequired | Boolean? | Whether a confirmation code is needed to install (`cc_required`) |
+| releaseDate | Long? | Release date as an epoch value (`release_date`) |
+| releaseDateUtc | String? | The same release date as a UTC string (`release_date_utc`) |
+| lastOperationDate | Long? | Last profile operation as an epoch value (`last_operation_date`) |
+| lastOperationDateUtc | String? | The same date as a UTC string (`last_operation_date_utc`) |
+| reuseEnabled | Boolean? | Whether the profile may be installed again (`reuse_enabled`) |
+| reuseRemainingCount | Int? | Installs still allowed (`reuse_remaining_count`) |
+| policy | ProfileReusePolicy? | Reuse type and maximum count (`profile_reuse_policy`) |
+| **Computed properties** | — | Derived in Kotlin from the fields above; not part of the JSON |
+| installed | Boolean | True when `state` is ENABLED, DOWNLOADED, INSTALLED or DISABLED |
+| isDeleted | Boolean | True when `state` is DELETED |
 
 ### VisaRewardsResponse
 
@@ -1136,9 +1192,12 @@ Decoding is total: any wire value the enum does not recognise becomes `UNKNOWN` 
 | used | Int? | Claims used (nullable since 2.0) |
 | allowed | Int? | Total allowed (nullable since 2.0) |
 | remaining | Int? | Remaining claims (nullable since 2.0) |
-| remainingOrAllowed | Int? | `remaining ?: allowed` (computed) |
+| details | String? | Longer detail message; separate from `detail` on the wire (`details`) |
+| redirectURl | String? | Where to send the customer to claim the reward (`redirect_url`) |
 | validityDays | Int? | Reward validity |
 | dataGB | Double? | Data reward amount |
+| **Computed properties** | — | Derived in Kotlin from the fields above; not part of the JSON |
+| remainingOrAllowed | Int? | `remaining ?: allowed` |
 
 ### VoucherRedeemResponse
 
@@ -1172,6 +1231,7 @@ Decoding is total: any wire value the enum does not recognise becomes `UNKNOWN` 
 | author | Author? | Author name and location |
 | dateCreated | String? | Creation date |
 | timeAgo | String? | Relative date |
+| sku | String? | Package SKU the review is about |
 
 ### Faq
 

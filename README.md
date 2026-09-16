@@ -247,47 +247,53 @@ SdkConfig(
 
 ## SDK Structure
 
+Where things live inside the SDK. You do not need this to integrate — everything you call is in `repository/`, `model/` and the three top-level files — but it helps when reading a stack trace. Anything marked internal is not on your compile classpath.
+
 ```
 sdk/src/main/java/io/esimplified/sdk/
-|-- EsimplifiedSdk.kt                    # SDK entry point (initialize, koinModule)
-|-- SdkConfig.kt                          # Configuration data class
-|-- SdkEnvironment.kt                     # STAGING / TESTING / PRODUCTION enum
-|-- SdkLogger.kt                          # Logging seam: SdkLogger, SdkLogLevel, internal SdkLog
+|-- EsimSdk.kt                            # EsimplifiedSdk entry point (initialize, koinModule, clearAllCaches)
+|-- SdkConfig.kt                          # SdkConfig and the SdkEnvironment enum
+|-- SdkLogger.kt                          # Logging seam: SdkLogger, SdkLogLevel, and the internal SdkLog
 |-- auth/
 |   |-- Auth.kt                           # Sealed interface: Unauthenticated | Authenticated
 |   |-- SessionManager.kt                 # Session state interface
-|   |-- DefaultSessionManager.kt          # Default implementation (EncryptedSharedPreferences)
-|   |-- SecureStorageProvider.kt           # Storage abstraction interface
-|   |-- DefaultSecureStorage.kt           # AES-256 EncryptedSharedPreferences implementation
-|   +-- TokenProvider.kt                  # Token access/refresh interface
+|   |-- SecureStorageProvider.kt          # Storage abstraction interface
+|   |-- TokenProvider.kt                  # Unused interface, kept for source compatibility
+|   |-- DefaultSessionManager.kt          # internal — default session state
+|   +-- DefaultSecureStorage.kt           # internal — EncryptedSharedPreferences, plus SecureStorageInitException
 |-- network/
-|   |-- ApiService.kt                     # Retrofit API endpoint definitions
-|   |-- BaseResponse.kt                   # Paginated response wrapper
-|   |-- ApiErrorMessage.kt                # Shared API error-body parser
-|   |-- SdkCache.kt                       # Internal keyed in-memory cache
 |   |-- SdkError.kt                       # Public error type (sealed, extends IOException)
-|   +-- SdkAuthInterceptor.kt            # OkHttp interceptor for auth + token refresh
+|   |-- LoyaltyApiException.kt            # Public exception from the Mokafaa calls
+|   |-- PaymentApiException.kt            # Public exception from getPaymentIntent
+|   |-- ApiService.kt                     # internal — Retrofit endpoint definitions
+|   |-- BaseResponse.kt                   # internal — paginated response wrapper
+|   |-- ApiErrorMessage.kt                # internal — shared API error-body parser
+|   |-- SdkCache.kt                       # internal — keyed in-memory cache
+|   |-- SdkAuthInterceptor.kt             # internal — OkHttp auth and token refresh
+|   +-- RedactingHttpLogger.kt            # internal — request/response logging with redaction
 |-- model/                                # All API data models (see table below)
 |-- repository/                           # Public repository interfaces
 |   |-- AuthRepository.kt
 |   |-- CountryRepository.kt
-|   |-- PackagesRepository.kt
 |   |-- EsimRepository.kt
+|   |-- FaqAndSupportRepository.kt
+|   |-- LoyaltyRepository.kt
+|   |-- NotificationRepository.kt
 |   |-- OrdersRepository.kt
+|   |-- PackagesRepository.kt
 |   |-- PaymentsRepository.kt
 |   |-- PromoCodeRepository.kt
-|   |-- LoyaltyRepository.kt
+|   |-- StoreReviewRepository.kt
+|   |-- ThemeRepository.kt
 |   |-- UserRepository.kt
-|   |-- NotificationRepository.kt
 |   |-- VisaRewardsRepository.kt
 |   |-- VouchersRepository.kt
-|   |-- ThemeRepository.kt
-|   |-- FaqAndSupportRepository.kt
-|   |-- StoreReviewRepository.kt
-|   |-- RepositoryResult.kt               # Value + isStale + failure wrapper
-|   +-- impl/                             # Internal implementations (not public API)
+|   |-- RepositoryResult.kt               # value + isStale + failure wrapper
+|   |-- AuthExceptions.kt                 # InvalidRefreshTokenException
+|   |-- CachedRead.kt                     # internal — the shared cached-read helper
+|   +-- impl/                             # internal — repository implementations
 +-- di/
-    +-- SdkModule.kt                      # Koin module wiring all dependencies
+    +-- SdkModule.kt                      # internal — Koin module wiring all dependencies
 ```
 
 ## Money fields
@@ -319,7 +325,7 @@ Decoding accepts either a JSON string (`"12.50"`) or a bare number (`12.5`) for 
 
 Almost every model is a `@Serializable` data class in `io.esimplified.sdk.model`. The exceptions are noted in the table: `PackagesPage` is a plain data class the SDK assembles locally rather than decodes, and `RepositoryResult` / `SdkError` live in other packages.
 
-Field-by-field tables for all of these are in [SDK_API_REFERENCE.md](SDK_API_REFERENCE.md#data-models).
+Field-by-field tables for all of these are in [SDK_API_REFERENCE.md](SDK_API_REFERENCE.md#10-model-reference).
 
 | Model | Description |
 |---|---|
@@ -703,7 +709,7 @@ If encrypted storage cannot be initialised, the SDK **throws `SecureStorageInitE
 
 ### Automatic Token Refresh
 
-The `SdkAuthInterceptor` (an OkHttp interceptor) handles token refresh transparently:
+The SDK's internal OkHttp interceptor handles token refresh transparently:
 
 1. Every authenticated API request includes a `Bearer` token
 2. If the API returns `401 Unauthorized`, the interceptor automatically:
