@@ -10,6 +10,7 @@ enum class SdkEnvironment(internal val subdomain: String) {
         "https://$clientName.$subdomain.esimplified.io"
 }
 
+@ConsistentCopyVisibility
 data class SdkConfig internal constructor(
     val environment: SdkEnvironment?,
     val clientName: String?,
