@@ -26,26 +26,6 @@ internal class OrdersRepositoryImpl(
 
     // region Orders
     override suspend fun getOrderHistory(
-        forceRefresh: Boolean,
-        cacheTTL: Duration,
-    ): List<OrderHistoryItem> = getOrderHistoryResult(
-        forceRefresh = forceRefresh,
-        cacheTTL = cacheTTL,
-    ).listOrThrow()
-
-    override suspend fun getOrderHistoryResult(
-        forceRefresh: Boolean,
-        cacheTTL: Duration,
-    ): RepositoryResult<List<OrderHistoryItem>> =
-        cache.cachedListResult("${ORDERS_KEY_PREFIX}none", forceRefresh, cacheTTL) {
-            try {
-                apiService.getOrderHistory(limit = UNPAGED_LIMIT).results
-            } catch (e: HttpException) {
-                throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
-            }
-        }
-
-    override suspend fun getOrderHistory(
         withLoyaltyPoints: Boolean,
         forceRefresh: Boolean,
         cacheTTL: Duration,

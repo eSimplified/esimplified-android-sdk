@@ -2,7 +2,10 @@
 
 For client teams integrating the SDK into an Android app. Covers installation, configuration, every repository method available to you, and the full shape of every model the API returns.
 
-Documents `io.github.esimplified:android-sdk:2.0.0`.
+Documents `io.github.esimplified:android-sdk:2.0.0`, the version on Maven Central, with one
+interface change that lands in the next release — `OrdersRepository.getOrderHistory` and
+`getOrderHistoryResult` each lost a redundant overload. The tables below show the new shape;
+[Changes since 2.0.0](README.md#changes-since-200) has the detail.
 
 For a shorter tour with worked examples, see [README.md](README.md). This document is the complete reference.
 
@@ -167,7 +170,7 @@ The API localises and prices responses from request headers, not from a paramete
 
 Once a customer is signed in the SDK sends `accept-language` and `accept-currency` for you, taken from `Customer.preferredLanguage` and `Customer.preferredCurrency`. Change them with `AuthRepository.updatePreferences(preferredLanguage, preferredCurrency)`.
 
-Before sign-in, or to override the stored preference, supply them through `customHeadersProvider` — a header you return there wins over the customer's stored value:
+Before sign-in, or to override the stored preference, supply them through `customHeadersProvider`: when your provider returns `accept-language` or `accept-currency`, the SDK does not add the stored preference for that header.
 
 ```kotlin
 SdkConfig(
@@ -425,7 +428,7 @@ The `carddata` value is exactly what a printed eSIM QR code encodes: the literal
 
 Catch the failure rather than assuming it works. `startActivity` throws `ActivityNotFoundException` on a device with no LPA, and some OEM builds refuse the link even when `EuiccManager` reports eSIM support.
 
-**3. Always offer a manual fallback.** Render `order.qrCode` as a QR image — or show `order.qrCodeImageBase64`, which the API already returns as an image — for scanning on another device, and show `order.smDpAddress` and `order.activationCode` as text so the customer can type them into Settings. Some customers install on a second phone, and some devices refuse the direct install.
+**3. Always offer a manual fallback.** Render `order.qrCode` as a QR image — or show `order.qrCodeImageBase64`, which the API returns as a base64-encoded image — for scanning on another device, and show `order.smDpAddress` and `order.activationCode` as text so the customer can type them into Settings. Some customers install on a second phone, and some devices refuse the direct install.
 
 `EsimRepository.getEsimByIccid` exposes the same credentials for an eSIM the customer already owns, so a re-install does not need the original order.
 
@@ -438,6 +441,7 @@ authRepo.logout()
 `logout()` saves `Auth.Unauthenticated` and clears every cached response in one step, so there is nothing else to call. That second half matters: cached reads are keyed by endpoint, not by customer, so a sign-out that left them in place would leave one customer's eSIMs and orders readable by the next person to sign in on that device.
 
 `EsimplifiedSdk.clearAllCaches()` does the cache half on its own, for when you want a clean slate without ending the session.
+
 ---
 
 ## 7. Error handling
@@ -529,6 +533,14 @@ One row per `…Result` method in the SDK. They take the same arguments as the m
 ---
 
 ## 9. Repository reference
+
+One row per method, and every method appears exactly once — count the rows and
+you have counted the API. The `Parameters` column carries each parameter's name,
+type and default. The two arguments every cached read also accepts,
+`forceRefresh` and `cacheTTL`, are left out of these tables and described once
+under [Caching](#8-caching); so are the `…Result` twins, which take the same
+arguments as the method they wrap and are listed in full
+[there](#every-result-twin).
 
 All repository functions are `suspend` unless noted. Inject via Koin, which
 your app must declare as a dependency — see
@@ -633,15 +645,14 @@ Cached: `ESIM_LIST_TTL` = 24 h for lists, `ESIM_DETAILS_TTL` = 5 min for details
 
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
-| `getOrderHistory` | — | `List<OrderHistoryItem>` | Get past orders |
-| `getOrderHistory` | `withLoyaltyPoints: Boolean` | `List<OrderHistoryItem>` | Get orders with loyalty points data |
+| `getOrderHistory` | `withLoyaltyPoints: Boolean = false` | `List<OrderHistoryItem>` | Past orders. `withLoyaltyPoints = true` asks the API for the points earned and spent on each |
 | `getOrderDetails` | `orderUuid: String` | `OrderDetail` | Get detailed order info |
 | `getOrdersPageResult` | `limit: Int = 100, offset: Int = 0, withLoyaltyPoints: Boolean = false` | `RepositoryResult<OrdersPage>` | Paged order read |
 | `getOrderInvoice` | `orderUuid: String` | `ByteArray` | Download the order's PDF invoice bytes |
 | `trackOrder` | `orderUuid: String` | `Unit` | Mark the order's conversion as tracked (never throws) |
 | `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
 
-Cached: `ORDERS_LIST_TTL` = 10 min, `ORDER_DETAIL_TTL` = 5 min. `…Result` twins: `getOrderHistoryResult` (both overloads), `getOrderDetailsResult`.
+Cached: `ORDERS_LIST_TTL` = 10 min, `ORDER_DETAIL_TTL` = 5 min. `…Result` twins: `getOrderHistoryResult`, `getOrderDetailsResult`.
 
 `getOrderDetails` retries an order still in `pending` status up to 5 times, one second apart, before returning it.
 

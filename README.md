@@ -10,6 +10,8 @@ Kotlin SDK for integrating the eSimplified eSIM platform into Android applicatio
 
 **Coordinates:** `io.github.esimplified:android-sdk:2.0.0`
 
+That is the version on Maven Central. This README describes it, plus one interface change landing in the next release — see [Changes since 2.0.0](#changes-since-200).
+
 ## What the SDK covers
 
 What you get without writing any networking, token handling, or caching of your own. Each area maps to one repository interface you inject and call.
@@ -552,15 +554,14 @@ Order history, order details, invoices, and conversion tracking.
 
 | Method | Signature | Description |
 |---|---|---|
-| `getOrderHistory` | `suspend fun getOrderHistory(forceRefresh: Boolean = false, cacheTTL: Duration = ORDERS_LIST_TTL): List<OrderHistoryItem>` | Fetch past orders |
-| `getOrderHistory` | `suspend fun getOrderHistory(withLoyaltyPoints: Boolean, forceRefresh: Boolean = false, cacheTTL: Duration = ORDERS_LIST_TTL): List<OrderHistoryItem>` | Fetch orders with loyalty points data |
+| `getOrderHistory` | `suspend fun getOrderHistory(withLoyaltyPoints: Boolean = false, forceRefresh: Boolean = false, cacheTTL: Duration = ORDERS_LIST_TTL): List<OrderHistoryItem>` | Fetch past orders; `withLoyaltyPoints = true` also asks for the points earned and spent on each |
 | `getOrderDetails` | `suspend fun getOrderDetails(orderUuid: String, forceRefresh: Boolean = false, cacheTTL: Duration = ORDER_DETAIL_TTL): OrderDetail` | Fetch full order details including eSIM profile and QR code |
 | `getOrdersPageResult` | `suspend fun getOrdersPageResult(limit: Int = ORDERS_PAGE_LIMIT, offset: Int = 0, withLoyaltyPoints: Boolean = false, forceRefresh: Boolean = false, cacheTTL: Duration = ORDERS_LIST_TTL): RepositoryResult<OrdersPage>` | Paged order read |
 | `getOrderInvoice` | `suspend fun getOrderInvoice(orderUuid: String): ByteArray` | Download the order's PDF invoice bytes |
 | `trackOrder` | `suspend fun trackOrder(orderUuid: String)` | Mark an order's conversion as tracked (never throws) |
 | `invalidateCache` | `suspend fun invalidateCache()` | Drop this repository's cache entries |
 
-`…Result` twins: `getOrderHistoryResult` (both overloads), `getOrderDetailsResult`. Default TTLs: `ORDERS_LIST_TTL` = 10 min, `ORDER_DETAIL_TTL` = 5 min.
+`…Result` twins: `getOrderHistoryResult`, `getOrderDetailsResult`. Default TTLs: `ORDERS_LIST_TTL` = 10 min, `ORDER_DETAIL_TTL` = 5 min.
 
 **Pending orders:** `getOrderDetails` retries an order whose `orderStatus` is still `pending` up to 5 times, one second apart, before returning it. A checkout screen can call it straight after Stripe confirms without polling itself.
 
@@ -975,6 +976,26 @@ To receive SDK lines deliberately, pass `logger` to `SdkConfig` — see [Logging
 - [ ] Drop the `EsimplifiedSdk.clearAllCaches()` call from your logout path — `logout()` does it
 - [ ] Widen any `EsimRepository` implementation of `getArchivedEsims` / `getArchivedEsimsResult` to `showLegacy: Boolean?`
 - [ ] Declare Timber yourself if you used it and relied on the SDK pulling it in, and pass `SdkConfig.logger` if you want SDK lines
+
+## Changes since 2.0.0
+
+`2.0.0` is the version on Maven Central and the one this documentation describes. The change below is on `main` and will ship in the next release; it is listed separately so nothing above misrepresents the published artifact.
+
+### `getOrderHistory` and `getOrderHistoryResult` lost an overload
+
+Both were declared twice on `OrdersRepository`: once without `withLoyaltyPoints`, once with it as a required parameter. They are now a single declaration each, with `withLoyaltyPoints: Boolean = false`:
+
+```kotlin
+suspend fun getOrderHistory(
+    withLoyaltyPoints: Boolean = false,
+    forceRefresh: Boolean = false,
+    cacheTTL: Duration = ORDERS_LIST_TTL,
+): List<OrderHistoryItem>
+```
+
+Every existing call still compiles — `getOrderHistory()`, `getOrderHistory(true)` and `getOrderHistory(withLoyaltyPoints = true)` all resolve to it. The JVM signature changed, so recompile against the new version rather than swapping the AAR under an already-built app. If you implement `OrdersRepository` yourself, delete the now-duplicate override.
+
+One behaviour change: the two forms used to occupy separate cache entries even though they sent the identical request, so `getOrderHistory()` and `getOrderHistory(withLoyaltyPoints = false)` each did their own network call. They now share one entry.
 
 ## Support
 
