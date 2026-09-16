@@ -2,74 +2,148 @@ package io.esimplified.sdk.repository.impl
 
 import io.esimplified.sdk.repository.PackagesRepository
 
-import io.esimplified.sdk.model.ApiErrorResponse
 import io.esimplified.sdk.model.CheckStockResponse
 import io.esimplified.sdk.model.Destination
 import io.esimplified.sdk.model.PackagePlan
-import io.esimplified.sdk.model.RatingApiResponse
+import io.esimplified.sdk.model.PackagesPage
+import io.esimplified.sdk.network.ApiErrorMessage
 import io.esimplified.sdk.network.ApiService
-import kotlinx.serialization.json.Json
+import io.esimplified.sdk.network.SdkCache
+import io.esimplified.sdk.repository.RepositoryResult
+import io.esimplified.sdk.repository.cachedListResult
+import io.esimplified.sdk.repository.cachedResult
+import io.esimplified.sdk.repository.listOrThrow
+import io.esimplified.sdk.repository.valueOrThrow
+import kotlin.time.Duration
 import retrofit2.HttpException
 
 internal class PackagesRepositoryImpl(
-    private val apiService: ApiService
+    private val apiService: ApiService,
+    private val cache: SdkCache,
 ) : PackagesRepository {
 
-    private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
-
     // region Packages
-    override suspend fun getPackages(destination: Destination): List<PackagePlan> {
-        try {
-            return apiService.getPackageListBy(
-                code = destination.code,
-                name = destination.name,
-                slug = destination.slug
-            ).results
-        } catch (e: HttpException) {
-            throw Exception(parseHttpError(e) ?: e.message)
+    override suspend fun getPackages(
+        destination: Destination,
+        forceRefresh: Boolean,
+        cacheTTL: Duration,
+    ): List<PackagePlan> = getPackagesResult(destination, forceRefresh, cacheTTL).listOrThrow()
+
+    override suspend fun getPackagesResult(
+        destination: Destination,
+        forceRefresh: Boolean,
+        cacheTTL: Duration,
+    ): RepositoryResult<List<PackagePlan>> =
+        cache.cachedListResult(packagesKey(destination), forceRefresh, cacheTTL) {
+            try {
+                apiService.getPackageListBy(
+                    code = destination.code,
+                    name = destination.name,
+                    slug = destination.slug
+                ).results
+            } catch (e: HttpException) {
+                throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
+            }
         }
+
+    override suspend fun getPackagesPage(
+        destination: Destination,
+        forceRefresh: Boolean,
+        cacheTTL: Duration,
+    ): PackagesPage = getPackagesPageResult(destination, forceRefresh, cacheTTL).value ?: PackagesPage()
+
+    override suspend fun getPackagesPageResult(
+        destination: Destination,
+        forceRefresh: Boolean,
+        cacheTTL: Duration,
+    ): RepositoryResult<PackagesPage> {
+        val result = cache.cachedResult<PackagesPage>(
+            packagesPageKey(destination),
+            forceRefresh,
+            cacheTTL,
+        ) {
+            try {
+                val response = apiService.getPackageListBy(
+                    code = destination.code,
+                    name = destination.name,
+                    slug = destination.slug
+                )
+                PackagesPage(
+                    packages = response.results,
+                    totalCount = response.count,
+                    promoCode = response.promoCode,
+                )
+            } catch (e: HttpException) {
+                throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
+            }
+        }
+        return RepositoryResult(
+            value = result.value ?: PackagesPage(),
+            isStale = result.isStale,
+            failure = result.failure,
+        )
     }
 
-    override suspend fun getTopUpPackages(iccid: String): List<PackagePlan> {
-        try {
-            return apiService.getEsimTopUpPackages(iccid = iccid).results
-        } catch (e: HttpException) {
-            throw Exception(parseHttpError(e) ?: e.message)
+    override suspend fun getTopUpPackages(
+        iccid: String,
+        forceRefresh: Boolean,
+        cacheTTL: Duration,
+    ): List<PackagePlan> = getTopUpPackagesResult(iccid, forceRefresh, cacheTTL).listOrThrow()
+
+    override suspend fun getTopUpPackagesResult(
+        iccid: String,
+        forceRefresh: Boolean,
+        cacheTTL: Duration,
+    ): RepositoryResult<List<PackagePlan>> =
+        cache.cachedListResult(topUpPackagesKey(iccid), forceRefresh, cacheTTL) {
+            try {
+                apiService.getEsimTopUpPackages(iccid = iccid).results
+            } catch (e: HttpException) {
+                throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
+            }
         }
-    }
     // endregion
 
     // region Stock
-    override suspend fun checkStock(packageTypeId: Int): CheckStockResponse {
-        try {
-            return apiService.getPackageStock(packageTypeId = packageTypeId)
-        } catch (e: HttpException) {
-            throw Exception(parseHttpError(e) ?: e.message)
-        }
-    }
-    // endregion
+    override suspend fun checkStock(
+        packageTypeId: Int,
+        forceRefresh: Boolean,
+        cacheTTL: Duration,
+    ): CheckStockResponse = checkStockResult(packageTypeId, forceRefresh, cacheTTL).valueOrThrow()
 
-    // region Rating
-    override suspend fun getPackageRating(): RatingApiResponse {
-        try {
-            return apiService.getPackageRating()
-        } catch (e: HttpException) {
-            throw Exception(parseHttpError(e) ?: e.message)
-        }
-    }
-    // endregion
-
-    private fun parseHttpError(e: HttpException): String? {
-        return try {
-            val errorBody = e.response()?.errorBody()?.string()
-            if (errorBody != null) {
-                val errorResponse = json.decodeFromString<ApiErrorResponse>(errorBody)
-                errorResponse.detail ?: errorResponse.message ?: errorResponse.error
-            } else {
-                null
+    override suspend fun checkStockResult(
+        packageTypeId: Int,
+        forceRefresh: Boolean,
+        cacheTTL: Duration,
+    ): RepositoryResult<CheckStockResponse?> =
+        cache.cachedResult<CheckStockResponse>(checkStockKey(packageTypeId), forceRefresh, cacheTTL) {
+            try {
+                apiService.getPackageStock(packageTypeId = packageTypeId)
+            } catch (e: HttpException) {
+                throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
             }
-        } catch (_: Exception) {
-            null
         }
+    // endregion
+
+    // region Cache
+    override suspend fun invalidateCache() {
+        cache.removeWithPrefix(PACKAGES_KEY_PREFIX)
+        cache.removeWithPrefix(CHECK_STOCK_KEY_PREFIX)
+    }
+
+    private fun packagesKey(destination: Destination): String =
+        "$PACKAGES_KEY_PREFIX${destination.code}_${destination.name}_${destination.slug}"
+
+    private fun packagesPageKey(destination: Destination): String =
+        "${PACKAGES_KEY_PREFIX}page_${destination.code}_${destination.name}_${destination.slug}"
+
+    private fun topUpPackagesKey(iccid: String): String = "${PACKAGES_KEY_PREFIX}topup_$iccid"
+
+    private fun checkStockKey(packageTypeId: Int): String = "$CHECK_STOCK_KEY_PREFIX$packageTypeId"
+    // endregion
+
+    private companion object {
+        const val PACKAGES_KEY_PREFIX = "packages_"
+        const val CHECK_STOCK_KEY_PREFIX = "check_stock_"
     }
 }

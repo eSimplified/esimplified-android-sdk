@@ -37,7 +37,6 @@ dependencies {
     implementation(libs.retrofit.serialization.converter)
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging.interceptor)
-    implementation(libs.timber)
     implementation(libs.koin.core)
     implementation(libs.security.crypto)
 
@@ -47,7 +46,7 @@ dependencies {
 }
 
 mavenPublishing {
-    coordinates("io.github.esimplified", "android-sdk", "1.0.9")
+    coordinates("io.github.esimplified", "android-sdk", "2.0.0")
 
     pom {
         name.set("eSIMplified Android SDK")

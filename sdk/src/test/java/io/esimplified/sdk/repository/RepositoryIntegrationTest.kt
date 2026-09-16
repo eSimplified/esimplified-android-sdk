@@ -9,6 +9,7 @@ import io.esimplified.sdk.model.Customer
 import io.esimplified.sdk.model.Destination
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.SdkAuthInterceptor
+import io.esimplified.sdk.network.SdkCache
 import io.esimplified.sdk.repository.impl.AuthRepositoryImpl
 import io.esimplified.sdk.repository.impl.CountryRepositoryImpl
 import io.esimplified.sdk.repository.impl.LoyaltyRepositoryImpl
@@ -119,7 +120,7 @@ class RepositoryIntegrationTest {
         """.trimIndent()
         enqueueJson(payload)
 
-        val repo = AuthRepositoryImpl(apiService, sessionManager, storage)
+        val repo = AuthRepositoryImpl(apiService, sessionManager, storage, SdkCache())
         val customer = repo.login("u2@e.com", "p")
 
         assertEquals("u-2", customer.id)
@@ -132,7 +133,7 @@ class RepositoryIntegrationTest {
 
     @Test
     fun `AuthRepository logout clears session`() = runTest {
-        val repo = AuthRepositoryImpl(apiService, sessionManager, storage)
+        val repo = AuthRepositoryImpl(apiService, sessionManager, storage, SdkCache())
         assertTrue(sessionManager.isAuthenticated())
 
         repo.logout()
@@ -145,7 +146,7 @@ class RepositoryIntegrationTest {
     fun `CountryRepository getCountries hits countries endpoint`() = runTest {
         enqueueJson("""{"count":0,"next":null,"previous":null,"results":[]}""")
 
-        val repo = CountryRepositoryImpl(apiService)
+        val repo = CountryRepositoryImpl(apiService, SdkCache())
         val countries = repo.getCountries()
         assertEquals(0, countries.size)
 
@@ -157,7 +158,7 @@ class RepositoryIntegrationTest {
     fun `CountryRepository getCountriesBy passes query params`() = runTest {
         enqueueJson("""{"count":0,"results":[]}""")
 
-        val repo = CountryRepositoryImpl(apiService)
+        val repo = CountryRepositoryImpl(apiService, SdkCache())
         repo.getCountriesBy(Destination(code = "US", name = "United States", region = "NA", slug = null))
 
         val recorded = mockWebServer.takeRequest()
@@ -168,7 +169,7 @@ class RepositoryIntegrationTest {
     fun `CountryRepository search hits search endpoint with query`() = runTest {
         enqueueJson("""{"count":0,"results":[]}""")
 
-        val repo = CountryRepositoryImpl(apiService)
+        val repo = CountryRepositoryImpl(apiService, SdkCache())
         repo.search("canada")
 
         val recorded = mockWebServer.takeRequest()
@@ -182,7 +183,7 @@ class RepositoryIntegrationTest {
     fun `PackagesRepository getPackages hits packages endpoint`() = runTest {
         enqueueJson("""{"count":0,"results":[]}""")
 
-        val repo = PackagesRepositoryImpl(apiService)
+        val repo = PackagesRepositoryImpl(apiService, SdkCache())
         repo.getPackages(Destination(code = "US", name = null, region = null, slug = "united-states"))
 
         val recorded = mockWebServer.takeRequest()
@@ -197,7 +198,7 @@ class RepositoryIntegrationTest {
         enqueueJson("""{"count":0,"results":[]}""")
         enqueueJson("""{"count":0,"results":[]}""")
 
-        val repo = EsimRepositoryImpl(apiService)
+        val repo = EsimRepositoryImpl(apiService, SdkCache())
         val esims = repo.getEsims()
         assertEquals(0, esims.size)
         assertEquals(2, mockWebServer.requestCount)
@@ -214,7 +215,7 @@ class RepositoryIntegrationTest {
     fun `OrdersRepository getOrderHistory hits orders endpoint`() = runTest {
         enqueueJson("""{"count":0,"results":[]}""")
 
-        val repo = OrdersRepositoryImpl(apiService)
+        val repo = OrdersRepositoryImpl(apiService, SdkCache())
         val orders = repo.getOrderHistory()
         assertEquals(0, orders.size)
 
@@ -226,7 +227,7 @@ class RepositoryIntegrationTest {
     fun `OrdersRepository getOrderHistory with loyalty points adds used_points param`() = runTest {
         enqueueJson("""{"count":0,"results":[]}""")
 
-        val repo = OrdersRepositoryImpl(apiService)
+        val repo = OrdersRepositoryImpl(apiService, SdkCache())
         repo.getOrderHistory(withLoyaltyPoints = true)
 
         val recorded = mockWebServer.takeRequest()
@@ -255,7 +256,7 @@ class RepositoryIntegrationTest {
             {"total_loyalty_points":1500,"total_loyalty_points_detail":{"amount":"15.00","currency":{"symbol":"$","iso":"USD"}}}
         """.trimIndent())
 
-        val repo = LoyaltyRepositoryImpl(apiService)
+        val repo = LoyaltyRepositoryImpl(apiService, SdkCache())
         val response = repo.getLoyaltyBalance()
         assertEquals(1500, response.totalLoyaltyPoints)
 

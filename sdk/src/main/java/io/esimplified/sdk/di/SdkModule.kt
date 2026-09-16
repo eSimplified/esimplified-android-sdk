@@ -6,6 +6,7 @@ import io.esimplified.sdk.auth.SecureStorageProvider
 import io.esimplified.sdk.auth.SessionManager
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.RedactingHttpLogger
+import io.esimplified.sdk.network.SdkCache
 import io.esimplified.sdk.network.SdkAuthInterceptor
 import io.esimplified.sdk.repository.*
 import io.esimplified.sdk.repository.impl.*
@@ -20,6 +21,7 @@ import retrofit2.create
 internal fun createSdkModule(): Module = module {
     single<SessionManager> { EsimplifiedSdk.sessionManager }
     single<SecureStorageProvider> { EsimplifiedSdk.storageProvider }
+    single<SdkCache> { EsimplifiedSdk.cache }
 
     single {
         Json {
@@ -61,16 +63,19 @@ internal fun createSdkModule(): Module = module {
             .create<ApiService>()
     }
 
-    single<AuthRepository> { AuthRepositoryImpl(get(), get(), get()) }
-    single<CountryRepository> { CountryRepositoryImpl(get()) }
-    single<PackagesRepository> { PackagesRepositoryImpl(get()) }
-    single<EsimRepository> { EsimRepositoryImpl(get()) }
-    single<OrdersRepository> { OrdersRepositoryImpl(get()) }
+    single<AuthRepository> { AuthRepositoryImpl(get(), get(), get(), get()) }
+    single<CountryRepository> { CountryRepositoryImpl(get(), get()) }
+    single<PackagesRepository> { PackagesRepositoryImpl(get(), get()) }
+    single<EsimRepository> { EsimRepositoryImpl(get(), get()) }
+    single<OrdersRepository> { OrdersRepositoryImpl(get(), get()) }
     single<PaymentsRepository> { PaymentsRepositoryImpl(get()) }
     single<PromoCodeRepository> { PromoCodeRepositoryImpl(get(), get()) }
-    single<LoyaltyRepository> { LoyaltyRepositoryImpl(get()) }
+    single<LoyaltyRepository> { LoyaltyRepositoryImpl(get(), get()) }
     single<UserRepository> { UserRepositoryImpl(get()) }
     single<NotificationRepository> { NotificationRepositoryImpl(get()) }
     single<VisaRewardsRepository> { VisaRewardsRepositoryImpl(get()) }
     single<VouchersRepository> { VouchersRepositoryImpl(get()) }
+    single<ThemeRepository> { ThemeRepositoryImpl(get(), get()) }
+    single<FaqAndSupportRepository> { FaqAndSupportRepositoryImpl(get(), get()) }
+    single<StoreReviewRepository> { StoreReviewRepositoryImpl(get(), get()) }
 }

@@ -6,7 +6,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class CurrencyObject(
     @SerialName("symbol")
-    val symbol: String,
+    val symbol: String = "",
     @SerialName("iso")
-    val isoCode: String
+    val isoCode: String = "",
 )

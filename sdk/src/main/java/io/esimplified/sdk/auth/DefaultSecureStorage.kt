@@ -4,7 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
-import timber.log.Timber
+import io.esimplified.sdk.SdkLog
 
 internal class DefaultSecureStorage(context: Context) : SecureStorageProvider {
 
@@ -14,7 +14,7 @@ internal class DefaultSecureStorage(context: Context) : SecureStorageProvider {
         return try {
             prefs.getString(key, default) ?: default
         } catch (e: Exception) {
-            Timber.e(e, "Failed to secureLoad key=$key")
+            SdkLog.e("Failed to secureLoad key=$key", e)
             default
         }
     }
@@ -23,7 +23,7 @@ internal class DefaultSecureStorage(context: Context) : SecureStorageProvider {
         try {
             prefs.edit().putString(forKey, value).apply()
         } catch (e: Exception) {
-            Timber.e(e, "Failed to secureSave key=$forKey")
+            SdkLog.e("Failed to secureSave key=$forKey", e)
         }
     }
 
@@ -31,7 +31,7 @@ internal class DefaultSecureStorage(context: Context) : SecureStorageProvider {
         try {
             prefs.edit().clear().apply()
         } catch (e: Exception) {
-            Timber.e(e, "Failed to clearSecureStorage")
+            SdkLog.e("Failed to clearSecureStorage", e)
         }
     }
 
@@ -47,7 +47,7 @@ internal class DefaultSecureStorage(context: Context) : SecureStorageProvider {
                 else -> default
             }
         } catch (e: Exception) {
-            Timber.e(e, "Failed to load key=$key")
+            SdkLog.e("Failed to load key=$key", e)
             default
         }
     }
@@ -63,13 +63,13 @@ internal class DefaultSecureStorage(context: Context) : SecureStorageProvider {
                 is Long -> editor.putLong(forKey, value)
                 is Float -> editor.putFloat(forKey, value)
                 else -> {
-                    Timber.w("Unsupported type for save: ${value?.let { it::class.simpleName }}")
+                    SdkLog.w("Unsupported type for save: ${value?.let { it::class.simpleName }}")
                     return
                 }
             }
             editor.apply()
         } catch (e: Exception) {
-            Timber.e(e, "Failed to save key=$forKey")
+            SdkLog.e("Failed to save key=$forKey", e)
         }
     }
 
@@ -80,17 +80,17 @@ internal class DefaultSecureStorage(context: Context) : SecureStorageProvider {
             return try {
                 buildEncryptedPrefs(context)
             } catch (firstAttemptFailure: Exception) {
-                Timber.w(
+                SdkLog.w(
+                    "EncryptedSharedPreferences init failed — wiping prefs file and retrying once",
                     firstAttemptFailure,
-                    "EncryptedSharedPreferences init failed — wiping prefs file and retrying once"
                 )
                 context.deleteSharedPreferences(PREFS_NAME)
                 try {
                     buildEncryptedPrefs(context)
                 } catch (retryFailure: Exception) {
-                    Timber.e(
+                    SdkLog.e(
+                        "EncryptedSharedPreferences still failing after wipe — refusing to fall back to plaintext",
                         retryFailure,
-                        "EncryptedSharedPreferences still failing after wipe — refusing to fall back to plaintext"
                     )
                     throw SecureStorageInitException(retryFailure)
                 }

@@ -19,6 +19,7 @@ import io.esimplified.sdk.model.VerifyEmailRequest
 import io.esimplified.sdk.model.VerifyEmailResponse
 import io.esimplified.sdk.model.GetTokenIntrospectResponse
 import io.esimplified.sdk.model.GetTokenResponse
+import io.esimplified.sdk.model.IframeRequest
 import io.esimplified.sdk.model.OrderHistoryItem
 import io.esimplified.sdk.model.KredsLoyaltyBalanceResponse
 import io.esimplified.sdk.model.MokafaaOtpInitiateRequest
@@ -28,10 +29,12 @@ import io.esimplified.sdk.model.MokafaaOtpValidateResponse
 import io.esimplified.sdk.model.Country
 import io.esimplified.sdk.model.Customer
 import io.esimplified.sdk.model.DeleteProfileResponse
+import io.esimplified.sdk.model.DestinationFaqResponse
 import io.esimplified.sdk.model.OrderDetail
 import io.esimplified.sdk.model.OrderInfo
 import io.esimplified.sdk.model.PackagePlan
 import io.esimplified.sdk.model.RatingApiResponse
+import io.esimplified.sdk.model.ThemeResponse
 import io.esimplified.sdk.model.VisaRewardsIframeResponse
 import io.esimplified.sdk.model.VisaRewardsResponse
 import io.esimplified.sdk.model.VoucherRedeemRequest
@@ -181,16 +184,19 @@ internal interface ApiService {
         @Query("show_esim_details") getESimDetails: Boolean? = null,
         @Query("show_package_details") getPackageDetails: Boolean? = null,
         @Query("show_balance_remaining") getBalanceRemaining: Boolean? = null,
-        @Query("show_archived_esims") showArchived: Boolean? = null
+        @Query("show_archived_esims") showArchived: Boolean? = null,
+        @Query("show_legacy") showLegacy: Boolean? = null,
+        @Query("is_primary") isPrimary: Boolean? = null,
+        @Query("order_by") orderBy: String? = null,
+        @Query("limit") limit: Int? = null,
+        @Query("include_base64_qr_code") includeBase64QrCode: Boolean? = null
     ): BaseResponse<List<AssignedEsim>>
 
-    @GET("api/v2/customer/esims/{iccid}/")
+    @GET("api/v2/customer/esims/{iccid}/details/")
     @Headers("Accept: application/json", "Content-Type: application/json")
     suspend fun getCustomerEsimByICCID(
         @Path("iccid") iccid: String,
-        @Query("show_esim_details") getESimDetails: Boolean? = null,
-        @Query("show_package_details") getPackageDetails: Boolean? = null,
-        @Query("show_balance_remaining") getBalanceRemaining: Boolean? = null,
+        @Query("include_base64_qr_code") includeBase64QrCode: Boolean? = null,
     ): AssignedEsim
 
     @GET("api/v2/customer/orders/{order_uuid}/")
@@ -216,13 +222,25 @@ internal interface ApiService {
 
     @GET("api/v2/customer/orders/" )
     suspend fun getOrderHistory(
-        @Query("used_points") usedPoints: Boolean? = null
+        @Query("used_points") usedPoints: Boolean? = null,
+        @Query("limit") limit: Int? = null,
+        @Query("offset") offset: Int? = null
     ): BaseResponse<List<OrderHistoryItem>>
+
+    @GET("api/v2/orders/{order_uuid}/invoice/")
+    suspend fun getOrderInvoice(
+        @Path("order_uuid") id: String
+    ): ResponseBody
     @GET("api/v2/customer/loyalty/" )
     suspend fun getLoyaltyPoints(): KredsLoyaltyBalanceResponse
 
     @POST("api/v2/customer/promotions/iframe/")
     suspend fun getPromotionIframe(): VisaRewardsIframeResponse
+
+    @POST("api/v2/customer/promotions/iframe/")
+    suspend fun getPromotionIframeFor(
+        @Body data: IframeRequest
+    ): VisaRewardsIframeResponse
 
     @GET("api/v2/customer/promotions/validate/{token}")
     suspend fun validatePromotion(@Path("token") token: String): VisaRewardsResponse
@@ -244,11 +262,22 @@ internal interface ApiService {
         @Field("auto_top_up") autoTopUp: Boolean? = null,
         @Field("archived") isArchived: Boolean? = null,
         @Field("esim_name") name: String? = null,
+        @Field("is_primary") isPrimary: Boolean? = null,
     ): Response<ResponseBody?>
+
+    @GET("api/v2/faqs/destinations/{country_name_slug}/")
+    @Headers("Accept: application/json", "Content-Type: application/json")
+    suspend fun getDestinationFaqs(
+        @Path("country_name_slug") countryNameSlug: String,
+    ): DestinationFaqResponse
+
+    @GET("api/v2/theme/")
+    @Headers("Accept: application/json", "Content-Type: application/json")
+    suspend fun getTheme(@Query("url") url: String): ThemeResponse
 
     @GET("api/v2/reviews/?type=store_review")
     @Headers("Accept: application/json", "Content-Type: application/json")
-    suspend fun getPackageRating(): RatingApiResponse
+    suspend fun getStoreReview(): RatingApiResponse
 
     @GET("api/v2/customer/notifications/")
     @Headers("Accept: application/json", "Content-Type: application/json")
