@@ -37,3 +37,17 @@ jobs:
         uses: mikepenz/action-junit-report@v4
         with:
           report_paths: 'sdk/build/test-results/*/TEST-*.xml'
+
+      - name: Documented version matches the published coordinate
+        run: |
+          version=$(sed -n 's/.*coordinates("io.github.esimplified", "android-sdk", "\(.*\)").*/\1/p' sdk/build.gradle.kts)
+          status=0
+          for file in README.md SDK_API_REFERENCE.md; do
+            while IFS=: read -r line found; do
+              [ "$found" = "$version" ] && continue
+              echo "::error file=$file,line=$line::install coordinate says $found, sdk/build.gradle.kts says $version"
+              status=1
+            done < <(grep -n -o 'io\.github\.esimplified:android-sdk:[0-9][0-9.]*' "$file" \
+                     | sed 's/io\.github\.esimplified:android-sdk://')
+          done
+          exit $status
