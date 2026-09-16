@@ -18,6 +18,7 @@ Upgrading from 1.x? Start with [Migrating from 1.x to 2.0](README.md#migrating-f
 1. [Requirements](#1-requirements)
 2. [What you need from eSimplified](#2-what-you-need-from-esimplified)
 3. [Installing the SDK](#3-installing-the-sdk)
+3b. [Which versions you will receive](#3b-which-versions-you-will-receive)
 4. [Configuring and creating the SDK](#4-configuring-and-creating-the-sdk)
 5. [Keeping the customer signed in](#5-keeping-the-customer-signed-in)
 6. [Making your first call](#6-making-your-first-call)
@@ -100,6 +101,26 @@ Then the permission, which must come from your app because the SDK's manifest de
 ```
 
 Without it Android refuses the socket and every call fails with a `SecurityException`, reaching you as `SdkError.Unknown` on a `…Result` read and thrown on a plain read.
+
+## 3b. Which versions you will receive
+
+Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:2.0.0")` resolves to 2.0.0 and nothing else — there are no version ranges and no BOM in these instructions — so a new release never reaches your build until someone on your team edits that number. Nothing in this section can happen to you without that edit; it describes what you are choosing between when you make it.
+
+| What changed | Version goes | What you do |
+|---|---|---|
+| A fix | 2.1.0 → 2.1.1 | Nothing |
+| Something added | 2.1.0 → 2.2.0 | Nothing |
+| Something you call changed or went away | 2.1.0 → 3.0.0 | Update your code, then raise the version you depend on |
+
+Those numbers are illustrative. 2.0.0 is the version on Maven Central and the one this document describes.
+
+The convention follows our commit messages. A `fix:` commit is a patch, a `feat:` commit is a minor, and the major only moves for a change that breaks **callers** — a method you call renamed, removed, or given a new required parameter. Such commits carry a `!`, as in `refactor(orders)!:`.
+
+**The exception is implementing our interfaces.** A minor release can add a method to a repository interface. Your calling code is unaffected, but anyone who writes their own implementation of a repository interface, or a test fake, gains a missing override. [Changes since 2.0.0](README.md#changes-since-200) is an example: collapsing the `getOrderHistory` overloads leaves every call site compiling and asks implementers to delete a now-duplicate override. Changes of that kind are always listed under **Breaking changes** at the top of the release notes, whatever the version number says, so they are never a surprise.
+
+Kotlin gives this SDK an advantage its iOS counterpart does not have. Interface methods can carry default parameter values, so when we add a parameter we give it a default and existing implementations keep working untouched — which is exactly how the optional parameters listed in [New optional parameters on existing methods](README.md#6-new-optional-parameters-on-existing-methods) were added. Swift cannot do that, which is why the iOS SDK meets this problem in a form Android largely avoids.
+
+CI enforces the rule: a version bump that keeps the major while carrying commits marked breaking fails the build.
 
 ## 4. Configuring and creating the SDK
 

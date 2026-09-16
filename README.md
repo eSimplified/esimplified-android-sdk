@@ -103,6 +103,26 @@ Everything else the SDK needs — Retrofit, OkHttp, kotlinx.serialization, kotli
 
 > **Upgrading from 1.x?** 2.0 changes the type of every money field, makes several model fields nullable, and removes seven unused request types. Read [Migrating from 1.x to 2.0](#migrating-from-1x-to-20) before you bump the version.
 
+## Versioning
+
+The SDK follows semantic versioning, and Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:2.0.0")` resolves to 2.0.0 and nothing else — there are no version ranges and no BOM anywhere in these instructions, so no release reaches your build until someone edits that line. Nothing below can arrive unannounced; this section tells you what to expect when you do choose to raise the number.
+
+| What changed | Version goes | What you do |
+|---|---|---|
+| A fix | 2.1.0 → 2.1.1 | Nothing |
+| Something added | 2.1.0 → 2.2.0 | Nothing |
+| Something you call changed or went away | 2.1.0 → 3.0.0 | Update your code, then raise the version you depend on |
+
+Those numbers are illustrative; 2.0.0 is the current release.
+
+The convention maps straight onto our commit messages. A `fix:` commit is a patch, a `feat:` commit is a minor, and the major only moves for a change that breaks **callers** — a method you call renamed, removed, or given a new required parameter. Commits that break callers are marked with a `!`, as in `refactor(orders)!:`.
+
+**One exception is worth knowing about.** A minor release can add a method to a repository interface. That never touches your calling code, but it does affect anyone who writes their own implementation of one of our interfaces, or a test fake — a new method means a missing override. Changes of that kind are always listed under **Breaking changes** at the top of the release notes, whatever the version number says, so nobody meets one by surprise.
+
+Kotlin makes this far less painful here than on our iOS SDK. Interface methods can carry default parameter values, so when we add a parameter we give it a default and every existing implementation — yours included — keeps compiling untouched. Swift has no equivalent, which is why the iOS SDK runs into this and we largely do not.
+
+CI enforces the rule rather than trusting it: a version bump that keeps the major while carrying commits marked breaking fails the build.
+
 ## Quick Start
 
 ### 1. Initialize the SDK
