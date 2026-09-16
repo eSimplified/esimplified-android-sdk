@@ -1,4 +1,4 @@
-# eSIMplified Android SDK
+# eSimplified Android SDK
 
 [![CI](https://github.com/eSimplified/esimplified-android-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/eSimplified/esimplified-android-sdk/actions/workflows/ci.yml)
 [![Maven Central](https://img.shields.io/maven-central/v/io.github.esimplified/android-sdk)](https://central.sonatype.com/artifact/io.github.esimplified/android-sdk)
@@ -6,7 +6,7 @@
 [![Kotlin](https://img.shields.io/badge/kotlin-2.2.20-blue)](https://kotlinlang.org)
 [![License](https://img.shields.io/badge/license-Proprietary-blue)](LICENSE)
 
-Kotlin SDK for integrating the eSIMplified eSIM platform into Android applications. Provides typed repository interfaces for authentication, eSIM management, package browsing, orders, payments, and more. All networking, authentication, and token management are handled internally -- consuming apps interact only with clean Kotlin interfaces.
+Kotlin SDK for integrating the eSimplified eSIM platform into Android applications. Provides typed repository interfaces for authentication, eSIM management, package browsing, orders, payments, and more. All networking, authentication, and token management are handled internally -- consuming apps interact only with clean Kotlin interfaces.
 
 **Coordinates:** `io.github.esimplified:android-sdk:2.0.0`
 
@@ -292,7 +292,7 @@ sdk/src/main/java/io/esimplified/sdk/
 
 ## Money fields
 
-Every money amount the API returns is exposed as a **`String`**, holding the server's decimal text verbatim (`"12.50"`). This matches the eSIMplified iOS SDK field for field, and it means a price you render is exactly the price the server sent — no float rounding, no locale drift.
+Every money amount the API returns is exposed as a **`String`**, holding the server's decimal text verbatim (`"12.50"`). This matches the eSimplified iOS SDK field for field, and it means a price you render is exactly the price the server sent — no float rounding, no locale drift.
 
 Each money field has a companion `…Value: Double` accessor for arithmetic:
 

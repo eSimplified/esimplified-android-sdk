@@ -1,10 +1,105 @@
 # eSimplified Android SDK — API Reference
 
+For client teams integrating the SDK into an Android app. Covers installation, configuration, every repository method available to you, and the full shape of every model the API returns.
+
 Documents `io.github.esimplified:android-sdk:2.0.0`.
+
+For a shorter tour with worked examples, see [README.md](README.md). This document is the complete reference.
 
 Upgrading from 1.x? Start with [Migrating from 1.x to 2.0](README.md#migrating-from-1x-to-20) in the README — money fields changed type, seven unused request types were removed (`EsimRequest`, `EsimPackageListRequest`, `OrderRequest`, `SearchBody`, `CustomerSignIn`, `AuthResponse`, `RewardActivationRequest`), and the compiler does not catch every call site.
 
-## Initialization
+---
+
+## Contents
+
+1. [Requirements](#1-requirements)
+2. [What you need from eSimplified](#2-what-you-need-from-esimplified)
+3. [Installing the SDK](#3-installing-the-sdk)
+4. [Configuring and creating the SDK](#4-configuring-and-creating-the-sdk)
+5. [Keeping the customer signed in](#5-keeping-the-customer-signed-in)
+6. [Making your first call](#6-making-your-first-call)
+6b. [The full purchase journey](#6b-the-full-purchase-journey)
+6c. [Installing the eSIM](#6c-installing-the-esim)
+6d. [Signing out](#6d-signing-out)
+7. [Error handling](#7-error-handling)
+8. [Caching](#8-caching)
+9. [Repository reference](#9-repository-reference)
+9b. [Supporting types](#9b-supporting-types)
+10. [Model reference](#10-model-reference)
+&nbsp;&nbsp;&nbsp;&nbsp;10b. [Customer and profile](#10b-customer-and-profile-models)
+&nbsp;&nbsp;&nbsp;&nbsp;10c. [Tokens](#10c-token-models)
+&nbsp;&nbsp;&nbsp;&nbsp;10d. [Catalogue and eSIM](#10d-catalogue-and-esim-models)
+&nbsp;&nbsp;&nbsp;&nbsp;10e. [Orders and payments](#10e-order-and-payment-models)
+&nbsp;&nbsp;&nbsp;&nbsp;10f. [Loyalty and Kreds](#10f-loyalty-and-kreds-models)
+&nbsp;&nbsp;&nbsp;&nbsp;10g. [Mokafaa](#10g-mokafaa-models)
+&nbsp;&nbsp;&nbsp;&nbsp;10h. [Rewards, vouchers and content](#10h-rewards-voucher-and-content-models)
+&nbsp;&nbsp;&nbsp;&nbsp;10i. [Errors](#10i-error-models)
+
+[Support](#support)
+
+---
+
+## 1. Requirements
+
+| | |
+|---|---|
+| Platform | Android 9 (API 28) or newer — the SDK sets `minSdk 28` |
+| `compileSdk` | Anything that supports `minSdk 28`. The AAR sets no floor of its own |
+| Kotlin | 2.x |
+| Java | 17. The AAR ships class file version 61, so your module needs `compileOptions` and Kotlin `jvmTarget` at 17, built with JDK 17 or newer |
+| Dependency injection | **Koin is required in your app.** See [Installing the SDK](#3-installing-the-sdk) |
+| Permission | `android.permission.INTERNET`, declared by your app |
+
+The SDK brings Retrofit, OkHttp, kotlinx.serialization, kotlinx.coroutines, `koin-core` and AndroidX Security Crypto transitively at runtime. It declares them `implementation`, so none of them land on your compile classpath and none of them need declaring unless your own code uses them directly.
+
+The SDK registers no components, needs no `Application` subclass of its own, and asks for no runtime permissions. Its manifest contributes one `<meta-data>` entry, `com.google.android.backup.api_key` with the value `unused`; if your app declares that key with a different value, resolve the merge with `tools:replace="android:value"` on your own entry.
+
+## 2. What you need from eSimplified
+
+Before you write any code, ask your eSimplified contact for:
+
+| Value | Used for |
+|---|---|
+| **Client name** | Identifies your tenant. Becomes the first label of the API host, e.g. `acme` → `https://acme.live.esimplified.io` |
+| **Client ID** and **Client secret** | Basic auth for unauthenticated calls, and the OAuth exchange when a customer signs in |
+| **AWS WAF token** | Sent as `x-auth-validation`. It defaults to `""`, so the SDK compiles and runs without it, but requests are rejected wherever the WAF is enforcing — ask |
+| **Environment** | `STAGING`, `TESTING` or `PRODUCTION` |
+
+Treat the client secret as a secret. Do not ship any of these as string literals — they are trivially extractable from a shipped APK. Fetch them at launch from a server-controlled source, Firebase Remote Config being the usual choice, so credentials can be rotated without an app release.
+
+## 3. Installing the SDK
+
+The SDK is published to Maven Central, which every Gradle project already resolves. No extra repositories and no authentication.
+
+```kotlin
+// build.gradle.kts (app)
+dependencies {
+    implementation("io.github.esimplified:android-sdk:2.0.0")
+    implementation("io.insert-koin:koin-android:4.1.1")
+}
+
+android {
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = "17" }
+}
+```
+
+**The Koin line is not optional.** `EsimplifiedSdk.koinModule()` returns an `org.koin.core.module.Module` and you call Koin's own `startKoin` with it, but the SDK ships `koin-core` at runtime scope only — so neither type is on your compile classpath until you declare Koin yourself. Without that line the integration does not compile. Use `io.insert-koin:koin-androidx-compose` instead if you inject into Compose, and keep Koin on the same 4.x version the SDK uses to avoid a duplicate-class conflict.
+
+Then the permission, which must come from your app because the SDK's manifest declares none:
+
+```xml
+<!-- AndroidManifest.xml (app) -->
+<uses-permission android:name="android.permission.INTERNET" />
+```
+
+Without it Android refuses the socket and every call fails with a `SecurityException`, reaching you as `SdkError.Unknown` on a `…Result` read and thrown on a plain read.
+
+## 4. Configuring and creating the SDK
+
 
 ### EsimplifiedSdk.initialize()
 
@@ -42,6 +137,22 @@ SdkConfig(
 )
 ```
 
+| Parameter | Type | Default | Meaning |
+|---|---|---|---|
+| `environment` | `SdkEnvironment` | — | `STAGING`, `TESTING` or `PRODUCTION`. Selects the API host |
+| `clientName` | `String` | — | Your tenant name, the first label of the API host |
+| `apiVersion` | `String` | `"v2"` | API version path segment. Leave as the default unless told otherwise |
+| `clientId` | `String` | — | Basic-auth user and OAuth client id |
+| `clientSecret` | `String` | — | Basic-auth password and OAuth client secret |
+| `awsWafToken` | `String` | `""` | Sent as the `x-auth-validation` header when non-empty |
+| `enableLogging` | `Boolean` | `false` | Turns on the SDK's own diagnostics and the OkHttp request/response logger. Debug builds only |
+| `customHeadersProvider` | `(() -> Map<String, String>)?` | `null` | Extra headers added to every request. This is where `accept-language` and `accept-currency` belong |
+| `enableCaching` | `Boolean` | `true` | Turns the in-memory response cache on or off |
+| `defaultCacheTtlSeconds` | `Long` | `3600` | Default cache lifetime in seconds |
+| `logger` | `SdkLogger?` | `null` | Receives the SDK's own log lines. See [`SdkLogger`](#sdklogger) |
+
+`SdkConfig`'s primary constructor is `internal`; the constructor above is the public one, and the one to use.
+
 ### SdkEnvironment
 
 | Value | Description |
@@ -49,6 +160,28 @@ SdkConfig(
 | `STAGING` | `https://{clientName}.stage.esimplified.io` |
 | `TESTING` | `https://{clientName}.test.esimplified.io` (short token lifetimes, for auth testing) |
 | `PRODUCTION` | `https://{clientName}.live.esimplified.io` |
+
+### Language and currency
+
+The API localises and prices responses from request headers, not from a parameter.
+
+Once a customer is signed in the SDK sends `accept-language` and `accept-currency` for you, taken from `Customer.preferredLanguage` and `Customer.preferredCurrency`. Change them with `AuthRepository.updatePreferences(preferredLanguage, preferredCurrency)`.
+
+Before sign-in, or to override the stored preference, supply them through `customHeadersProvider` — a header you return there wins over the customer's stored value:
+
+```kotlin
+SdkConfig(
+    // …
+    customHeadersProvider = {
+        mapOf(
+            "accept-language" to Settings.languageCode,
+            "accept-currency" to Settings.currencyCode,
+        )
+    },
+)
+```
+
+The provider is called on every request, so it picks up the customer's current choice without re-initialising the SDK. `x-auth-validation` returned from it overrides `awsWafToken`; every other key is added as-is. An exception thrown inside the provider is swallowed and the request goes out without the custom headers.
 
 ### EsimplifiedSdk.koinModule()
 
@@ -63,17 +196,19 @@ startKoin {
 **Koin is required in your app.** This function returns an
 `org.koin.core.module.Module`, and `startKoin` is Koin's. The SDK publishes
 `koin-core` at runtime scope only, so neither type is on your compile
-classpath until you declare Koin yourself:
+classpath until you declare Koin yourself — see
+[Installing the SDK](#3-installing-the-sdk).
+
+Repositories are then injected the ordinary way:
 
 ```kotlin
-dependencies {
-    implementation("io.github.esimplified:android-sdk:2.0.0")
-    implementation("io.insert-koin:koin-android:4.1.1")
-}
+class StoreViewModel(
+    private val countryRepo: CountryRepository,
+) : ViewModel()
 ```
 
-Use `koin-androidx-compose` instead if you inject into Compose. Keep Koin on
-the same 4.x version the SDK uses to avoid a duplicate-class conflict.
+or resolved directly with `koinInject()` in Compose, or `get()` / `by inject()`
+elsewhere.
 
 ### EsimplifiedSdk.clearAllCaches()
 
@@ -89,43 +224,271 @@ The active `SessionManager`, for reading auth state outside a repository.
 
 ---
 
-## Reads, caching and errors
+## 5. Keeping the customer signed in
 
-Cached reads take two optional arguments, omitted from the tables below for brevity:
+The SDK persists the session for you. `EsimplifiedSdk.initialize` takes two optional collaborators, and supplying neither is a valid choice:
+
+- **`SecureStorageProvider`** — where tokens are written. The default, `DefaultSecureStorage`, uses `EncryptedSharedPreferences`. Supply your own only if you already own a secure store. It never falls back to plaintext: if `EncryptedSharedPreferences` cannot be initialised the default implementation throws `SecureStorageInitException`, and the right response is to sign the customer out and ask them to authenticate again.
+- **`SessionManager`** — how auth state is decided and observed. The default, `DefaultSessionManager`, reads and writes through whichever `SecureStorageProvider` is in play. Supply your own when the session already lives in your app.
+
+```kotlin
+EsimplifiedSdk.initialize(
+    context = this,
+    config = config,
+    storageProvider = MyKeystoreStorage(this),
+    sessionManager = MySessionManager(),
+)
+```
+
+Full method lists for both are in [Supporting types](#9b-supporting-types).
+
+Token refresh is automatic. An access token within five minutes of expiry is refreshed before the request goes out, and a 401 or 403 on an authenticated request triggers one refresh-and-retry. Concurrent calls share a single refresh rather than racing it. A refresh the server rejects ends the session — `SessionManager.onAuthenticationFailed()` fires and the state becomes `Auth.Unauthenticated` — while a network failure during refresh does not.
+
+Read the current state anywhere with `EsimplifiedSdk.sessionManager`:
+
+```kotlin
+when (val state = EsimplifiedSdk.sessionManager.getAuthState()) {
+    is Auth.Authenticated -> showAccount(state.user)
+    Auth.Unauthenticated -> showSignIn()
+}
+```
+
+## 6. Making your first call
+
+Repositories are injected by Koin. Every read below works without a signed-in customer except the eSIM list.
+
+```kotlin
+class StoreViewModel(
+    private val countryRepo: CountryRepository,
+    private val packagesRepo: PackagesRepository,
+    private val esimRepo: EsimRepository,
+    private val authRepo: AuthRepository,
+) : ViewModel() {
+
+    fun load(email: String, password: String) = viewModelScope.launch {
+        val countries = countryRepo.getCountries()
+        val packages = packagesRepo.getPackages(Destination(code = "ZA", slug = "south-africa"))
+
+        authRepo.login(email = email, password = password)
+        val esims = esimRepo.getActiveEsims()
+    }
+}
+```
+
+## 6b. The full purchase journey
+
+The SDK gets you an order. It does **not** take the payment and it does **not** install the eSIM — both of those happen in your app. This is the whole journey, with the handoffs marked.
+
+```kotlin
+suspend fun buy(
+    countryRepo: CountryRepository,
+    packagesRepo: PackagesRepository,
+    authRepo: AuthRepository,
+    paymentsRepo: PaymentsRepository,
+    ordersRepo: OrdersRepository,
+    email: String,
+    password: String,
+) {
+    // 1. Browse, no sign-in needed
+    val countries = countryRepo.getCountries()
+    val packages = packagesRepo.getPackages(Destination(code = "ZA", slug = "south-africa"))
+    val plan = packages.first()
+
+    // 2. The customer must be signed in to buy
+    val customer = authRepo.login(email = email, password = password)
+
+    // 3. Ask the API to create a payment
+    val payment = paymentsRepo.getPaymentIntent(
+        PaymentRequest(
+            type = PaymentRequest.Type.BUY,          // TOP_UP to top an existing eSIM up
+            iccid = null,                            // the eSIM's ICCID when topping up
+            customer = customer.details(),
+            packageTypeId = plan.packageTypeId.toInt(),
+            paymentMethod = PaymentRequest.Method.STRIPE_INTENT,
+            autoTopUp = false,
+            savePaymentMethod = true,
+        )
+    )
+    val transaction = payment.transaction ?: return
+
+    // 4. YOUR APP takes the payment — the SDK stops here
+    //    transaction.zeroCharge == true → nothing to pay, skip straight to step 5
+    //    otherwise hand these to the Stripe Android SDK:
+    //      transaction.publishableKey, transaction.uri (the client secret),
+    //      transaction.ephemeralKey, transaction.customerRef
+
+    // 5. Once Stripe reports success, read the order
+    val orderUuid = transaction.orderId ?: return
+    val order = ordersRepo.getOrderDetails(orderUuid = orderUuid, forceRefresh = true)
+
+    // 6. YOUR APP installs the eSIM — see "Installing the eSIM" below
+    //    order.smDpAddress, order.activationCode
+
+    // 7. Tell the API the conversion is recorded, so it is not counted twice
+    ordersRepo.trackOrder(orderUuid = orderUuid)
+}
+```
+
+`customer.details()` is an extension on `Customer` declared in its companion, so it needs one import:
+
+```kotlin
+import io.esimplified.sdk.model.Customer.Companion.details
+```
+
+Build a `CustomerDetails` by hand instead if you are buying for a customer you did not just fetch.
+
+### An order is not ready the instant it is paid
+
+Provisioning is asynchronous. Immediately after payment the order comes back with `orderStatus` `"pending"` and **no** `qrCode`, `smDpAddress`, `activationCode` or `esimProfile` — every one of those is nullable for exactly this reason. Poll `getOrderDetails(orderUuid, forceRefresh = true)` until `smDpAddress` and `activationCode` are both present, and give the wait a deadline:
+
+```kotlin
+suspend fun awaitProvisionedOrder(
+    ordersRepo: OrdersRepository,
+    orderUuid: String,
+    attempts: Int = 10,
+): OrderDetail? {
+    repeat(attempts) {
+        val order = ordersRepo.getOrderDetails(orderUuid = orderUuid, forceRefresh = true)
+        if (!order.smDpAddress.isNullOrBlank() && !order.activationCode.isNullOrBlank()) return order
+        delay(3_000)
+    }
+    return null
+}
+```
+
+If the deadline expires, tell the customer the order has not completed rather than sending them into an install that cannot succeed. Their payment is safe and the order completes server-side.
+
+## 6c. Installing the eSIM
+
+The SDK hands you the credentials; Android does the install. There is no SDK call for this — you launch the platform's LPA (Local Profile Assistant) yourself.
+
+**1. A compatibility check**, so you do not offer installation on a device that cannot do it:
+
+```kotlin
+fun isDeviceEsimCapable(context: Context): Boolean {
+    val hasEuiccFeature = context.packageManager
+        .hasSystemFeature(PackageManager.FEATURE_TELEPHONY_EUICC)
+    val euiccManager = context.getSystemService(EuiccManager::class.java)
+    return hasEuiccFeature || euiccManager?.isEnabled == true
+}
+```
+
+**2. The install itself.** Android exposes eSIM provisioning through a universal link that the system LPA handles. Build the activation string in LPA format from the order's credentials and start it as an `ACTION_VIEW` intent — the system takes over from there and shows its own UI:
+
+```kotlin
+fun installEsim(context: Context, smDpAddress: String, activationCode: String): Boolean {
+    val cardData = "LPA:1\$$smDpAddress\$$activationCode"
+    val uri = Uri.Builder()
+        .scheme("https")
+        .authority("esimsetup.android.com")
+        .path("/esim_qrcode_provisioning")
+        .appendQueryParameter("carddata", cardData)
+        .build()
+    return try {
+        context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+        true
+    } catch (e: Exception) {
+        false
+    }
+}
+```
+
+The `carddata` value is exactly what a printed eSIM QR code encodes: the literal `LPA:1`, the SM-DP+ address, and the matching ID, separated by `$`. In Kotlin that first `$` has to be escaped, which is why the string reads `"LPA:1\$$smDpAddress\$$activationCode"`.
+
+Catch the failure rather than assuming it works. `startActivity` throws `ActivityNotFoundException` on a device with no LPA, and some OEM builds refuse the link even when `EuiccManager` reports eSIM support.
+
+**3. Always offer a manual fallback.** Render `order.qrCode` as a QR image — or show `order.qrCodeImageBase64`, which the API already returns as an image — for scanning on another device, and show `order.smDpAddress` and `order.activationCode` as text so the customer can type them into Settings. Some customers install on a second phone, and some devices refuse the direct install.
+
+`EsimRepository.getEsimByIccid` exposes the same credentials for an eSIM the customer already owns, so a re-install does not need the original order.
+
+## 6d. Signing out
+
+```kotlin
+authRepo.logout()
+```
+
+`logout()` saves `Auth.Unauthenticated` and clears every cached response in one step, so there is nothing else to call. That second half matters: cached reads are keyed by endpoint, not by customer, so a sign-out that left them in place would leave one customer's eSIMs and orders readable by the next person to sign in on that device.
+
+`EsimplifiedSdk.clearAllCaches()` does the cache half on its own, for when you want a clean slate without ending the session.
+---
+
+## 7. Error handling
+
+Every cached read comes in two forms, and the choice is about how loudly a failure should land:
+
+| Variant | Behaviour |
+|---|---|
+| `getX(...)` | Returns the value. A cache miss plus a failed refresh **throws**; a stale cache entry is returned rather than thrown |
+| `getXResult(...)` | Returns `RepositoryResult<T>` — the value, whether it came from a stale cache, and the `SdkError` that caused that. Never throws for a network failure. Lets you show data and an error together |
+
+```kotlin
+val result = esimRepo.getEsimsResult()
+render(result.value)
+if (result.isStale && result.isOffline) showOfflineBanner()
+```
+
+`SdkError`, in `io.esimplified.sdk.network`, is a sealed subclass of `IOException`:
+
+| Case | Meaning |
+|---|---|
+| `NetworkError(statusCode, message)` | Server responded with an error status |
+| `AuthenticationRequired` | No valid session |
+| `NoInternetConnection` | Host unreachable or connection refused |
+| `DecodingError(cause)` | Response did not match the model |
+| `InvalidURL(url)` | Malformed URL |
+| `Unknown(cause)` | Anything else |
+
+`SdkError.isOffline` is shorthand for `this is NoInternetConnection`.
+
+The SDK's other public exception types, all thrown rather than returned:
+
+| Exception | Thrown by | Meaning |
+|---|---|---|
+| `InvalidRefreshTokenException` | `AuthRepository.loginWithRefreshToken` | The stored refresh token was rejected. The session has already been cleared — send the customer to sign-in |
+| `LoyaltyApiException(httpCode, message)` | `LoyaltyRepository`'s Mokafaa methods | Backend error, `message` verbatim. Branch on `httpCode` (400 / 401 / 503) |
+| `PaymentApiException(httpCode, type, message)` | `PaymentsRepository.getPaymentIntent` | Payment rejected. `type` is `PaymentApiException.TYPE_VALIDATION_ERROR` for a bad request |
+| `SecureStorageInitException` | `EsimplifiedSdk.initialize()`, via the default storage provider | `EncryptedSharedPreferences` could not be initialised. The SDK refuses to fall back to plaintext — sign the customer out and re-prompt |
+
+`VouchersRepository.redeemVoucher` is the one method that returns Kotlin's own `Result<T>` instead. Other API failures surface as a plain `Exception` whose message is the backend's error text, parsed out of the response body.
+
+---
+
+## 8. Caching
+
+Every list and detail read is served through an in-process cache keyed by call and arguments. Two optional arguments appear on those methods, omitted from the tables in [Repository reference](#9-repository-reference) for brevity:
 
 | Parameter | Default | Meaning |
 |-----------|---------|---------|
 | `forceRefresh: Boolean` | `false` (`true` on `getLoyaltyBalance` and `getLoyaltyBalanceResult`) | Skip the cache and go to the network |
-| `cacheTTL: Duration` | the repository's own constant | How long this read stays fresh |
+| `cacheTTL: Duration` | the repository's own constant, e.g. `EsimRepository.ESIM_LIST_TTL` | How long this read stays fresh |
 
-Each such method also has a `…Result` twin returning `RepositoryResult<T>` rather than throwing:
+Cache control:
 
-```kotlin
-data class RepositoryResult<T>(
-    val value: T,
-    val isStale: Boolean = false,   // served from an expired cache entry
-    val failure: SdkError? = null,  // why the refresh failed, if it did
-) {
-    val didFail: Boolean
-    val isOffline: Boolean
-}
-```
+- `EsimplifiedSdk.clearAllCaches()` — drop everything. `AuthRepository.logout()` already does this for you.
+- `repository.invalidateCache()` — `suspend`, on every cached repository; drops just that repository's entries.
+- `SdkConfig(enableCaching = false)` — gives every entry a zero TTL, so every read goes to the network. Per-call `cacheTTL` arguments still apply when caching is on.
+- `SdkConfig(defaultCacheTtlSeconds = …)` — the fallback lifetime, 3600 seconds by default, used where a call passes no TTL of its own.
 
-`SdkError` is a sealed subclass of `IOException`: `NetworkError(statusCode, message)`, `AuthenticationRequired`, `NoInternetConnection`, `DecodingError(cause)`, `InvalidURL(url)`, `Unknown(cause)`.
-
-Every cached repository also exposes `suspend fun invalidateCache()`.
+The cache lives in memory for the life of the process. Nothing is written to disk, so a cold start always goes to the network.
 
 ---
 
-## Repositories
+## 9. Repository reference
 
 All repository functions are `suspend` unless noted. Inject via Koin, which
 your app must declare as a dependency — see
 [`EsimplifiedSdk.koinModule()`](#esimplifiedsdkkoinmodule):
 
 ```kotlin
-val authRepo: AuthRepository = koinInject()
+class AccountViewModel(
+    private val authRepo: AuthRepository,
+) : ViewModel()
 ```
+
+Outside a constructor, use Koin's own resolvers: `get<AuthRepository>()` inside a
+Koin component or module, `by inject<AuthRepository>()` in an `Activity` or
+`Fragment` that implements `KoinComponent`, or `koinInject<AuthRepository>()`
+inside a `@Composable` (that one needs `koin-androidx-compose`).
 
 ---
 
@@ -171,6 +534,7 @@ val authRepo: AuthRepository = koinInject()
 | `getCountriesBy` | `destination: Destination` | `List<Country>` | Filter by code, name, slug, or region |
 | `search` | `query: String` | `List<Country>` | Search countries by name/code |
 | `getUserLocation` | — | `UserLocationResponse` | Get user's location by IP (never cached) |
+| `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
 
 Cached: `getCountries`, `getCountriesBy` (`COUNTRIES_TTL` = 24 h). `…Result` twins: `getCountriesResult`, `getCountriesByResult`.
 
@@ -184,6 +548,7 @@ Cached: `getCountries`, `getCountriesBy` (`COUNTRIES_TTL` = 24 h). `…Result` t
 | `getPackagesPage` | `destination: Destination` | `PackagesPage` | Same read plus total count and the page's promo code |
 | `getTopUpPackages` | `iccid: String` | `List<PackagePlan>` | Get top-up packages for an existing eSIM |
 | `checkStock` | `packageTypeId: Int` | `CheckStockResponse` | Check package availability |
+| `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
 
 All cached (`PACKAGES_TTL` = 1 h). `…Result` twins: `getPackagesResult`, `getPackagesPageResult`, `getTopUpPackagesResult`, `checkStockResult`.
 
@@ -201,6 +566,7 @@ All cached (`PACKAGES_TTL` = 1 h). `…Result` twins: `getPackagesResult`, `getP
 | `getEsimByIccid` | `iccid: String, includeBase64QrCode: Boolean = false` | `AssignedEsim` | Get one eSIM from `customer/esims/{iccid}/details/` |
 | `updateEsim` | `iccid: String, name: String? = null, isAutoTopUp: Boolean? = null, isArchived: Boolean? = null, isPrimary: Boolean? = null` | `Unit` | Update eSIM settings. **Throws if the server rejects the write** — on a non-2xx response, or when the success body is not the API's `eSIM updated successfully`, matching the iOS SDK |
 | `updateEsimPrimaryStatus` | `iccid: String, isPrimary: Boolean` | `Unit` | Convenience wrapper for the primary flag |
+| `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
 
 Cached: `ESIM_LIST_TTL` = 24 h for lists, `ESIM_DETAILS_TTL` = 5 min for details. `…Result` twins: `getEsimsResult`, `getActiveEsimsResult`, `getArchivedEsimsResult`, `getEsimByIccidResult`.
 
@@ -218,6 +584,7 @@ Cached: `ESIM_LIST_TTL` = 24 h for lists, `ESIM_DETAILS_TTL` = 5 min for details
 | `getOrdersPageResult` | `limit: Int = 100, offset: Int = 0, withLoyaltyPoints: Boolean = false` | `RepositoryResult<OrdersPage>` | Paged order read |
 | `getOrderInvoice` | `orderUuid: String` | `ByteArray` | Download the order's PDF invoice bytes |
 | `trackOrder` | `orderUuid: String` | `Unit` | Mark the order's conversion as tracked (never throws) |
+| `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
 
 Cached: `ORDERS_LIST_TTL` = 10 min, `ORDER_DETAIL_TTL` = 5 min. `…Result` twins: `getOrderHistoryResult` (both overloads), `getOrderDetailsResult`.
 
@@ -235,14 +602,17 @@ Cached: `ORDERS_LIST_TTL` = 10 min, `ORDER_DETAIL_TTL` = 5 min. `…Result` twin
 
 ```kotlin
 PaymentRequest(
-    type: String,              // "buy" or "top-up"
-    iccid: String?,            // Required for top-up
+    type: String,                        // PaymentRequest.Type.BUY or .TOP_UP
+    iccid: String? = null,               // required for a top-up
     customer: CustomerDetails,
     packageTypeId: Int,
-    paymentMethod: String,     // "stripe_intent" or "stripe_checkout"
+    paymentMethod: String,               // PaymentRequest.Method.STRIPE_INTENT or .STRIPE_CHECKOUT
     autoTopUp: Boolean,
     savePaymentMethod: Boolean,
-    loyaltyPointsAmount: Double? = null
+    loyaltyPointsAmount: Double? = null,
+    loyaltyProvider: String? = null,     // LoyaltyProvider.KREDS or .MOKAFAA
+    loyaltyPointsToUse: Int? = null,
+    couponId: String? = null,
 )
 ```
 
@@ -268,6 +638,7 @@ PaymentRequest(
 | `getMokafaaQuote` | `packageTypeId: Int, loyaltyPointsToUse: Int` | `KredsQuoteResponse` | Get pricing quote with Mokafaa points |
 | `initiateMokafaaOtp` | `purpose: String, platform: String = "android"` | `MokafaaOtpInitiateResponse` | Start a Mokafaa OTP session (`purpose`: `enrollment` or `checkout`); countdown should be driven by `expiresAt` |
 | `validateMokafaaOtp` | `sessionId: String, otp: String, points: Int? = null, packageTypeId: Int? = null` | `MokafaaOtpValidateResponse` | Validate the SMS OTP; `points` required for checkout, omitted for enrollment |
+| `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
 
 Mokafaa methods throw `LoyaltyApiException(httpCode, message)` on HTTP errors — `message` is the backend error verbatim, `httpCode` lets callers branch on 400/401/503.
 
@@ -294,6 +665,7 @@ if (result.isOffline) showOfflineHint()
 |----------|-----------|---------|-------------|
 | `fetchPageTheme` | `page: String` | `ThemePage?` | Theme for a named page; `null` if the API has none |
 | `fetchDestinationTheme` | `countryCode: String` | `ThemeDestination?` | Theme for a destination, matched case-insensitively |
+| `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
 
 Cached (`THEME_TTL` = 1 h). `…Result` twins: `fetchPageThemeResult`, `fetchDestinationThemeResult`.
 
@@ -304,6 +676,7 @@ Cached (`THEME_TTL` = 1 h). `…Result` twins: `fetchPageThemeResult`, `fetchDes
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
 | `fetchDestinationFaqs` | `countryNameSlug: String` | `List<Faq>` | FAQs for a destination slug |
+| `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
 
 Cached (`FAQS_TTL` = 24 h). `…Result` twin: `fetchDestinationFaqsResult`.
 
@@ -314,6 +687,7 @@ Cached (`FAQS_TTL` = 24 h). `…Result` twin: `fetchDestinationFaqsResult`.
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
 | `fetchStoreReview` | — | `RatingApiResponse` | Store review summary, reviews and stats |
+| `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
 
 Cached (`STORE_REVIEW_TTL` = 24 h). `…Result` twin: `fetchStoreReviewResult`.
 
@@ -357,7 +731,79 @@ Cached (`STORE_REVIEW_TTL` = 24 h). `…Result` twin: `fetchStoreReviewResult`.
 
 ---
 
-## Auth Interfaces
+## 9b. Supporting types
+
+Declared outside the model layer, but you will meet them in signatures.
+
+### RepositoryResult
+
+What every `…Result` method returns.
+
+```kotlin
+data class RepositoryResult<T>(
+    val value: T,
+    val isStale: Boolean = false,
+    val failure: SdkError? = null,
+) {
+    val didFail: Boolean
+    val isOffline: Boolean
+}
+```
+
+| Property | Type | Meaning |
+|---|---|---|
+| `value` | `T` | The data. Present even when the call failed, if a stale cache could serve it |
+| `isStale` | `Boolean` | `true` when `value` came from an expired cache rather than the network |
+| `failure` | `SdkError?` | Why the network call failed, or `null` if it did not |
+| `didFail` | `Boolean` | `failure != null` |
+| `isOffline` | `Boolean` | `failure` is `SdkError.NoInternetConnection` |
+
+### SdkError
+
+`io.esimplified.sdk.network.SdkError`, a sealed subclass of `IOException`. Cases and their meanings are in [Error handling](#7-error-handling).
+
+| Case | Constructor |
+|---|---|
+| `NetworkError` | `NetworkError(statusCode: Int, message: String)` |
+| `AuthenticationRequired` | `AuthenticationRequired()` |
+| `NoInternetConnection` | `NoInternetConnection()` |
+| `DecodingError` | `DecodingError(cause: Throwable)` |
+| `InvalidURL` | `InvalidURL(url: String)` |
+| `Unknown` | `Unknown(cause: Throwable)` |
+
+`SdkError.isOffline` is `true` only for `NoInternetConnection`.
+
+### InvalidRefreshTokenException
+
+`io.esimplified.sdk.repository.InvalidRefreshTokenException`. No properties; its message is `"Session expired. Please sign in again."`. Thrown by `AuthRepository.loginWithRefreshToken`.
+
+### LoyaltyApiException
+
+`io.esimplified.sdk.network.LoyaltyApiException(httpCode: Int, message: String?)`. Thrown by the Mokafaa methods on `LoyaltyRepository`.
+
+### PaymentApiException
+
+`io.esimplified.sdk.network.PaymentApiException(httpCode: Int, type: String?, message: String?)`. Thrown by `PaymentsRepository.getPaymentIntent`. `PaymentApiException.TYPE_VALIDATION_ERROR` is the `type` value for a rejected request.
+
+### SecureStorageInitException
+
+`io.esimplified.sdk.auth.SecureStorageInitException(cause: Throwable)`. Thrown when `EncryptedSharedPreferences` cannot be initialised. The SDK does not fall back to plaintext storage.
+
+### SdkEnvironment
+
+Enum: `STAGING`, `TESTING`, `PRODUCTION`. Selects the API host together with `clientName` — see [Configuring and creating the SDK](#4-configuring-and-creating-the-sdk).
+
+### SdkLogger and SdkLogLevel
+
+```kotlin
+fun interface SdkLogger {
+    fun log(level: SdkLogLevel, message: String, throwable: Throwable?)
+}
+
+enum class SdkLogLevel { DEBUG, WARNING, ERROR }
+```
+
+See [`SdkLogger`](#sdklogger) in section 4 for what is and is not logged.
 
 ### SessionManager
 
@@ -384,7 +830,9 @@ Implement this to control where tokens are stored.
 | `save` | `value: T, forKey: String` | `Unit` | Generic save (String, Boolean, Int, Long, Float) |
 | `load` | `key: String, default: T` | `T` | Generic load |
 
-### Auth (Sealed Interface)
+### Auth
+
+Sealed interface describing the session.
 
 ```kotlin
 Auth.Unauthenticated          // No active session
@@ -397,9 +845,30 @@ Auth.Authenticated(
 )
 ```
 
+`Auth.Authenticated.isExpired` is `true` once the token is within five minutes of `expires`, which is the window the SDK refreshes in.
+
+### TokenProvider
+
+```kotlin
+interface TokenProvider {
+    fun getAccessToken(): String?
+    fun getRefreshToken(): String?
+    fun saveTokens(access: String, refresh: String)
+    suspend fun refreshAccessToken(): Boolean
+}
+```
+
+Public but unused: nothing in the SDK consumes a `TokenProvider`, and supplying one has no effect. Token storage is `SecureStorageProvider` and session state is `SessionManager`. Listed here only because it is visible on the public surface.
+
+### OrdersPage and PackagesPage
+
+Paged wrappers returned by `getOrdersPageResult` and `getPackagesPage`. Their fields are in [Model reference](#10-model-reference).
+
 ---
 
-## Data Models
+## 10. Model reference
+
+Every type the SDK returns or accepts, with its Kotlin properties and the JSON keys they map to. A `?` means the field can be absent or null.
 
 ### Customer
 
@@ -745,7 +1214,7 @@ Decoding is total: any wire value the enum does not recognise becomes `UNKNOWN` 
 
 ---
 
-## Data Models — customer and profile
+## 10b. Customer and profile models
 
 ### CustomerDetails
 
@@ -868,7 +1337,7 @@ A phone-number country code. Standalone helper — no repository returns it. Par
 
 ---
 
-## Data Models — tokens
+## 10c. Token models
 
 These describe the OAuth2 exchange the SDK performs for you. Token handling is internal; you will not normally construct or receive these.
 
@@ -900,7 +1369,7 @@ Token introspection result. Public, but not reachable through any repository met
 
 ---
 
-## Data Models — catalogue and eSIM
+## 10d. Catalogue and eSIM models
 
 ### SupportedCountry
 
@@ -1018,7 +1487,7 @@ A country with purchase restrictions. Public, but not returned by any repository
 
 ---
 
-## Data Models — orders and payments
+## 10e. Order and payment models
 
 ### OrderHistoryItem
 
@@ -1111,7 +1580,7 @@ Promo code payload. Built internally by `PromoCodeRepository.addPromoCode` — y
 
 ---
 
-## Data Models — loyalty and Kreds
+## 10f. Loyalty and Kreds models
 
 Every amount in these models is a server-verbatim decimal `String` (`"12.50"`). None of them carries a `…Value: Double` companion, so parse with `toDoubleOrNull()` before doing arithmetic. Point counts (`requestedCents`, `appliedCents`) are `Int` minor units and are safe to compute with directly.
 
@@ -1216,7 +1685,7 @@ Not a model — a constant holder. `LoyaltyProvider.KREDS` is `"kreds"`, `Loyalt
 
 ---
 
-## Data Models — Mokafaa
+## 10g. Mokafaa models
 
 ### MokafaaOtpInitiateRequest
 
@@ -1272,7 +1741,7 @@ Enrollment state on the customer profile (`Customer.mokafaaEnrollment`). Nested 
 
 ---
 
-## Data Models — rewards, vouchers, content
+## 10h. Rewards, voucher and content models
 
 ### VisaRewardsIframeResponse
 
@@ -1345,7 +1814,7 @@ The full FAQ document for a destination. `FaqAndSupportRepository.fetchDestinati
 
 ---
 
-## Data Models — errors
+## 10i. Error models
 
 ### ApiErrorResponse
 
@@ -1364,3 +1833,9 @@ Vendor payload for an iframe session. Built internally.
 | Field | Type | Description |
 |-------|------|-------------|
 | vendor | String? | Vendor identifier |
+
+---
+
+## Support
+
+Questions, credentials and environment access: your eSimplified contact. Bugs in the SDK itself: open an issue on the [repository](https://github.com/eSimplified/esimplified-android-sdk/issues), and include the `SdkError` subclass and message you hit — for a `DecodingError` the `cause` names the field that broke.
