@@ -60,6 +60,21 @@ startKoin {
 }
 ```
 
+**Koin is required in your app.** This function returns an
+`org.koin.core.module.Module`, and `startKoin` is Koin's. The SDK publishes
+`koin-core` at runtime scope only, so neither type is on your compile
+classpath until you declare Koin yourself:
+
+```kotlin
+dependencies {
+    implementation("io.github.esimplified:android-sdk:2.0.0")
+    implementation("io.insert-koin:koin-android:4.1.1")
+}
+```
+
+Use `koin-androidx-compose` instead if you inject into Compose. Keep Koin on
+the same 4.x version the SDK uses to avoid a duplicate-class conflict.
+
 ### EsimplifiedSdk.clearAllCaches()
 
 Drops every cached read. `AuthRepository.logout()` already does this, so call it directly only when you want a clean slate without ending the session.
@@ -104,7 +119,9 @@ Every cached repository also exposes `suspend fun invalidateCache()`.
 
 ## Repositories
 
-All repository functions are `suspend` unless noted. Inject via Koin:
+All repository functions are `suspend` unless noted. Inject via Koin, which
+your app must declare as a dependency — see
+[`EsimplifiedSdk.koinModule()`](#esimplifiedsdkkoinmodule):
 
 ```kotlin
 val authRepo: AuthRepository = koinInject()
