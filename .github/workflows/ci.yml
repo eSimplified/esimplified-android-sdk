@@ -7,6 +7,48 @@ on:
     branches: [main]
 
 jobs:
+  semver:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: A breaking change must raise the major version
+        run: |
+          version=$(sed -n 's/.*coordinates("io.github.esimplified", "android-sdk", "\(.*\)").*/\1/p' sdk/build.gradle.kts)
+          previous=$(git tag --list 'v[0-9]*' '[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)
+
+          if [ -z "$previous" ]; then
+            echo "::notice::No previous tag. Nothing to compare."
+            exit 0
+          fi
+
+          previous_version=${previous#v}
+
+          if [ "$version" = "$previous_version" ]; then
+            echo "::notice::Version is still $version. Nothing to check."
+            exit 0
+          fi
+
+          breaking=$(git log --no-merges --format='%h %s' "$previous..HEAD" \
+            | grep -E '^[0-9a-f]+ ([a-z]+(\([^)]*\))?!:|BREAKING CHANGE:)' || true)
+
+          if [ -z "$breaking" ]; then
+            echo "::notice::$previous_version -> $version, no breaking commits."
+            exit 0
+          fi
+
+          if [ "${version%%.*}" != "${previous_version%%.*}" ]; then
+            echo "::notice::$previous_version -> $version raises the major. Breaking changes allowed."
+            exit 0
+          fi
+
+          echo "::error file=sdk/build.gradle.kts::$previous_version -> $version keeps the major, but these commits are marked breaking:"
+          echo "$breaking" | while read -r line; do echo "::error::$line"; done
+          echo "::error::Either release it as a major version, or drop the ! where the change only affects anyone implementing our interfaces."
+          exit 1
+
   test:
     runs-on: ubuntu-latest
     steps:
