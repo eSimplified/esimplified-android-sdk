@@ -1,0 +1,10 @@
+# Commits marked ! that do not break callers, and so do not force a major.
+#
+# The marker is reserved for changes that break calling code. A change that
+# only affects someone implementing one of our interfaces is a minor, and is
+# still listed under Breaking changes in the release notes so nobody is
+# surprised. Add a line here only when that is genuinely the case.
+#
+# <short sha> <why it does not break callers>
+
+355705d collapsing the getOrderHistory overloads is source-compatible; every existing call still resolves. Only implementers of OrdersRepository must drop the extra override.
