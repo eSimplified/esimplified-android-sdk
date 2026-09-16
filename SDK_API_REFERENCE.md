@@ -30,9 +30,9 @@ EsimplifiedSdk.initialize(
 SdkConfig(
     environment: SdkEnvironment,
     clientName: String,
+    apiVersion: String = "v2",
     clientId: String,
     clientSecret: String,
-    apiVersion: String = "v2",
     awsWafToken: String = "",
     enableLogging: Boolean = false,
     customHeadersProvider: (() -> Map<String, String>)? = null,
@@ -80,7 +80,7 @@ Cached reads take two optional arguments, omitted from the tables below for brev
 
 | Parameter | Default | Meaning |
 |-----------|---------|---------|
-| `forceRefresh: Boolean` | `false` (`true` on `getLoyaltyBalance`) | Skip the cache and go to the network |
+| `forceRefresh: Boolean` | `false` (`true` on `getLoyaltyBalance` and `getLoyaltyBalanceResult`) | Skip the cache and go to the network |
 | `cacheTTL: Duration` | the repository's own constant | How long this read stays fresh |
 
 Each such method also has a `…Result` twin returning `RepositoryResult<T>` rather than throwing:
@@ -246,12 +246,28 @@ PaymentRequest(
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
 | `getLoyaltyBalance` | `forceRefresh: Boolean = true` | `KredsLoyaltyBalanceResponse` | Get Kreds points balance. Note `forceRefresh` defaults to `true` |
+| `getLoyaltyBalanceResult` | `forceRefresh: Boolean = true` | `RepositoryResult<KredsLoyaltyBalanceResponse?>` | The same read, reported rather than thrown. See the note below |
 | `getKredsQuote` | `packageTypeId: Int, loyaltyPointsAmount: Double` | `KredsQuoteResponse` | Get pricing quote with Kreds |
 | `getMokafaaQuote` | `packageTypeId: Int, loyaltyPointsToUse: Int` | `KredsQuoteResponse` | Get pricing quote with Mokafaa points |
 | `initiateMokafaaOtp` | `purpose: String, platform: String = "android"` | `MokafaaOtpInitiateResponse` | Start a Mokafaa OTP session (`purpose`: `enrollment` or `checkout`); countdown should be driven by `expiresAt` |
 | `validateMokafaaOtp` | `sessionId: String, otp: String, points: Int? = null, packageTypeId: Int? = null` | `MokafaaOtpValidateResponse` | Validate the SMS OTP; `points` required for checkout, omitted for enrollment |
 
 Mokafaa methods throw `LoyaltyApiException(httpCode, message)` on HTTP errors — `message` is the backend error verbatim, `httpCode` lets callers branch on 400/401/503.
+
+**`getLoyaltyBalance` vs `getLoyaltyBalanceResult`** — both perform the identical cached read; they differ only in how a failure reaches you.
+
+`getLoyaltyBalanceResult` is the underlying call. It never throws for a network or backend failure: it returns a `RepositoryResult` whose `value` is the balance, and on failure falls back to the expired cache entry with `isStale = true` and `failure` set to the `SdkError`. If nothing was ever cached, `value` is `null` — which is why the result type is `KredsLoyaltyBalanceResponse?` rather than non-null.
+
+`getLoyaltyBalance` calls it and unwraps. A non-null value is returned as-is; if `value` is `null` it rethrows the recorded failure, so it always hands back a non-null balance or throws.
+
+Use `getLoyaltyBalanceResult` when you want to render a last-known balance while offline and flag it as stale; use `getLoyaltyBalance` when a balance you cannot obtain should be an error path.
+
+```kotlin
+val result = loyaltyRepo.getLoyaltyBalanceResult(forceRefresh = false)
+val balance = result.value            // null only if nothing cached and the refresh failed
+if (result.isStale) showStaleBadge()  // served from an expired entry
+if (result.isOffline) showOfflineHint()
+```
 
 ---
 
@@ -558,10 +574,13 @@ Auth.Authenticated(
 
 | Field | Type | Description |
 |-------|------|-------------|
-| amount | String? | Amount in currency |
-| currency | CurrencyObject | Currency info |
-| resolvedAmount | String | Best available amount (computed) |
-| resolvedCurrencyIso | String | Currency ISO code (computed) |
+| amount | String? | Amount in currency, server decimal text verbatim — display it, do not do arithmetic on it |
+| amountLocalCurrency | String? | Same amount converted to the customer's preferred currency, also verbatim text |
+| amountLocalCurrencyCents | Int? | The preferred-currency amount in minor units, safe for arithmetic |
+| currency | CurrencyObject | Currency info. Already the preferred currency — the server fills it from the accept-currency request header |
+| original | LoyaltyPointsOriginal? | The pre-conversion USD amount, when the server converted |
+| resolvedAmount | String | Computed. First non-empty of `amount`, `amountLocalCurrency`, `original.amountUSD`, else `"0.00"` |
+| resolvedCurrencyIso | String | Computed. `currency.isoCode` |
 
 ### CurrencyObject
 
@@ -582,6 +601,8 @@ Auth.Authenticated(
 | SPLIT_PAYMENT | Split Payment | true |
 | PAY_WITH_POINTS | Pay with Points | true |
 | UNKNOWN | Payment | false |
+
+Decoding is total: any wire value the enum does not recognise becomes `UNKNOWN` rather than throwing, so a new backend payment method will not break an older app. The public `PaymentMethodSerializer` object implements this; it is wired up by the `@Serializable(with = …)` annotation and you never call it yourself.
 
 ### NotificationSettings
 
@@ -704,3 +725,625 @@ Auth.Authenticated(
 | packages | List\<PackagePlan\> | Packages in this page |
 | totalCount | Int | Total packages |
 | promoCode | CheckoutCouponResponse? | Promo code attached to the page |
+
+---
+
+## Data Models — customer and profile
+
+### CustomerDetails
+
+The mutable customer payload. You build this yourself to pass into `PaymentsRepository.getPaymentIntent`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | String? | Customer ID (`customer_id`) |
+| email | String? | Email address |
+| password | String? | Password, when the call creates an account |
+| firstName | String? | Given name |
+| lastName | String? | Family name |
+| fullName | String? | Full name, when the backend supplies it pre-joined |
+| phoneNumber | String? | Phone number in E.164 |
+| referredBy | String? | Referral code the customer signed up under |
+| newId | String? | Replacement customer ID, on a profile merge |
+| newEmail | String? | Replacement email, when changing the address |
+| marketingConsent | Boolean? | Marketing opt-in (`marketing_opt_in`) |
+| loyaltyElection | String? | Loyalty programme elected at signup |
+
+### ProfileResponse
+
+Returned by `register`, `updateProfile` and `updateCustomerProfile`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | String? | Customer ID |
+| email | String? | Email address |
+| detail | String? | Backend detail message |
+| message | String? | Backend message |
+| success | Boolean? | Whether the operation succeeded |
+| updated | Boolean? | Whether an existing record was changed |
+| referral | String? | Referral identifier |
+| referralCode | String? | The customer's own referral code |
+| mokafaa | MokafaaElection? | Whether the customer elected Mokafaa at registration |
+
+### CustomerForgetPassword
+
+Forgot-password request payload. Built internally by `AuthRepository.forgotPassword`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | String? | Customer ID |
+| email | String? | Email address to send the reset link to |
+
+### CustomerForgetPasswordResponse
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | String? | Customer ID |
+| email | String? | Email the reset was sent to |
+| detail | String? | Backend detail message |
+
+### CustomerChangePassword
+
+Change/reset password request payload. Built internally by `AuthRepository.changePassword` and `resetPassword`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | String? | Customer ID |
+| email | String? | Email address |
+| token | String? | Password reset token (`password_reset_token`), for the reset flow |
+| password | String? | Current password, for the change flow |
+| newPassword | String | The new password. The only non-optional field |
+
+### ChangePasswordResponse
+
+| Field | Type | Description |
+|-------|------|-------------|
+| customer | Customer? | Updated profile (`customer_details`) |
+| success | Boolean | Whether the password was changed (`password_reset`) |
+| detail | String? | Backend detail message |
+
+### UpdateCustomerPreferencesRequest
+
+Built internally by `AuthRepository.updatePreferences`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| preferredLanguage | String? | Preferred language code |
+| preferredCurrency | String? | Preferred currency ISO code |
+
+### VerifyEmailRequest
+
+Built internally by `AuthRepository.verifyEmail`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| email | String | Email address being verified |
+| token | String | Verification token (`email_verification_token`) |
+| orderUUID | String? | Order this verification belongs to, if any |
+
+### VerifyEmailResponse
+
+| Field | Type | Description |
+|-------|------|-------------|
+| email | String? | The verified email address |
+| detail | String? | Backend detail message |
+| isVerified | Boolean | Whether the address is now verified (`email_verified`) |
+
+### DeleteProfileResponse
+
+| Field | Type | Description |
+|-------|------|-------------|
+| deleted | Boolean | Whether the account was deleted |
+
+### CountryCode
+
+A phone-number country code. Standalone helper — no repository returns it. Parse a list you ship yourself with `CountryCode.getAllFrom(json)`, which returns an empty list rather than throwing if the JSON will not decode.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | String | Identifier |
+| name | String | Country name |
+| emoji | String | Flag emoji (`flag`) |
+| isoCode | String | ISO country code (`code`) |
+| dialCode | String | International dialling prefix |
+| pattern | String | Local number format pattern |
+| limit | Int | Maximum national number length |
+
+---
+
+## Data Models — tokens
+
+These describe the OAuth2 exchange the SDK performs for you. Token handling is internal; you will not normally construct or receive these.
+
+### GetTokenResponse
+
+| Field | Type | Description |
+|-------|------|-------------|
+| accessToken | String? | OAuth2 access token |
+| expiresIn | Int | Lifetime in seconds. Defaults to `3600` |
+| tokenType | String? | Token type, e.g. `Bearer` |
+| scope | String? | Granted scopes |
+| refreshToken | String? | Refresh token |
+| user | Customer? | The authenticated profile |
+| error | String? | Error code, when the exchange failed |
+| detail | String? | Backend detail message |
+| description | String? | Human-readable error (`error_description`) |
+
+### GetTokenIntrospectResponse
+
+Token introspection result. Public, but not reachable through any repository method in 2.0.0.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| exp | Int? | Expiry as a Unix timestamp |
+| scope | String? | Granted scopes |
+| isActive | Boolean | Whether the token is still active (`active`) |
+| username | String? | Subject of the token |
+| clientId | String? | OAuth2 client the token was issued to |
+
+---
+
+## Data Models — catalogue and eSIM
+
+### SupportedCountry
+
+A minimal country reference inside a region or package.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| name | String | Country name (`country_name`) |
+| code | String | ISO country code (`country_code`) |
+
+### PackageDetail
+
+Per-package usage and validity on an `AssignedEsim`. Byte and gigabyte counters are `Double`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| status | String | Package status |
+| packageID | String? | Package identifier |
+| packageTypeID | Long? | Package type identifier |
+| dateExpiryEpoch | Long? | Expiry, Unix epoch seconds |
+| dateActivatedEpoch | Long? | Activation, Unix epoch seconds |
+| dateTerminatedEpoch | Long? | Termination, Unix epoch seconds |
+| supportedCountries | List\<SupportedCountry\> | Countries this package covers |
+| dateCreatedUTC | String? | Creation timestamp, UTC text |
+| dateCreatedEpoch | Long | Creation, Unix epoch seconds |
+| packageCountryName | String | Country the package was sold for |
+| packageCountryCode | String? | ISO code of that country |
+| voiceUsageRemainingSeconds | Long | Voice seconds remaining |
+| dataUsageRemainingGigabytes | Double | Data remaining in GB. `-1.0` means unlimited |
+| dataUsageRemainingBytes | Double | Data remaining in bytes |
+| dataAllowanceGigabytes | Double | Total allowance in GB. `-1.0` means unlimited |
+| dataAllowanceBytes | Double | Total allowance in bytes |
+| dataUsedBytes | Double? | Data consumed in bytes (`data_usage_bytes`) |
+| smsUsageRemainingNums | Int | SMS remaining |
+| windowActivationStartEpoch | Long | Activation window opens, epoch seconds |
+| windowActivationEndEpoch | Long | Activation window closes, epoch seconds |
+| windowActivationStartUtc | String? | Activation window opens, UTC text |
+| windowActivationEndUtc | String? | Activation window closes, UTC text |
+| timeAllowanceSeconds | Double | Validity in seconds |
+| timeAllowanceDays | Double | Validity in days |
+| statusMessage | String | Human-readable status |
+| hasUnlimitedPackage | Boolean | Computed. True when allowance or remaining GB is `-1.0` |
+
+### EsimInfo
+
+Compact eSIM metadata carried on an order.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| assignedDate | String | When the eSIM was assigned |
+| iccid | String | ICCID |
+| matchingId | String | SM-DP+ matching ID, the activation code's second half |
+| premium | Boolean | Whether this is a premium profile |
+| smDpAddress | String | SM-DP+ server address |
+| androidSha | Boolean | Whether the profile supports Android direct install |
+| country | String | Country the eSIM was issued for |
+| esimName | String? | Customer-assigned nickname |
+| isUniversal | Boolean | Whether the profile is a universal (multi-region) one |
+
+### EsimProfileState (Enum)
+
+State of an eSIM profile on the SM-DP+ platform, as used by `EsimProfile.state`.
+
+| Value | Meaning |
+|-------|---------|
+| ENABLED | Installed and active on the device |
+| DOWNLOADED | Downloaded to the device, not yet enabled |
+| INSTALLED | Installed on the device |
+| DISABLED | Installed but switched off |
+| DELETED | Removed from the device |
+| RELEASED | Released by the platform, not yet downloaded |
+| ERROR | The profile is in an error state |
+
+`EsimProfile.installed` is true for ENABLED, DOWNLOADED, INSTALLED and DISABLED. `EsimProfile.isDeleted` is true only for DELETED.
+
+### ProfileReusePolicy
+
+How many times an eSIM profile may be re-downloaded. Reached via `EsimProfile.policy`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| type | String? | Reuse policy type (`reuse_type`) |
+| count | Int? | Maximum number of reuses (`max_count`) |
+
+### QrCode
+
+| Field | Type | Description |
+|-------|------|-------------|
+| imageBase64 | String | QR code PNG as base64 |
+| imageUrl | String | Hosted URL for the same QR code |
+
+### RestrictedCountry
+
+A country with purchase restrictions. Public, but not returned by any repository method in 2.0.0.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| countryCode | String | ISO code of the restricted country |
+| restrictionType | RestrictionType | Whether the restriction is global or local |
+| restrictedFor | List\<RestrictedFor\>? | Countries the restriction applies to |
+
+### RestrictedFor
+
+| Field | Type | Description |
+|-------|------|-------------|
+| countryCode | String | ISO code of the affected country |
+| countryName | String | Name of the affected country |
+
+### RestrictionType (Enum)
+
+| Value | Wire value | Meaning |
+|-------|-----------|---------|
+| GLOBAL | `global` | Restricted everywhere |
+| LOCAL | `local` | Restricted only for the countries in `restrictedFor` |
+
+---
+
+## Data Models — orders and payments
+
+### OrderHistoryItem
+
+A summary order for history lists. Its money fields are server-verbatim `String`s and, unlike `OrderDetail`, have **no** `…Value: Double` companions — parse them yourself if you need arithmetic.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| esim | EsimInfo | eSIM issued for this order |
+| orderNumber | Int | Human-facing order number |
+| orderUUID | String | Order UUID, the key for `getOrderDetails` |
+| orderType | String | `buy` or `top-up` |
+| packageId | String | Package identifier |
+| packageName | String | Package display name |
+| packageTypeId | Int | Package type identifier |
+| finalPrice | String | Amount charged, verbatim decimal text |
+| purchasePrice | String | List price before discount, verbatim decimal text |
+| discountAmount | String | Discount applied, verbatim decimal text |
+| discountCode | String | Promo code used |
+| purchaseDate | String | Purchase timestamp |
+| purchaseCurrency | String | Currency ISO code |
+| purchaseCurrencyObject | CurrencyObject | Symbol and ISO code for rendering |
+| paymentStatus | String | Payment status |
+| paymentMethod | PaymentMethod | How it was paid. Unrecognised values decode to `UNKNOWN` |
+| country | Country? | Destination country |
+| loyaltyPointsEarned | LoyaltyPointsDetail? | Points earned (`points_earned`) |
+| loyaltyPointsSpent | LoyaltyPointsDetail? | Points spent (`points_spent`) |
+| user | String | User reference |
+| conversionTracked | Boolean | Whether `trackOrder` has already run for this order |
+| purchaseCountry | PurchaseCountry? | Country the purchase was made from |
+
+### PurchaseCountry
+
+| Field | Type | Description |
+|-------|------|-------------|
+| iso | String | Two-letter ISO code |
+| name | String | Country name |
+| iso3 | String | Three-letter ISO code |
+| flag | String | Flag emoji |
+| isRegion | Boolean | Whether this is a region rather than a single country |
+
+### OrderInfo
+
+A standalone order view. Public, but not returned by any repository method in 2.0.0 — use `OrderDetail` from `OrdersRepository.getOrderDetails`. Money fields are verbatim `String`s with no `…Value` companions.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| detail | String? | Backend detail message |
+| customer | Customer | Purchasing customer |
+| esim | EsimInfo | eSIM issued |
+| qrCode | QrCode | QR code for installation |
+| iccid | String | ICCID |
+| orderType | String | `buy` or `top-up` |
+| orderUuid | String | Order UUID |
+| packageId | String | Package identifier |
+| packageName | String | Package display name |
+| packageTypeId | Int | Package type identifier |
+| discountAmount | String | Discount applied, verbatim decimal text |
+| discountCode | String | Promo code used |
+| finalPrice | String | Amount charged, verbatim decimal text |
+| purchasePrice | String | List price, verbatim decimal text |
+| purchaseCountry | Country | Country the purchase was made from |
+| purchaseCurrency | String | Currency ISO code |
+| purchaseDate | String | Purchase timestamp |
+
+### PaymentRequest
+
+The payload you build for `PaymentsRepository.getPaymentIntent`. Use the nested constants rather than raw strings: `PaymentRequest.Type.BUY` / `TOP_UP`, and `PaymentRequest.Method.STRIPE_INTENT` / `STRIPE_CHECKOUT`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| type | String | `buy` or `top-up`. Required |
+| iccid | String? | Target eSIM for a top-up. Null for a new purchase |
+| customer | CustomerDetails | Purchasing customer. Required |
+| packageTypeId | Int | Package being bought. Required. Note `PackagePlan.packageTypeId` is a `Long` — narrow it |
+| paymentMethod | String | `stripe_intent` or `stripe_checkout`. Required |
+| autoTopUp | Boolean | Enable automatic top-up on the resulting eSIM. Required |
+| savePaymentMethod | Boolean | Store the card for reuse. Required |
+| loyaltyPointsAmount | Double? | Kreds value to apply |
+| loyaltyProvider | String? | `kreds` or `mokafaa`. See `LoyaltyProvider` |
+| loyaltyPointsToUse | Int? | Mokafaa points to burn |
+| couponId | String? | Promo code to apply |
+
+### CheckoutCouponRequest
+
+Promo code payload. Built internally by `PromoCodeRepository.addPromoCode` — you pass the code as a `String`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| code | String? | The promo code (`promo_code`) |
+
+---
+
+## Data Models — loyalty and Kreds
+
+Every amount in these models is a server-verbatim decimal `String` (`"12.50"`). None of them carries a `…Value: Double` companion, so parse with `toDoubleOrNull()` before doing arithmetic. Point counts (`requestedCents`, `appliedCents`) are `Int` minor units and are safe to compute with directly.
+
+### KredsQuoteRequest
+
+Built internally by `getKredsQuote` and `getMokafaaQuote`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| packageTypeId | Int | Package being quoted |
+| loyaltyPointsAmount | Double? | Kreds value to apply |
+| loyaltyProvider | String? | `kreds` or `mokafaa` |
+| loyaltyPointsToUse | Int? | Mokafaa points to burn |
+
+### KredsQuoteResponse
+
+| Field | Type | Description |
+|-------|------|-------------|
+| packageTypeId | Int? | Package quoted |
+| currency | CurrencyObject? | Order currency |
+| preferredCurrency | CurrencyObject? | Customer's preferred currency |
+| pricing | KredsQuotePricing | Price breakdown. Always present |
+| points | KredsQuotePoints | Points breakdown. Defaults to an empty breakdown |
+| notices | List\<QuoteNotice\>? | Server-side warnings to surface to the user |
+
+### QuoteNotice
+
+| Field | Type | Description |
+|-------|------|-------------|
+| code | String | Machine-readable notice code |
+| message | String | Human-readable text |
+
+### KredsQuotePricing
+
+| Field | Type | Description |
+|-------|------|-------------|
+| orderCurrency | KredsQuoteOrderCurrency | Breakdown in the order's own currency. Always present |
+| usd | KredsQuoteUsdPricing? | The same breakdown in USD |
+| preferredCurrency | KredsQuotePreferredPricing? | Total in the customer's preferred currency |
+
+### KredsQuoteOrderCurrency
+
+| Field | Type | Description |
+|-------|------|-------------|
+| exchangeRateToUsd | String? | Rate used to reach USD, verbatim text |
+| subtotal | String? | Before discounts, verbatim text |
+| packageDiscount | String? | Package-level discount, verbatim text |
+| promoDiscount | String? | Promo code discount, verbatim text |
+| pointsApplied | String? | Value covered by points, verbatim text |
+| total | String | Amount payable, verbatim text. Always present |
+| currency | CurrencyObject? | Currency these amounts are in |
+
+### KredsQuoteUsdPricing
+
+Same shape as `KredsQuoteOrderCurrency` without the exchange rate.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| subtotal | String? | Before discounts, verbatim text |
+| packageDiscount | String? | Package-level discount, verbatim text |
+| promoDiscount | String? | Promo code discount, verbatim text |
+| pointsApplied | String? | Value covered by points, verbatim text |
+| total | String | Amount payable in USD, verbatim text. Always present |
+| currency | CurrencyObject? | Currency, USD |
+
+### KredsQuotePreferredPricing
+
+| Field | Type | Description |
+|-------|------|-------------|
+| total | String | Amount payable in the preferred currency, verbatim text. Always present |
+| currency | CurrencyObject? | The preferred currency |
+
+### KredsQuotePoints
+
+| Field | Type | Description |
+|-------|------|-------------|
+| requestedCents | Int? | Points value the client asked to apply, in minor units |
+| appliedCents | Int? | Points value actually applied, in minor units. May be lower than requested |
+| appliedValue | KredsQuoteValue? | Applied value in the order currency |
+| appliedValueUsd | KredsQuoteValue? | Applied value in USD |
+| appliedValuePreferred | KredsQuoteValue? | Applied value in the preferred currency |
+
+### KredsQuoteValue
+
+| Field | Type | Description |
+|-------|------|-------------|
+| amount | String | Verbatim decimal text. Always present |
+| currency | CurrencyObject | Currency. Defaults to an empty `CurrencyObject` |
+
+### LoyaltyPointsOriginal
+
+The pre-conversion amount behind a `LoyaltyPointsDetail`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| amountUSD | String | USD amount, verbatim text (`amount_usd`) |
+| currency | CurrencyObject | Currency, USD |
+
+### LoyaltyProvider
+
+Not a model — a constant holder. `LoyaltyProvider.KREDS` is `"kreds"`, `LoyaltyProvider.MOKAFAA` is `"mokafaa"`. Use these for `PaymentRequest.loyaltyProvider`.
+
+---
+
+## Data Models — Mokafaa
+
+### MokafaaOtpInitiateRequest
+
+Built internally by `initiateMokafaaOtp`. Its nested constants are the values you pass: `MokafaaOtpInitiateRequest.Purpose.ENROLLMENT` / `CHECKOUT`, and `MokafaaOtpInitiateRequest.Platform.ANDROID`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| purpose | String | `enrollment` or `checkout` |
+| platform | String | `android` |
+
+### MokafaaOtpInitiateResponse
+
+| Field | Type | Description |
+|-------|------|-------------|
+| sessionId | String | Session to pass to `validateMokafaaOtp` |
+| expiresAt | String | When the session expires — drive your countdown from this, not a fixed timer |
+| maskedPhoneNumber | String? | Masked number the SMS went to, for display |
+
+### MokafaaOtpValidateRequest
+
+Built internally by `validateMokafaaOtp`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| sessionId | String | Session from `initiateMokafaaOtp` |
+| otp | String | Code the customer entered |
+| points | Int? | Points to burn. Required for checkout, omitted for enrollment |
+| packageTypeId | Int? | Package the burn applies to |
+
+### MokafaaOtpValidateResponse
+
+Nested constants: `MokafaaOtpValidateResponse.Status.CONFIRMED` / `REVERSED` / `FAILED`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| status | String | `confirmed`, `reversed` or `failed` |
+| pointsRedeemed | Int? | Points actually burned |
+
+### MokafaaEnrollment
+
+Enrollment state on the customer profile (`Customer.mokafaaEnrollment`). Nested constants: `MokafaaEnrollment.State.COMPLETED` / `PENDING` / `EXPIRED` / `ELECTED` / `NOT_ELECTED`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| state | String | One of the `State` constants |
+| sessionExpiresAt | String? | When a pending enrollment session lapses |
+
+### MokafaaElection
+
+| Field | Type | Description |
+|-------|------|-------------|
+| elected | Boolean? | Whether the customer opted into Mokafaa at registration |
+
+---
+
+## Data Models — rewards, vouchers, content
+
+### VisaRewardsIframeResponse
+
+Returned by `VisaRewardsRepository.getIframe`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| created | Boolean | Whether a new session was created |
+| token | String? | Token to pass to `verify` |
+| aliasId | String? | Alias identifier |
+| iframeUrl | String? | URL to load in a WebView |
+| correlationId | String? | Correlation ID for support |
+| status | Int? | Status code |
+| eligible | Boolean | Whether the customer is eligible |
+| redeemed | Boolean | Whether the reward is already redeemed |
+
+### VoucherRedeemRequest
+
+Built internally by `VouchersRepository.redeemVoucher` — you pass the code as a `String`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| voucherCode | String | The voucher code |
+
+### ThemeImage
+
+| Field | Type | Description |
+|-------|------|-------------|
+| url | String | Image URL |
+| accent | String? | Accent colour sampled from the image |
+
+### DestinationFaqResponse
+
+The full FAQ document for a destination. `FaqAndSupportRepository.fetchDestinationFaqs` returns just the `faqs` list.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| slug | String | Destination slug |
+| name | String | Destination name |
+| language | String | Language the FAQs are written in |
+| faqs | List\<Faq\> | The questions and answers |
+
+### Author
+
+| Field | Type | Description |
+|-------|------|-------------|
+| name | String? | Reviewer name |
+| location | String? | Reviewer location |
+
+### Stats
+
+| Field | Type | Description |
+|-------|------|-------------|
+| company | CompanyStats? | Company-wide totals |
+| ratings | Ratings? | Per-star counts |
+
+### CompanyStats
+
+| Field | Type | Description |
+|-------|------|-------------|
+| reviewCount | Int | Total reviews |
+| averageRating | String | Average rating as verbatim text, not a number |
+
+### Ratings
+
+| Field | Type | Description |
+|-------|------|-------------|
+| four | Int? | Number of 4-star reviews (JSON key `"4"`) |
+| five | Int? | Number of 5-star reviews (JSON key `"5"`) |
+
+---
+
+## Data Models — errors
+
+### ApiErrorResponse
+
+The standard error body. The SDK parses it for you and surfaces the text as an exception message; you rarely decode it yourself.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| detail | String? | Detail message |
+| error | String? | Error code |
+| message | String? | Human-readable message |
+
+### IframeRequest
+
+Vendor payload for an iframe session. Built internally.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| vendor | String? | Vendor identifier |

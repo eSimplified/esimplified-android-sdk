@@ -10,11 +10,53 @@ Kotlin SDK for integrating the eSIMplified eSIM platform into Android applicatio
 
 **Coordinates:** `io.github.esimplified:android-sdk:2.0.0`
 
+## What the SDK covers
+
+What you get without writing any networking, token handling, or caching of your own. Each area maps to one repository interface you inject and call.
+
+| Area | What it does | Repository |
+|---|---|---|
+| **Authentication** | Email/password login, Google sign-in, registration, password reset and change, email verification, profile read and update, account deletion, logout. Access and refresh tokens are stored encrypted and refreshed automatically | `AuthRepository` |
+| **Countries and destinations** | Browse and search the destination catalogue, resolve the customer's country from their IP | `CountryRepository` |
+| **Packages** | List data plans for a destination, list top-up plans for an eSIM the customer already owns, check stock before selling | `PackagesRepository` |
+| **Orders** | Order history, full order detail including the QR code, and conversion tracking after a purchase completes | `OrdersRepository` |
+| **Payments** | Create a Stripe payment intent or checkout session. You confirm it with Stripe's own Android SDK — this SDK does not handle card data | `PaymentsRepository` |
+| **eSIM provisioning and install** | List active and archived eSIMs, fetch one by ICCID, read usage and expiry per package, rename, archive, set primary, toggle auto top-up. Exposes the SM-DP+ address and activation code needed for a direct Android install | `EsimRepository` |
+| **Vouchers** | Redeem a voucher code | `VouchersRepository` |
+| **Promo codes** | Apply, read and remove a checkout promo code | `PromoCodeRepository` |
+| **Loyalty (Kreds)** | Read the points balance and quote a package price with points applied | `LoyaltyRepository` |
+| **Mokafaa** | SMS OTP enrollment and checkout burn against the Mokafaa points programme | `LoyaltyRepository` |
+| **Visa rewards** | Eligibility iframe, token verification, and reward activation | `VisaRewardsRepository` |
+| **Notifications** | Read and update the customer's per-channel notification preferences. Delivery itself is your app's job | `NotificationRepository` |
+| **FAQ and support** | Destination-specific FAQ content | `FaqAndSupportRepository` |
+| **Themes** | Per-page and per-destination imagery and accent colours served by the API, so branding changes without an app release | `ThemeRepository` |
+| **Store reviews** | Aggregate store rating, review list and per-star statistics | `StoreReviewRepository` |
+| **Local UI flags** | Small persisted booleans for eSIM-support prompts | `UserRepository` |
+
+Cross-cutting, and free: every list and detail read is cached with a per-repository TTL and can serve a stale copy when the device is offline (see [Caching and offline reads](#caching-and-offline-reads)); every money field is a server-verbatim `String` so a rendered price is exactly the price the server sent (see [Money fields](#money-fields)).
+
+Not covered: the SDK does not install eSIM profiles, render any UI, confirm Stripe payments, or deliver push notifications. It gives you the data and credentials those steps need.
+
 ## Requirements
 
 - Android `minSdk 28` (Android 9)
+- **Java 17** — the AAR ships class file version 61, so your module needs `compileOptions` (and Kotlin `jvmTarget`) set to 17 and a JDK 17 or newer build. The AAR sets no `compileSdk` floor, so any `compileSdk` that supports `minSdk 28` will link
 - Kotlin 2.x
-- [Koin](https://insert-koin.io/) for dependency injection
+- [Koin](https://insert-koin.io/) for dependency injection. The SDK ships `koin-core`; add [`koin-android`](https://insert-koin.io/docs/quickstart/android/) or `koin-androidx-compose` yourself for `startKoin`, `koinInject()` and viewmodel injection
+- The **`INTERNET` permission** in your app manifest (see below)
+
+### Manifest
+
+The SDK's own manifest does not declare any permission, so the `INTERNET` permission must come from your app. Without it Android refuses the socket and every call fails with a `SecurityException` — which reaches you as `SdkError.Unknown` on a `…Result` read, and is thrown on a plain read:
+
+```xml
+<!-- AndroidManifest.xml (app) -->
+<uses-permission android:name="android.permission.INTERNET" />
+```
+
+Nothing else is required. The SDK registers no components, needs no `Application` subclass of its own, and asks for no runtime permissions.
+
+One thing the SDK's manifest does contribute, and which the merger will fold into your app: a `com.google.android.backup.api_key` `<meta-data>` entry with the value `unused`. If your app declares that same key with a different value, resolve the merge conflict with `tools:replace="android:value"` on your own entry.
 
 ## Prerequisites
 
@@ -23,7 +65,7 @@ To use the SDK you need credentials issued by eSimplified:
 - **`clientName`** — your registered brand identifier (used to build your API base URL)
 - **`clientId`** — your OAuth2 client ID
 - **`clientSecret`** — your OAuth2 client secret
-- **`awsWafToken`** — your AWS WAF validation token
+- **`awsWafToken`** — your AWS WAF validation token, sent as the `x-auth-validation` header. It defaults to `""` in `SdkConfig`, so the SDK will compile and run without it, but requests will be rejected wherever the WAF is enforcing. A `customHeadersProvider` returning `x-auth-validation` overrides it per request
 
 Contact eSimplified to obtain these before integrating. See [Support](#support) below.
 
@@ -35,10 +77,27 @@ The SDK is published to Maven Central. No extra repositories or authentication n
 // build.gradle.kts (app)
 dependencies {
     implementation("io.github.esimplified:android-sdk:2.0.0")
+
+    // Required. The SDK declares its own dependencies as `implementation`, so they
+    // resolve at runtime but are NOT on your compile classpath. You call
+    // EsimplifiedSdk.koinModule() and startKoin yourself, so Koin must be declared here.
+    implementation("io.insert-koin:koin-android:4.1.1")
+}
+
+android {
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = "17" }   // or the kotlin { compilerOptions { } } equivalent
 }
 ```
 
 Maven Central is included by default in all Gradle projects. No changes to `settings.gradle.kts` required.
+
+`koin-android` pulls in `koin-core`, which is the module the SDK itself uses; keeping both on the same 4.x version avoids a duplicate-class conflict. If your app injects into Compose, use `io.insert-koin:koin-androidx-compose` instead.
+
+Everything else the SDK needs — Retrofit, OkHttp, kotlinx.serialization, kotlinx.coroutines, AndroidX Security Crypto — arrives transitively at runtime and does not need declaring unless your own code uses it directly.
 
 > **Upgrading from 1.x?** 2.0 changes the type of every money field, makes several model fields nullable, and removes seven unused request types. Read [Migrating from 1.x to 2.0](#migrating-from-1x-to-20) before you bump the version.
 
@@ -135,12 +194,12 @@ val payment = paymentsRepo.getPaymentIntent(
 // payment.transaction?.uri → Stripe client secret. Confirm via Stripe Android SDK.
 
 // 5. Once Stripe confirms, fetch the order to get the eSIM QR code
-val orderUUID = payment.transaction?.orderId ?: return
-val order = ordersRepo.getOrderDetails(orderUUID = orderUUID)
+val orderUuid = payment.transaction?.orderId ?: return
+val order = ordersRepo.getOrderDetails(orderUuid = orderUuid)
 // order.qrCode / order.qrCodeImageBase64 / order.activationCode
 
 // 6. Confirm conversion tracking
-ordersRepo.trackOrder(orderUuid = orderUUID)
+ordersRepo.trackOrder(orderUuid = orderUuid)
 ```
 
 ## SdkConfig
@@ -154,7 +213,7 @@ SdkConfig(
     clientSecret: String,                                // OAuth2 client secret
     awsWafToken: String = "",                            // AWS WAF validation token
     enableLogging: Boolean = false,                      // enable OkHttp request/response logging
-    customHeadersProvider: (() -> Map<String, String>)?, // optional extra headers per request
+    customHeadersProvider: (() -> Map<String, String>)? = null, // optional extra headers per request
     enableCaching: Boolean = true,                       // in-memory response cache (see Caching)
     defaultCacheTtlSeconds: Long = 3600,                 // fallback TTL when a call doesn't pass one
     logger: SdkLogger? = null,                           // receive the SDK's own log lines (see Logging)
@@ -258,7 +317,9 @@ Decoding accepts either a JSON string (`"12.50"`) or a bare number (`12.5`) for 
 
 ## All Models
 
-Every model is a `@Serializable` data class in `io.esimplified.sdk.model`.
+Almost every model is a `@Serializable` data class in `io.esimplified.sdk.model`. The exceptions are noted in the table: `PackagesPage` is a plain data class the SDK assembles locally rather than decodes, and `RepositoryResult` / `SdkError` live in other packages.
+
+Field-by-field tables for all of these are in [SDK_API_REFERENCE.md](SDK_API_REFERENCE.md#data-models).
 
 | Model | Description |
 |---|---|
@@ -327,10 +388,23 @@ Every model is a `@Serializable` data class in `io.esimplified.sdk.model`.
 | `ThemeImage` | Theme image (url + accent colour) |
 | `ApiErrorResponse` | Standardized API error (detail, error, message) |
 | `IframeRequest` | Iframe vendor request |
-| `BaseResponse<T>` | Paginated response wrapper (count, next, previous, results) |
 | `RepositoryResult<T>` | Read result: `value`, `isStale`, `failure` (in `io.esimplified.sdk.repository`) |
 | `SdkError` | Sealed error type returned in `RepositoryResult.failure` (in `io.esimplified.sdk.network`) |
 | `ProfileReusePolicy` | eSIM profile reuse policy |
+| `RestrictedFor` | A country a restriction applies to (code + name) |
+| `RestrictionType` | Enum: GLOBAL, LOCAL |
+| `LoyaltyPointsOriginal` | Pre-conversion USD amount behind a `LoyaltyPointsDetail` |
+| `KredsQuotePricing` | Price breakdown on a quote, per currency |
+| `KredsQuoteOrderCurrency` | Quote breakdown in the order's own currency |
+| `KredsQuoteUsdPricing` | Quote breakdown in USD |
+| `KredsQuotePreferredPricing` | Quote total in the customer's preferred currency |
+| `KredsQuotePoints` | Points requested vs actually applied, with per-currency values |
+| `KredsQuoteValue` | An amount plus its currency, inside a points breakdown |
+| `QuoteNotice` | Server-side warning attached to a quote (code + message) |
+| `CheckoutCouponRequest` | Promo code request payload (built internally) |
+| `UpdateCustomerPreferencesRequest` | Language/currency preferences payload (built internally) |
+| `GetTokenIntrospectResponse` | OAuth token introspection result (not reached by any repository method) |
+| `SecureStorageInitException` | Thrown by `initialize()` when encrypted storage cannot start (in `io.esimplified.sdk.auth`) |
 
 ## Caching and offline reads
 
@@ -508,14 +582,15 @@ Loyalty program balance, quotes, and Mokafaa OTP flows (enrollment and checkout 
 
 | Method | Signature | Description |
 |---|---|---|
-| `getLoyaltyBalance` | `suspend fun getLoyaltyBalance(forceRefresh: Boolean = true, cacheTTL: Duration = KREDS_BALANCE_TTL): KredsLoyaltyBalanceResponse` | Fetch the customer's current loyalty balance. Note `forceRefresh` defaults to `true` |
+| `getLoyaltyBalance` | `suspend fun getLoyaltyBalance(forceRefresh: Boolean = true, cacheTTL: Duration = KREDS_BALANCE_TTL): KredsLoyaltyBalanceResponse` | Fetch the customer's current loyalty balance. Note `forceRefresh` defaults to `true`. Throws if there is no value to return |
+| `getLoyaltyBalanceResult` | `suspend fun getLoyaltyBalanceResult(forceRefresh: Boolean = true, cacheTTL: Duration = KREDS_BALANCE_TTL): RepositoryResult<KredsLoyaltyBalanceResponse?>` | The same read, reported rather than thrown — falls back to the expired cache entry with `isStale = true` and the failure attached |
 | `getKredsQuote` | `suspend fun getKredsQuote(packageTypeId: Int, loyaltyPointsAmount: Double): KredsQuoteResponse` | Get a discount quote for applying Kreds to a package |
 | `getMokafaaQuote` | `suspend fun getMokafaaQuote(packageTypeId: Int, loyaltyPointsToUse: Int): KredsQuoteResponse` | Get a discount quote for applying Mokafaa points to a package |
 | `initiateMokafaaOtp` | `suspend fun initiateMokafaaOtp(purpose: String, platform: String = "android"): MokafaaOtpInitiateResponse` | Start a Mokafaa OTP session (`purpose`: `enrollment` or `checkout`) |
 | `validateMokafaaOtp` | `suspend fun validateMokafaaOtp(sessionId: String, otp: String, points: Int? = null, packageTypeId: Int? = null): MokafaaOtpValidateResponse` | Validate the SMS OTP; `points` is required for checkout, omitted for enrollment |
 | `invalidateCache` | `suspend fun invalidateCache()` | Drop this repository's cache entries |
 
-`…Result` twin: `getLoyaltyBalanceResult`. Default TTL: `KREDS_BALANCE_TTL` = 1 h.
+Default TTL: `KREDS_BALANCE_TTL` = 1 h. `getLoyaltyBalanceResult` is the underlying call and `getLoyaltyBalance` unwraps it, so the two never disagree about what was fetched — only about how a failure reaches you. `value` is nullable because it is `null` when nothing was ever cached and the refresh failed; that is the case in which `getLoyaltyBalance` throws.
 
 Mokafaa methods throw `LoyaltyApiException(httpCode, message)` on HTTP errors — `message` is the backend error verbatim, `httpCode` lets callers branch on 400/401/503.
 
