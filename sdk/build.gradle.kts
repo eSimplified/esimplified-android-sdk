@@ -78,3 +78,10 @@ mavenPublishing {
         signAllPublications()
     }
 }
+
+tasks.withType<Test>().configureEach {
+    inputs.files(
+        rootProject.file("SDK_API_REFERENCE.md"),
+        rootProject.file("README.md"),
+    ).withPathSensitivity(PathSensitivity.RELATIVE)
+}

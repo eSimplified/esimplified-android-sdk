@@ -11,12 +11,7 @@ interface OrdersRepository {
 
     // region Reads
     suspend fun getOrderHistory(
-        forceRefresh: Boolean = false,
-        cacheTTL: Duration = ORDERS_LIST_TTL,
-    ): List<OrderHistoryItem>
-
-    suspend fun getOrderHistory(
-        withLoyaltyPoints: Boolean,
+        withLoyaltyPoints: Boolean = false,
         forceRefresh: Boolean = false,
         cacheTTL: Duration = ORDERS_LIST_TTL,
     ): List<OrderHistoryItem>
@@ -30,13 +25,7 @@ interface OrdersRepository {
 
     // region Result reads
     suspend fun getOrderHistoryResult(
-        forceRefresh: Boolean = false,
-        cacheTTL: Duration = ORDERS_LIST_TTL,
-    ): RepositoryResult<List<OrderHistoryItem>> =
-        RepositoryResult(getOrderHistory(forceRefresh = forceRefresh, cacheTTL = cacheTTL))
-
-    suspend fun getOrderHistoryResult(
-        withLoyaltyPoints: Boolean,
+        withLoyaltyPoints: Boolean = false,
         forceRefresh: Boolean = false,
         cacheTTL: Duration = ORDERS_LIST_TTL,
     ): RepositoryResult<List<OrderHistoryItem>> =
