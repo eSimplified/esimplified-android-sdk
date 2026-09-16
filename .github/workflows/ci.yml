@@ -44,6 +44,24 @@ jobs:
             exit 0
           fi
 
+          remaining=""
+          while read -r sha subject; do
+            [ -z "$sha" ] && continue
+            if grep -qs "^$sha " .github/breaking-exemptions; then
+              reason=$(grep -s "^$sha " .github/breaking-exemptions | cut -d' ' -f2-)
+              echo "::notice::$sha exempt: $reason"
+            else
+              remaining="$remaining$sha $subject\n"
+            fi
+          done <<< "$breaking"
+
+          if [ -z "$remaining" ]; then
+            echo "::notice::$previous_version -> $version. Every breaking-marked commit is an accepted exemption."
+            exit 0
+          fi
+
+          breaking=$(printf '%b' "$remaining" | sed '/^$/d')
+
           echo "::error file=sdk/build.gradle.kts::$previous_version -> $version keeps the major, but these commits are marked breaking:"
           echo "$breaking" | while read -r line; do echo "::error::$line"; done
           echo "::error::Either release it as a major version, or drop the ! where the change only affects anyone implementing our interfaces."
