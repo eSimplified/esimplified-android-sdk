@@ -8,7 +8,7 @@
 
 Kotlin SDK for integrating the eSimplified eSIM platform into Android applications. Provides typed repository interfaces for authentication, eSIM management, package browsing, orders, payments, and more. All networking, authentication, and token management are handled internally -- consuming apps interact only with clean Kotlin interfaces.
 
-**Coordinates:** `io.github.esimplified:android-sdk:2.2.0`
+**Coordinates:** `io.github.esimplified:android-sdk:3.1.0`
 
 That is the version this README describes. It adds terms, privacy and general FAQs as structured documents on `FaqAndSupportRepository`; nothing a caller writes has to change to take it.
 
@@ -78,7 +78,7 @@ The SDK is published to Maven Central. No extra repositories or authentication n
 ```kotlin
 // build.gradle.kts (app)
 dependencies {
-    implementation("io.github.esimplified:android-sdk:2.2.0")
+    implementation("io.github.esimplified:android-sdk:3.1.0")
 
     // Required. The SDK declares its own dependencies as `implementation`, so they
     // resolve at runtime but are NOT on your compile classpath. You call
@@ -105,7 +105,7 @@ Everything else the SDK needs — Retrofit, OkHttp, kotlinx.serialization, kotli
 
 ## Versioning
 
-The SDK follows semantic versioning, and Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:2.2.0")` resolves to 2.2.0 and nothing else — there are no version ranges and no BOM anywhere in these instructions, so no release reaches your build until someone edits that line. Nothing below can arrive unannounced; this section tells you what to expect when you do choose to raise the number.
+The SDK follows semantic versioning, and Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.1.0")` resolves to 3.1.0 and nothing else — there are no version ranges and no BOM anywhere in these instructions, so no release reaches your build until someone edits that line. Nothing below can arrive unannounced; this section tells you what to expect when you do choose to raise the number.
 
 | What changed | Version goes | What you do |
 |---|---|---|
@@ -113,7 +113,7 @@ The SDK follows semantic versioning, and Gradle pins you to an exact version. `i
 | Something added | 2.1.0 → 2.2.0 | Nothing |
 | Something you call changed or went away | 2.1.0 → 3.0.0 | Update your code, then raise the version you depend on |
 
-Those numbers are illustrative; 2.2.0 is the current release.
+Those numbers are illustrative; 3.0.0 is the current release.
 
 The convention maps straight onto our commit messages. A `fix:` commit is a patch, a `feat:` commit is a minor, and the major only moves for a change that breaks **callers** — a method you call renamed, removed, or given a new required parameter. Commits that break callers are marked with a `!`, as in `refactor(orders)!:`.
 
@@ -546,15 +546,25 @@ eSIM lifecycle management for authenticated users.
 
 | Method | Signature | Description |
 |---|---|---|
-| `getEsims` | `suspend fun getEsims(showLegacy: Boolean = true, isPrimary: Boolean? = null, forceRefresh: Boolean = false, cacheTTL: Duration = ESIM_LIST_TTL, includeBase64QrCode: Boolean = false): List<AssignedEsim>` | Fetch all eSIMs assigned to the customer |
+| `getEsims` | `suspend fun getEsims(showLegacy: Boolean? = null, isPrimary: Boolean? = null, forceRefresh: Boolean = false, cacheTTL: Duration = ESIM_LIST_TTL, includeBase64QrCode: Boolean = false): List<AssignedEsim>` | Fetch all eSIMs assigned to the customer |
 | `getActiveEsims` | same parameters as `getEsims` | Fetch only non-archived eSIMs |
-| `getArchivedEsims` | same parameters as `getEsims`, except `showLegacy: Boolean? = null` | Fetch only archived eSIMs. `showLegacy = null` leaves `show_legacy` out of the request entirely |
+| `getArchivedEsims` | same parameters as `getEsims` | Fetch only archived eSIMs |
 | `getEsimByIccid` | `suspend fun getEsimByIccid(iccid: String, forceRefresh: Boolean = false, cacheTTL: Duration = ESIM_DETAILS_TTL, includeBase64QrCode: Boolean = false): AssignedEsim` | Fetch a single eSIM from `customer/esims/{iccid}/details/` |
 | `updateEsim` | `suspend fun updateEsim(iccid: String, name: String? = null, isAutoTopUp: Boolean? = null, isArchived: Boolean? = null, isPrimary: Boolean? = null)` | Update eSIM settings. Throws if the server rejects the write |
 | `updateEsimPrimaryStatus` | `suspend fun updateEsimPrimaryStatus(iccid: String, isPrimary: Boolean)` | Convenience wrapper for the primary flag |
 | `invalidateCache` | `suspend fun invalidateCache()` | Drop both the list and detail cache entries |
 
 `…Result` twins: `getEsimsResult`, `getActiveEsimsResult`, `getArchivedEsimsResult`, `getEsimByIccidResult`. Default TTLs: `ESIM_LIST_TTL` = 24 h, `ESIM_DETAILS_TTL` = 5 min.
+
+**`showLegacy` has three cases, not two.** `null` is not the same as `false`, which is why the parameter is `Boolean?` on every list read:
+
+| You pass | The request carries | The API returns |
+|---|---|---|
+| left out, or `null` | no `show_legacy` parameter at all | all **universal** eSIMs, for tenants that `use_universal` |
+| set to `false` | `show_legacy=false` | just universal eSIMs |
+| set to `true` | `show_legacy=true` | **all** eSIMs, universal and legacy |
+
+Leaving the parameter out lets the API decide by tenant; `false` states the choice; `true` widens the list. The three are cached separately, so a list fetched under one never satisfies a read asking for another. This matches the iOS SDK, where `showLegacy` is `Bool?` and defaults to `nil`.
 
 **`includeBase64QrCode`** asks the API to embed the QR code image with the eSIM, so an install screen needs one request rather than two. When it is set, `AssignedEsim.qrCodeImageBase64` is populated alongside `smDpAddress` and `activationCode`, and `AssignedEsim.canInstallDirectly` reports whether the eSIM carries enough to hand straight to the Android eSIM installer — no order lookup required:
 
@@ -949,7 +959,7 @@ For `VisaRewardsResponse`, use the new `remainingOrAllowed: Int?` (`remaining ?:
 
 All have defaults, so existing calls still compile. They are worth adopting:
 
-- `getEsims` / `getActiveEsims` / `getArchivedEsims`: `showLegacy`, `isPrimary`, `forceRefresh`, `cacheTTL`, `includeBase64QrCode` (on the archived reads `showLegacy` is `Boolean?` — see section 9)
+- `getEsims` / `getActiveEsims` / `getArchivedEsims`: `showLegacy`, `isPrimary`, `forceRefresh`, `cacheTTL`, `includeBase64QrCode` (on the archived reads `showLegacy` is `Boolean?` — see section 9; it is `Boolean?` on every list read from 3.0.0, see **Changes since 2.0.0**)
 - `getEsimByIccid`: `forceRefresh`, `cacheTTL`, `includeBase64QrCode`
 - `updateEsim`: `isPrimary`
 - `getPackages` / `getTopUpPackages` / `checkStock` / `getCountries` / `getCountriesBy` / `getOrderHistory` / `getOrderDetails` / `getLoyaltyBalance`: `forceRefresh`, `cacheTTL`
@@ -995,6 +1005,8 @@ Nothing replaces them: the repository methods that cover these flows (`EsimRepos
 
 Existing calls that pass `showLegacy = true` to an archived read still compile and still send the flag; they are now redundant and can be dropped. Calls that pass nothing get the new behaviour.
 
+This section describes 2.0. The two rows marked *(unchanged)* changed again in 3.0.0, where the active and combined reads became `Boolean?` as well — see **Changes since 2.0.0**.
+
 **If you implement `EsimRepository` yourself** — a test fake, for instance — update those two overrides to `showLegacy: Boolean?`, or they will no longer override the interface.
 
 The archived list's cache key changed with it: `esims_true_legacyunset_…` when the flag is omitted, `esims_true_legacytrue_…` when it is passed. Only in-memory keys, nothing persisted.
@@ -1020,12 +1032,30 @@ To receive SDK lines deliberately, pass `logger` to `SdkConfig` — see [Logging
 - [ ] Handle the exception `updateEsim` can now throw
 - [ ] Delete any construction of the seven removed request types
 - [ ] Drop the `EsimplifiedSdk.clearAllCaches()` call from your logout path — `logout()` does it
-- [ ] Widen any `EsimRepository` implementation of `getArchivedEsims` / `getArchivedEsimsResult` to `showLegacy: Boolean?`
+- [ ] Widen every `EsimRepository` implementation of a list read to `showLegacy: Boolean?`
 - [ ] Declare Timber yourself if you used it and relied on the SDK pulling it in, and pass `SdkConfig.logger` if you want SDK lines
 
 ## Changes since 2.0.0
 
-`2.0.0` is the version on Maven Central and the one this documentation describes. The change below is on `main` and will ship in the next release; it is listed separately so nothing above misrepresents the published artifact.
+`2.0.0` is the version on Maven Central and the one this documentation describes. The changes below are on `main` and will ship in the next release; they are listed separately so nothing above misrepresents the published artifact.
+
+### `showLegacy` is now `Boolean?` on every eSIM list read
+
+`getEsims`, `getActiveEsims`, `getEsimsResult` and `getActiveEsimsResult` took `showLegacy: Boolean = true`. They now take `showLegacy: Boolean? = null`, matching `getArchivedEsims`, which already did.
+
+The parameter has three cases and the old signature could only express two of them:
+
+| You pass | The request carries | The API returns |
+|---|---|---|
+| left out, or `null` | no `show_legacy` parameter at all | all **universal** eSIMs, for tenants that `use_universal` |
+| set to `false` | `show_legacy=false` | just universal eSIMs |
+| set to `true` | `show_legacy=true` | **all** eSIMs, universal and legacy |
+
+**This changes what you get back.** `getEsims()` and `getActiveEsims()` with no arguments used to send `show_legacy=true` and return every eSIM, legacy ones included. They now send nothing and return the universal list. If you want the old result, pass `showLegacy = true` explicitly.
+
+The JVM signature changed from `boolean` to `Boolean`, so a caller compiled against 2.x will not link against this one — recompile rather than swapping the AAR under an already-built app. If you implement `EsimRepository` yourself, widen those four overrides to `Boolean?`.
+
+The three cases occupy three separate cache entries, so a list fetched with one value is never served to a read asking for another.
 
 ### `getOrderHistory` and `getOrderHistoryResult` lost an overload
 
@@ -1076,7 +1106,7 @@ The published coordinate is `io.github.esimplified:android-sdk:<version>`, and t
 
 ```kotlin
 mavenPublishing {
-    coordinates("io.github.esimplified", "android-sdk", "2.2.0")
+    coordinates("io.github.esimplified", "android-sdk", "3.1.0")
 }
 ```
 
@@ -1086,7 +1116,7 @@ Gradle pins consumers to an exact version — no ranges, no BOM — so nothing p
 
 **The version bump landing on `main`.** Nothing else.
 
-`.github/workflows/release.yml` runs on every push to `main`. It reads the coordinate out of `sdk/build.gradle.kts` and asks whether a tag for that version already exists, accepting either `2.2.0` or `v2.2.0`. If the tag exists it stops and says so in the run summary. If it does not, it publishes, tags, and writes the release notes. So a merge that leaves the version alone is a no-op, and a merge that changes it is a release. There is no button to press.
+`.github/workflows/release.yml` runs on every push to `main`. It reads the coordinate out of `sdk/build.gradle.kts` and asks whether a tag for that version already exists, accepting either `3.1.0` or `v3.1.0`. If the tag exists it stops and says so in the run summary. If it does not, it publishes, tags, and writes the release notes. So a merge that leaves the version alone is a no-op, and a merge that changes it is a release. There is no button to press.
 
 **Pushing a tag by hand publishes nothing.** No workflow listens for tags. Worse, a hand-pushed tag is the tag `release.yml` will then find already present, so it *suppresses* the real release instead of causing one. If you have pushed one, delete it before merging the bump.
 
