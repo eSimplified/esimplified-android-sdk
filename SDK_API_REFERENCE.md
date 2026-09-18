@@ -537,6 +537,9 @@ One row per `…Result` method in the SDK. They take the same arguments as the m
 | `EsimRepository` | `getArchivedEsimsResult` | `getArchivedEsims` | `RepositoryResult<List<AssignedEsim>>` |
 | `EsimRepository` | `getEsimByIccidResult` | `getEsimByIccid` | `RepositoryResult<AssignedEsim?>` |
 | `FaqAndSupportRepository` | `fetchDestinationFaqsResult` | `fetchDestinationFaqs` | `RepositoryResult<List<Faq>>` |
+| `FaqAndSupportRepository` | `fetchTermsResult` | `fetchTerms` | `RepositoryResult<ContentDocument?>` |
+| `FaqAndSupportRepository` | `fetchPrivacyResult` | `fetchPrivacy` | `RepositoryResult<ContentDocument?>` |
+| `FaqAndSupportRepository` | `fetchFaqsResult` | `fetchFaqs` | `RepositoryResult<ContentDocument?>` |
 | `LoyaltyRepository` | `getLoyaltyBalanceResult` | `getLoyaltyBalance` | `RepositoryResult<KredsLoyaltyBalanceResponse?>` |
 | `OrdersRepository` | `getOrderHistoryResult` | `getOrderHistory` | `RepositoryResult<List<OrderHistoryItem>>` |
 | `OrdersRepository` | `getOrderDetailsResult` | `getOrderDetails` | `RepositoryResult<OrderDetail?>` |
@@ -763,9 +766,18 @@ Cached (`THEME_TTL` = 1 h). `…Result` twins: `fetchPageThemeResult`, `fetchDes
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
 | `fetchDestinationFaqs` | `countryNameSlug: String` | `List<Faq>` | FAQs for a destination slug |
+| `fetchTerms` | `language: String` | `ContentDocument?` | Terms of service as a structured document |
+| `fetchPrivacy` | `language: String` | `ContentDocument?` | Privacy policy as a structured document |
+| `fetchFaqs` | `language: String` | `ContentDocument?` | General FAQs as a structured document |
 | `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
 
-Cached (`FAQS_TTL` = 24 h). `…Result` twin: `fetchDestinationFaqsResult`.
+Cached (`FAQS_TTL` = 24 h). `…Result` twins: `fetchDestinationFaqsResult`, `fetchTermsResult`, `fetchPrivacyResult`, `fetchFaqsResult`.
+
+The three content documents come back in the customer's language. `language` is **not** sent to the
+server — it only keys the cache, so switching language does not serve you the previous language's
+document. The language the server answers in comes from the `accept-language` header the SDK already
+sends on every request: `Customer.preferredLanguage` once signed in, or whatever your
+`customHeadersProvider` returns. See [Language and currency](#language-and-currency).
 
 ---
 
@@ -1875,6 +1887,77 @@ The full FAQ document for a destination. `FaqAndSupportRepository.fetchDestinati
 | name | String | Destination name |
 | language | String | Language the FAQs are written in |
 | faqs | List\<Faq\> | The questions and answers |
+
+### ContentDocument
+
+Returned by `FaqAndSupportRepository.fetchTerms`, `fetchPrivacy` and `fetchFaqs`. A document is a title
+plus an ordered tree: `blocks` are the renderable content at this level, `children` are the sections
+below it.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| language | String | Language the server answered in |
+| id | String? | Stable slug for the document |
+| title | String? | Document title |
+| description | String? | Short summary |
+| updatedAt | String? | Verbatim "last updated" text, not a date |
+| blocks | List\<ContentBlock\> | Content at the root of the document |
+| children | List\<ContentNode\> | Sections, nested to any depth |
+
+### ContentNode
+
+A section of a document. Identical to `ContentDocument` without `language`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | String? | Stable slug for the section |
+| title | String? | Section heading |
+| description | String? | Short summary |
+| updatedAt | String? | Verbatim "last updated" text, not a date |
+| blocks | List\<ContentBlock\> | Content in this section |
+| children | List\<ContentNode\> | Subsections |
+
+### ContentBlock
+
+One renderable piece of a document. A sealed interface, so `when` over it exhaustively.
+
+| Case | Payload | Description |
+|------|---------|-------------|
+| `ContentBlock.Heading` | `text: String` | A heading within a section |
+| `ContentBlock.Paragraph` | `text: String` | A paragraph of body text |
+| `ContentBlock.ListBlock` | `list: ContentList` | An ordered or unordered list |
+| `ContentBlock.Unknown` | — | A block type this SDK version does not know |
+
+`Unknown` is how the SDK stays forward compatible: when the backend adds a block type, older apps
+decode it as `Unknown` and render the rest of the document instead of failing the whole read. Skip it,
+or show nothing for it.
+
+### ContentList
+
+| Field | Type | Description |
+|-------|------|-------------|
+| ordered | Boolean | Whether the list is numbered |
+| marker | ContentListMarker | Marker style for the items |
+| items | List\<ContentListItem\> | The items |
+
+### ContentListMarker (Enum)
+
+| Case | JSON | Description |
+|------|------|-------------|
+| `DECIMAL` | `decimal` | 1. 2. 3. |
+| `ALPHA` | `alpha` | a. b. c. |
+| `BULLET` | `bullet` | • • • |
+
+A marker the SDK does not recognise decodes as `BULLET` rather than failing the document.
+
+### ContentListItem
+
+| Field | Type | Description |
+|-------|------|-------------|
+| text | String | The item text |
+| items | List\<ContentListItem\> | Nested items, to any depth |
+| ordered | Boolean? | Overrides the parent list; `null` inherits |
+| marker | ContentListMarker? | Overrides the parent list; `null` inherits `BULLET` |
 
 ### Author
 

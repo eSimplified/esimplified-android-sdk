@@ -30,7 +30,7 @@ What you get without writing any networking, token handling, or caching of your 
 | **Mokafaa** | SMS OTP enrollment and checkout burn against the Mokafaa points programme | `LoyaltyRepository` |
 | **Visa rewards** | Eligibility iframe, token verification, and reward activation | `VisaRewardsRepository` |
 | **Notifications** | Read and update the customer's per-channel notification preferences. Delivery itself is your app's job | `NotificationRepository` |
-| **FAQ and support** | Destination-specific FAQ content | `FaqAndSupportRepository` |
+| **FAQ and support** | Destination FAQs, plus terms, privacy and general FAQs as structured documents | `FaqAndSupportRepository` |
 | **Themes** | Per-page and per-destination imagery and accent colours served by the API, so branding changes without an app release | `ThemeRepository` |
 | **Store reviews** | Aggregate store rating, review list and per-star statistics | `StoreReviewRepository` |
 | **Local UI flags** | Small persisted booleans for eSIM-support prompts | `UserRepository` |
@@ -635,14 +635,40 @@ Brand theming served by the API, so imagery and accent colours change without an
 
 ### FaqAndSupportRepository
 
-Destination FAQ content.
+Destination FAQ content, and the three long-form content documents: terms, privacy and general FAQs.
 
 | Method | Signature | Description |
 |---|---|---|
 | `fetchDestinationFaqs` | `suspend fun fetchDestinationFaqs(countryNameSlug: String, forceRefresh: Boolean = false, cacheTTL: Duration = FAQS_TTL): List<Faq>` | FAQs for a destination slug |
+| `fetchTerms` | `suspend fun fetchTerms(language: String, forceRefresh: Boolean = false, cacheTTL: Duration = FAQS_TTL): ContentDocument?` | Terms of service as a structured document |
+| `fetchPrivacy` | `suspend fun fetchPrivacy(language: String, forceRefresh: Boolean = false, cacheTTL: Duration = FAQS_TTL): ContentDocument?` | Privacy policy as a structured document |
+| `fetchFaqs` | `suspend fun fetchFaqs(language: String, forceRefresh: Boolean = false, cacheTTL: Duration = FAQS_TTL): ContentDocument?` | General FAQs as a structured document |
 | `invalidateCache` | `suspend fun invalidateCache()` | Drop this repository's cache entries |
 
-`…Result` twin: `fetchDestinationFaqsResult`. Default TTL: `FAQS_TTL` = 24 h.
+`…Result` twins: `fetchDestinationFaqsResult`, `fetchTermsResult`, `fetchPrivacyResult`, `fetchFaqsResult`. Default TTL: `FAQS_TTL` = 24 h.
+
+A `ContentDocument` is a tree: `blocks` are the renderable pieces at one level, `children` are the
+sections below it. Render a block with an exhaustive `when` and let `ContentBlock.Unknown` fall
+through — that case is what lets a document written for a newer SDK still display here.
+
+```kotlin
+val terms = faqRepository.fetchTerms(language = "en")
+terms?.children?.forEach { section ->
+    section.blocks.forEach { block ->
+        when (block) {
+            is ContentBlock.Heading -> renderHeading(block.text)
+            is ContentBlock.Paragraph -> renderParagraph(block.text)
+            is ContentBlock.ListBlock -> renderList(block.list)
+            ContentBlock.Unknown -> Unit
+        }
+    }
+}
+```
+
+`language` never reaches the server. The document comes back in whatever language the
+`accept-language` header asks for — `Customer.preferredLanguage` once signed in, or your
+`customHeadersProvider` before that. The argument exists so a document cached in one language is not
+served after the customer switches to another.
 
 ### StoreReviewRepository
 
