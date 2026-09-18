@@ -113,7 +113,7 @@ The SDK follows semantic versioning, and Gradle pins you to an exact version. `i
 | Something added | 2.1.0 → 2.2.0 | Nothing |
 | Something you call changed or went away | 2.1.0 → 3.0.0 | Update your code, then raise the version you depend on |
 
-Those numbers are illustrative; 2.0.0 is the current release.
+Those numbers are illustrative; 2.2.0 is the current release.
 
 The convention maps straight onto our commit messages. A `fix:` commit is a patch, a `feat:` commit is a minor, and the major only moves for a change that breaks **callers** — a method you call renamed, removed, or given a new required parameter. Commits that break callers are marked with a `!`, as in `refactor(orders)!:`.
 
@@ -121,7 +121,7 @@ The convention maps straight onto our commit messages. A `fix:` commit is a patc
 
 Kotlin makes this far less painful here than on our iOS SDK. Interface methods can carry default parameter values, so when we add a parameter we give it a default and every existing implementation — yours included — keeps compiling untouched. Swift has no equivalent, which is why the iOS SDK runs into this and we largely do not.
 
-CI enforces the rule rather than trusting it: a version bump that keeps the major while carrying commits marked breaking fails the build.
+CI enforces the rule rather than trusting it: a version bump that keeps the major while carrying commits marked breaking fails the build. How a version number becomes an artifact on Maven Central — what fires, what does not, and what to do when it half-fails — is under [Releasing](#releasing).
 
 ## Quick Start
 
@@ -1067,6 +1067,99 @@ cd esimplified-android-sdk
 ```
 
 The compiled AAR lands at `sdk/build/outputs/aar/sdk-release.aar`.
+
+## Releasing
+
+Everything in this section describes the SDK's own repository. No client runs any of it — it is here so the published artifact is never a mystery, and so whoever maintains the SDK next does not have to reverse-engineer three workflow files. How to *choose* a version number is under [Versioning](#versioning); this is how that number becomes an artifact on Maven Central.
+
+The published coordinate is `io.github.esimplified:android-sdk:<version>`, and the single source of truth for `<version>` is one line in `sdk/build.gradle.kts`:
+
+```kotlin
+mavenPublishing {
+    coordinates("io.github.esimplified", "android-sdk", "2.2.0")
+}
+```
+
+Gradle pins consumers to an exact version — no ranges, no BOM — so nothing published here reaches an app until someone edits that app's own dependency line.
+
+### What triggers a release
+
+**The version bump landing on `main`.** Nothing else.
+
+`.github/workflows/release.yml` runs on every push to `main`. It reads the coordinate out of `sdk/build.gradle.kts` and asks whether a tag for that version already exists, accepting either `2.2.0` or `v2.2.0`. If the tag exists it stops and says so in the run summary. If it does not, it publishes, tags, and writes the release notes. So a merge that leaves the version alone is a no-op, and a merge that changes it is a release. There is no button to press.
+
+**Pushing a tag by hand publishes nothing.** No workflow listens for tags. Worse, a hand-pushed tag is the tag `release.yml` will then find already present, so it *suppresses* the real release instead of causing one. If you have pushed one, delete it before merging the bump.
+
+### The trap worth knowing: a workflow-created tag triggers nothing
+
+`publish.yml` is `on: workflow_call:`, and `release.yml` invokes it directly (`uses: ./.github/workflows/publish.yml` with `secrets: inherit`). It is deliberately **not** triggered by the tag `release.yml` creates, and it must stay that way.
+
+GitHub does not fire workflows for events raised by a workflow authenticated with the default `GITHUB_TOKEN` — that guard is what stops workflows triggering themselves in a loop. `release.yml` tags through `softprops/action-gh-release`, which uses `GITHUB_TOKEN`, so a publish workflow listening on `on: push: tags:` would never run. The release would tag itself, announce itself, and ship nothing, with no failed job anywhere to explain it.
+
+If someone "tidies" `publish.yml` back into a tag trigger, that is the failure they will get, and it will look like the publish step quietly disappeared. The only alternative to calling it directly is tagging with a personal access token instead of `GITHUB_TOKEN`, which buys another secret to rotate and no benefit. Leave it as a `workflow_call`.
+
+### Cutting a release
+
+1. Merge the work itself to `main` as normal, through PRs. Nothing publishes: the version has not moved.
+2. Choose the number. [Versioning](#versioning) has the rules, including the one exception about adding a method to an interface.
+3. On a branch, bump the coordinate in `sdk/build.gradle.kts`, and update the version everywhere `README.md` and `SDK_API_REFERENCE.md` print the coordinate. CI fails the build when any of them disagree, so this is not optional bookkeeping.
+4. Commit as `chore(release): <version>` and open the PR. CI runs the semver guard, the tests and `assembleRelease` before it can merge.
+5. Merge to `main`. `release.yml` takes it from there.
+
+Steps 1 and 3 can be the same PR when the change and the release go together; the workflow only cares that the bump is on `main`.
+
+### What runs, in what order
+
+On the push to `main`, `release.yml` runs three jobs in sequence:
+
+| Job | What it does |
+|---|---|
+| `check` | Reads the version from `sdk/build.gradle.kts`, and fails the run outright if it cannot. Sets `should_release` to false when a tag for that version already exists. Records the previous tag, which the release notes are written against |
+| `publish` | Skipped unless `should_release` is true. Calls `publish.yml`: checkout, JDK 17, `./gradlew test` again, then `./gradlew publishAllPublicationsToMavenCentralRepository`. Publishing goes through the Central Portal with `automaticRelease = true`, so there is no staging repository for anyone to close by hand |
+| `release` | Runs `.github/scripts/release-notes.sh` over the commits since the previous tag, sorting them into Breaking changes / Added / Changed / Removed / Fixed / Other by conventional-commit type, then creates the tag and the GitHub release at that commit |
+
+`ci.yml` runs on the same push, and on the PR before it: the semver guard, `./gradlew test`, `./gradlew assembleRelease`, a JUnit report, and a check that the coordinate printed in `README.md` and `SDK_API_REFERENCE.md` matches the one in the build file.
+
+Signing keys and Sonatype credentials live in the repository's GitHub secrets — `SONATYPE_USERNAME`, `SONATYPE_PASSWORD`, `GPG_KEY_ID`, `GPG_PASSWORD`, `GPG_SIGNING_KEY` — and are read only inside `publish.yml`. They are on no machine, and nothing local needs them: the build only signs when a signing key is supplied, so `publishToMavenLocal` works without one.
+
+### The semver guard
+
+`ci.yml` compares the version in the build file against the latest tag. If it has not moved, the job does nothing. If it has, it scans the commits in between for the conventional-commit breaking marker — `type(scope)!:` or a `BREAKING CHANGE:` subject — and fails the build, naming them, if any are there while the major stayed the same.
+
+`.github/breaking-exemptions` is the one escape hatch: a short SHA and a written reason, one per line. It is for a commit marked `!` that turns out not to break callers — typically a change that only affects someone implementing one of our interfaces rather than calling them. A listed commit is cleared with its reason printed into the run log, and the change still appears under **Breaking changes** in the release notes whatever the version number says. The file is an audit trail, not a mute button.
+
+### Verifying a release landed
+
+1. The Actions run for that push to `main` is green **and its `publish` job actually ran**. A skipped `publish` means the tag already existed and nothing was published.
+2. A GitHub release exists for the version, with generated notes.
+3. The artifact appears on [Maven Central](https://central.sonatype.com/artifact/io.github.esimplified/android-sdk), and the badge at the top of this README moves to the new version.
+
+Step 3 lags, sometimes by a good while. The workflow finishing means Central accepted the upload, not that the artifact is resolvable yet — validation, indexing, the search UI and the badge all catch up afterwards, in that rough order. A green workflow and a build that cannot resolve the new version a minute later means wait, not broken. Do not re-run anything on the strength of it.
+
+### When it fails halfway
+
+The three jobs are not one transaction, so where it stopped decides what to do.
+
+| Where it stopped | What exists | What to do |
+|---|---|---|
+| `check` could not read the coordinate | Nothing published, nothing tagged | Fix the `coordinates(...)` line and push again |
+| `publish` failed — tests, signing, credentials, or a Central rejection | Nothing published, no tag, `release` skipped | Fix the cause and push again. The same version re-runs cleanly, because no tag was created |
+| `publish` succeeded, `release` failed | Published to Central, **not tagged**, no GitHub release | Do not bump the version and do not re-run the workflow: republishing the same coordinate is rejected as a duplicate. Create the tag and the GitHub release by hand at that commit, with notes from `.github/scripts/release-notes.sh <version> <previous tag>` |
+| Everything green, artifact not resolvable | Published and tagged | Wait. See above |
+
+A version that has reached Maven Central can never be replaced or withdrawn. Anything wrong with it is fixed by releasing another version, never by republishing that one.
+
+### Testing against an unreleased SDK
+
+Local development goes nowhere near the above:
+
+```bash
+./gradlew publishToMavenLocal
+```
+
+That installs to `~/.m2/repository/io/github/esimplified/android-sdk/<version>/`, unsigned and with no credentials. The consuming app picks it up by adding `mavenLocal()` to the repositories in its `settings.gradle.kts`, ahead of `mavenCentral()`.
+
+Give a local build a version nobody could mistake for a published one, such as `2.3.0-SNAPSHOT` — and keep that version off `main`, because the release workflow will happily try to publish whatever string it finds.
 
 ## ProGuard
 
