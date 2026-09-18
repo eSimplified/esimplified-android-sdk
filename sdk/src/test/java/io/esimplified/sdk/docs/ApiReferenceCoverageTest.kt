@@ -9,8 +9,8 @@ class ApiReferenceCoverageTest {
 
     // region Fixtures
 
-    private data class Param(val name: String, val type: String, val hasDefault: Boolean) {
-        override fun toString(): String = "$name: $type${if (hasDefault) " = …" else ""}"
+    private data class Param(val name: String, val type: String, val default: String?) {
+        override fun toString(): String = "$name: $type" + (default?.let { " = $it" } ?: "")
     }
 
     private data class Method(val repository: String, val name: String)
@@ -67,7 +67,11 @@ class ApiReferenceCoverageTest {
         .map { raw ->
             val name = raw.substringBefore(':').trim()
             val rest = raw.substringAfter(':', "")
-            Param(name, rest.substringBefore('=').trim(), rest.contains('='))
+            Param(
+                name,
+                rest.substringBefore('=').trim(),
+                rest.substringAfter('=', "").trim().ifBlank { null },
+            )
         }
 
     private fun sourceMethods(): Map<Method, List<Param>> {
@@ -163,11 +167,9 @@ class ApiReferenceCoverageTest {
             val rows = documentedRows(repo)
             for ((name, documentedParams) in rows) {
                 val declared = source[Method(repo, name)] ?: continue
-                val documentedNames = documentedParams.map { it.name }.toSet()
-                val expected = declared.filter { it.name !in CACHE_PARAMS || it.name in documentedNames }
-                if (expected != documentedParams) {
+                if (declared != documentedParams) {
                     mismatches += "$repo.$name\n" +
-                        "      declared:   ${expected.joinToString()}\n" +
+                        "      declared:   ${declared.joinToString()}\n" +
                         "      documented: ${documentedParams.joinToString()}"
                 }
             }
@@ -184,6 +186,5 @@ class ApiReferenceCoverageTest {
 
     private companion object {
         const val REFERENCE = "SDK_API_REFERENCE.md"
-        val CACHE_PARAMS = setOf("forceRefresh", "cacheTTL")
     }
 }
