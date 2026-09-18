@@ -661,10 +661,10 @@ All cached (`PACKAGES_TTL` = 1 h). `…Result` twins: `getPackagesResult`, `getP
 
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
-| `getEsims` | `showLegacy: Boolean? = null, isPrimary: Boolean? = null, includeBase64QrCode: Boolean = false` | `List<AssignedEsim>` | Get all user's eSIMs. See **`showLegacy` has three cases** below |
-| `getActiveEsims` | `showLegacy: Boolean? = null, isPrimary: Boolean? = null, includeBase64QrCode: Boolean = false` | `List<AssignedEsim>` | Non-archived eSIMs only. See **`showLegacy` has three cases** below |
-| `getArchivedEsims` | `showLegacy: Boolean? = null, isPrimary: Boolean? = null, includeBase64QrCode: Boolean = false` | `List<AssignedEsim>` | Archived eSIMs only. See **`showLegacy` has three cases** below |
-| `getEsimByIccid` | `iccid: String, includeBase64QrCode: Boolean = false` | `AssignedEsim` | Get one eSIM from `customer/esims/{iccid}/details/` |
+| `getEsims` | `showLegacy: Boolean? = null, isPrimary: Boolean? = null, forceRefresh: Boolean = false, cacheTTL: Duration = ESIM_LIST_TTL, includeBase64QrCode: Boolean = false` | `List<AssignedEsim>` | Get all user's eSIMs. See **`showLegacy` has three cases** below |
+| `getActiveEsims` | `showLegacy: Boolean? = null, isPrimary: Boolean? = null, forceRefresh: Boolean = false, cacheTTL: Duration = ESIM_LIST_TTL, includeBase64QrCode: Boolean = false` | `List<AssignedEsim>` | Non-archived eSIMs only. See **`showLegacy` has three cases** below |
+| `getArchivedEsims` | `showLegacy: Boolean? = null, isPrimary: Boolean? = null, forceRefresh: Boolean = false, cacheTTL: Duration = ESIM_LIST_TTL, includeBase64QrCode: Boolean = false` | `List<AssignedEsim>` | Archived eSIMs only. See **`showLegacy` has three cases** below |
+| `getEsimByIccid` | `iccid: String, forceRefresh: Boolean = false, cacheTTL: Duration = ESIM_DETAILS_TTL, includeBase64QrCode: Boolean = false` | `AssignedEsim` | Get one eSIM from `customer/esims/{iccid}/details/` |
 | `updateEsim` | `iccid: String, name: String? = null, isAutoTopUp: Boolean? = null, isArchived: Boolean? = null, isPrimary: Boolean? = null` | `Unit` | Update eSIM settings. **Throws if the server rejects the write** — on a non-2xx response, or when the success body is not the API's `eSIM updated successfully`, matching the iOS SDK |
 | `updateEsimPrimaryStatus` | `iccid: String, isPrimary: Boolean` | `Unit` | Convenience wrapper for the primary flag |
 | `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
