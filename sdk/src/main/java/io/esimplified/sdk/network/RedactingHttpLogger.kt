@@ -134,6 +134,21 @@ internal class RedactingHttpLogger : Interceptor {
             "qr_code",
             "sm_dp_address",
             "customer_ref",
+            "id_token",
+            "email",
+            "phone_number",
+            "first_name",
+            "last_name",
+            "full_name",
+            "customer_id",
+            "referral_code",
+            "external_reference",
+            "iccid",
+            "eid",
+            "imsi",
+            "msisdn",
+            "voucher_code",
+            "promo_code",
         )
 
         val jsonParser = Json {
