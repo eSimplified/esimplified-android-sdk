@@ -17,7 +17,7 @@ jobs:
       - name: A breaking change must raise the major version
         run: |
           version=$(sed -n 's/.*coordinates("io.github.esimplified", "android-sdk", "\(.*\)").*/\1/p' sdk/build.gradle.kts)
-          previous=$(git tag --list 'v[0-9]*' '[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)
+          previous=$(.github/scripts/previous-tag.sh)
 
           if [ -z "$previous" ]; then
             echo "::notice::No previous tag. Nothing to compare."
