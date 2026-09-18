@@ -22,11 +22,13 @@ import io.esimplified.sdk.model.GetTokenResponse
 import io.esimplified.sdk.model.IframeRequest
 import io.esimplified.sdk.model.OrderHistoryItem
 import io.esimplified.sdk.model.KredsLoyaltyBalanceResponse
+import io.esimplified.sdk.model.MarketingPromos
 import io.esimplified.sdk.model.MokafaaOtpInitiateRequest
 import io.esimplified.sdk.model.MokafaaOtpInitiateResponse
 import io.esimplified.sdk.model.MokafaaOtpValidateRequest
 import io.esimplified.sdk.model.MokafaaOtpValidateResponse
 import io.esimplified.sdk.model.Country
+import io.esimplified.sdk.model.ContentDocument
 import io.esimplified.sdk.model.Customer
 import io.esimplified.sdk.model.DeleteProfileResponse
 import io.esimplified.sdk.model.DestinationFaqResponse
@@ -270,6 +272,22 @@ internal interface ApiService {
     suspend fun getDestinationFaqs(
         @Path("country_name_slug") countryNameSlug: String,
     ): DestinationFaqResponse
+
+    @GET("api/v2/terms/")
+    @Headers("Accept: application/json", "Content-Type: application/json")
+    suspend fun getTerms(): ContentDocument
+
+    @GET("api/v2/privacy/")
+    @Headers("Accept: application/json", "Content-Type: application/json")
+    suspend fun getPrivacy(): ContentDocument
+
+    @GET("api/v2/faqs/")
+    @Headers("Accept: application/json", "Content-Type: application/json")
+    suspend fun getFaqs(): ContentDocument
+
+    @GET("api/v2/marketing/")
+    @Headers("Accept: application/json", "Content-Type: application/json")
+    suspend fun getMarketingPromos(): MarketingPromos
 
     @GET("api/v2/theme/")
     @Headers("Accept: application/json", "Content-Type: application/json")

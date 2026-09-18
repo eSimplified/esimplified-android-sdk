@@ -2,7 +2,7 @@
 
 For client teams integrating the SDK into an Android app. Covers installation, configuration, every repository method available to you, and the full shape of every model the API returns.
 
-Documents `io.github.esimplified:android-sdk:3.0.0`, the version on Maven Central, with one
+Documents `io.github.esimplified:android-sdk:3.1.0`, the version on Maven Central, with one
 interface change that lands in the next release — `OrdersRepository.getOrderHistory` and
 `getOrderHistoryResult` each lost a redundant overload. The tables below show the new shape;
 [Changes since 2.0.0](README.md#changes-since-200) has the detail.
@@ -78,7 +78,7 @@ The SDK is published to Maven Central, which every Gradle project already resolv
 ```kotlin
 // build.gradle.kts (app)
 dependencies {
-    implementation("io.github.esimplified:android-sdk:3.0.0")
+    implementation("io.github.esimplified:android-sdk:3.1.0")
     implementation("io.insert-koin:koin-android:4.1.1")
 }
 
@@ -104,7 +104,7 @@ Without it Android refuses the socket and every call fails with a `SecurityExcep
 
 ## 3b. Which versions you will receive
 
-Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.0.0")` resolves to 3.0.0 and nothing else — there are no version ranges and no BOM in these instructions — so a new release never reaches your build until someone on your team edits that number. Nothing in this section can happen to you without that edit; it describes what you are choosing between when you make it.
+Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.1.0")` resolves to 3.1.0 and nothing else — there are no version ranges and no BOM in these instructions — so a new release never reaches your build until someone on your team edits that number. Nothing in this section can happen to you without that edit; it describes what you are choosing between when you make it.
 
 | What changed | Version goes | What you do |
 |---|---|---|
@@ -508,7 +508,7 @@ The SDK's other public exception types, all thrown rather than returned:
 
 ## 8. Caching
 
-Every list and detail read is served through an in-process cache keyed by call and arguments. Two optional arguments appear on those methods, omitted from the tables in [Repository reference](#9-repository-reference) for brevity:
+Every list and detail read is served through an in-process cache keyed by call and arguments. Two optional arguments appear on those methods. Every row in [Repository reference](#9-repository-reference) spells them out in place; what they mean is here:
 
 | Parameter | Default | Meaning |
 |-----------|---------|---------|
@@ -537,7 +537,11 @@ One row per `…Result` method in the SDK. They take the same arguments as the m
 | `EsimRepository` | `getArchivedEsimsResult` | `getArchivedEsims` | `RepositoryResult<List<AssignedEsim>>` |
 | `EsimRepository` | `getEsimByIccidResult` | `getEsimByIccid` | `RepositoryResult<AssignedEsim?>` |
 | `FaqAndSupportRepository` | `fetchDestinationFaqsResult` | `fetchDestinationFaqs` | `RepositoryResult<List<Faq>>` |
+| `FaqAndSupportRepository` | `fetchTermsResult` | `fetchTerms` | `RepositoryResult<ContentDocument?>` |
+| `FaqAndSupportRepository` | `fetchPrivacyResult` | `fetchPrivacy` | `RepositoryResult<ContentDocument?>` |
+| `FaqAndSupportRepository` | `fetchFaqsResult` | `fetchFaqs` | `RepositoryResult<ContentDocument?>` |
 | `LoyaltyRepository` | `getLoyaltyBalanceResult` | `getLoyaltyBalance` | `RepositoryResult<KredsLoyaltyBalanceResponse?>` |
+| `MarketingRepository` | `fetchPromosResult` | `fetchPromos` | `RepositoryResult<List<Promo>>` |
 | `OrdersRepository` | `getOrderHistoryResult` | `getOrderHistory` | `RepositoryResult<List<OrderHistoryItem>>` |
 | `OrdersRepository` | `getOrderDetailsResult` | `getOrderDetails` | `RepositoryResult<OrderDetail?>` |
 | `OrdersRepository` | `getOrdersPageResult` | — none; this one is `Result`-only | `RepositoryResult<OrdersPage>` |
@@ -556,12 +560,22 @@ One row per `…Result` method in the SDK. They take the same arguments as the m
 ## 9. Repository reference
 
 One row per method, and every method appears exactly once — count the rows and
-you have counted the API. The `Parameters` column carries each parameter's name,
-type and default. The two arguments every cached read also accepts,
-`forceRefresh` and `cacheTTL`, are left out of these tables and described once
-under [Caching](#8-caching); so are the `…Result` twins, which take the same
-arguments as the method they wrap and are listed in full
-[there](#every-result-twin).
+you have counted the API. The `Parameters` column carries the whole parameter
+list: every parameter's name, type and default, in declaration order, written as
+Kotlin. Nothing is elided, so a row tells you exactly what you may pass and what
+you may leave out. That includes `forceRefresh` and `cacheTTL` on every cached
+read — what those two mean is explained once under [Caching](#8-caching).
+
+Defaults are shown as the source writes them, so a default that is a named
+constant appears as that constant (`cacheTTL: Duration = FAQS_TTL`,
+`limit: Int = ORDERS_PAGE_LIMIT`) rather than the value behind it; the
+Description column gives the value where it is worth knowing. A test in the
+SDK's own suite compares this column against the interface declarations, so a
+parameter that is added, reordered or given a different default fails the build
+until this table says so too.
+
+The `…Result` twins are not repeated here. Each takes the same arguments as the
+method it wraps and they are listed [there](#every-result-twin).
 
 All repository functions are `suspend` unless noted. Inject via Koin, which
 your app must declare as a dependency — see
@@ -618,8 +632,8 @@ inside a `@Composable` (that one needs `koin-androidx-compose`).
 
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
-| `getCountries` | — | `List<Country>` | Get all available countries |
-| `getCountriesBy` | `destination: Destination` | `List<Country>` | Filter by code, name, slug, or region |
+| `getCountries` | `forceRefresh: Boolean = false, cacheTTL: Duration = COUNTRIES_TTL` | `List<Country>` | Get all available countries |
+| `getCountriesBy` | `destination: Destination, forceRefresh: Boolean = false, cacheTTL: Duration = COUNTRIES_TTL` | `List<Country>` | Filter by code, name, slug, or region |
 | `search` | `query: String` | `List<Country>` | Search countries by name/code |
 | `getUserLocation` | — | `UserLocationResponse` | Get user's location by IP (never cached) |
 | `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
@@ -632,10 +646,10 @@ Cached: `getCountries`, `getCountriesBy` (`COUNTRIES_TTL` = 24 h). `…Result` t
 
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
-| `getPackages` | `destination: Destination` | `List<PackagePlan>` | Get eSIM packages for a destination |
-| `getPackagesPage` | `destination: Destination` | `PackagesPage` | Same read plus total count and the page's promo code |
-| `getTopUpPackages` | `iccid: String` | `List<PackagePlan>` | Get top-up packages for an existing eSIM |
-| `checkStock` | `packageTypeId: Int` | `CheckStockResponse` | Check package availability |
+| `getPackages` | `destination: Destination, forceRefresh: Boolean = false, cacheTTL: Duration = PACKAGES_TTL` | `List<PackagePlan>` | Get eSIM packages for a destination |
+| `getPackagesPage` | `destination: Destination, forceRefresh: Boolean = false, cacheTTL: Duration = PACKAGES_TTL` | `PackagesPage` | Same read plus total count and the page's promo code |
+| `getTopUpPackages` | `iccid: String, forceRefresh: Boolean = false, cacheTTL: Duration = PACKAGES_TTL` | `List<PackagePlan>` | Get top-up packages for an existing eSIM |
+| `checkStock` | `packageTypeId: Int, forceRefresh: Boolean = false, cacheTTL: Duration = PACKAGES_TTL` | `CheckStockResponse` | Check package availability |
 | `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
 
 All cached (`PACKAGES_TTL` = 1 h). `…Result` twins: `getPackagesResult`, `getPackagesPageResult`, `getTopUpPackagesResult`, `checkStockResult`.
@@ -648,10 +662,10 @@ All cached (`PACKAGES_TTL` = 1 h). `…Result` twins: `getPackagesResult`, `getP
 
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
-| `getEsims` | `showLegacy: Boolean? = null, isPrimary: Boolean? = null, includeBase64QrCode: Boolean = false` | `List<AssignedEsim>` | Get all user's eSIMs. See **`showLegacy` has three cases** below |
-| `getActiveEsims` | `showLegacy: Boolean? = null, isPrimary: Boolean? = null, includeBase64QrCode: Boolean = false` | `List<AssignedEsim>` | Non-archived eSIMs only. See **`showLegacy` has three cases** below |
-| `getArchivedEsims` | `showLegacy: Boolean? = null, isPrimary: Boolean? = null, includeBase64QrCode: Boolean = false` | `List<AssignedEsim>` | Archived eSIMs only. See **`showLegacy` has three cases** below |
-| `getEsimByIccid` | `iccid: String, includeBase64QrCode: Boolean = false` | `AssignedEsim` | Get one eSIM from `customer/esims/{iccid}/details/` |
+| `getEsims` | `showLegacy: Boolean? = null, isPrimary: Boolean? = null, forceRefresh: Boolean = false, cacheTTL: Duration = ESIM_LIST_TTL, includeBase64QrCode: Boolean = false` | `List<AssignedEsim>` | Get all user's eSIMs. See **`showLegacy` has three cases** below |
+| `getActiveEsims` | `showLegacy: Boolean? = null, isPrimary: Boolean? = null, forceRefresh: Boolean = false, cacheTTL: Duration = ESIM_LIST_TTL, includeBase64QrCode: Boolean = false` | `List<AssignedEsim>` | Non-archived eSIMs only. See **`showLegacy` has three cases** below |
+| `getArchivedEsims` | `showLegacy: Boolean? = null, isPrimary: Boolean? = null, forceRefresh: Boolean = false, cacheTTL: Duration = ESIM_LIST_TTL, includeBase64QrCode: Boolean = false` | `List<AssignedEsim>` | Archived eSIMs only. See **`showLegacy` has three cases** below |
+| `getEsimByIccid` | `iccid: String, forceRefresh: Boolean = false, cacheTTL: Duration = ESIM_DETAILS_TTL, includeBase64QrCode: Boolean = false` | `AssignedEsim` | Get one eSIM from `customer/esims/{iccid}/details/` |
 | `updateEsim` | `iccid: String, name: String? = null, isAutoTopUp: Boolean? = null, isArchived: Boolean? = null, isPrimary: Boolean? = null` | `Unit` | Update eSIM settings. **Throws if the server rejects the write** — on a non-2xx response, or when the success body is not the API's `eSIM updated successfully`, matching the iOS SDK |
 | `updateEsimPrimaryStatus` | `iccid: String, isPrimary: Boolean` | `Unit` | Convenience wrapper for the primary flag |
 | `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
@@ -676,9 +690,9 @@ Leaving the parameter out lets the API decide by tenant; `false` states the choi
 
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
-| `getOrderHistory` | `withLoyaltyPoints: Boolean = false` | `List<OrderHistoryItem>` | Past orders. `withLoyaltyPoints = true` asks the API for the points earned and spent on each |
-| `getOrderDetails` | `orderUuid: String` | `OrderDetail` | Get detailed order info |
-| `getOrdersPageResult` | `limit: Int = 100, offset: Int = 0, withLoyaltyPoints: Boolean = false` | `RepositoryResult<OrdersPage>` | Paged order read |
+| `getOrderHistory` | `withLoyaltyPoints: Boolean = false, forceRefresh: Boolean = false, cacheTTL: Duration = ORDERS_LIST_TTL` | `List<OrderHistoryItem>` | Past orders. `withLoyaltyPoints = true` asks the API for the points earned and spent on each |
+| `getOrderDetails` | `orderUuid: String, forceRefresh: Boolean = false, cacheTTL: Duration = ORDER_DETAIL_TTL` | `OrderDetail` | Get detailed order info |
+| `getOrdersPageResult` | `limit: Int = ORDERS_PAGE_LIMIT, offset: Int = 0, withLoyaltyPoints: Boolean = false, forceRefresh: Boolean = false, cacheTTL: Duration = ORDERS_LIST_TTL` | `RepositoryResult<OrdersPage>` | Paged order read. `OrdersRepository.ORDERS_PAGE_LIMIT` is 100 |
 | `getOrderInvoice` | `orderUuid: String` | `ByteArray` | Download the order's PDF invoice bytes |
 | `trackOrder` | `orderUuid: String` | `Unit` | Mark the order's conversion as tracked (never throws) |
 | `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
@@ -729,11 +743,11 @@ PaymentRequest(
 
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
-| `getLoyaltyBalance` | `forceRefresh: Boolean = true` | `KredsLoyaltyBalanceResponse` | Get Kreds points balance. Note `forceRefresh` defaults to `true` |
-| `getLoyaltyBalanceResult` | `forceRefresh: Boolean = true` | `RepositoryResult<KredsLoyaltyBalanceResponse?>` | The same read, reported rather than thrown. See the note below |
+| `getLoyaltyBalance` | `forceRefresh: Boolean = true, cacheTTL: Duration = KREDS_BALANCE_TTL` | `KredsLoyaltyBalanceResponse` | Get Kreds points balance. Note `forceRefresh` defaults to `true` |
+| `getLoyaltyBalanceResult` | `forceRefresh: Boolean = true, cacheTTL: Duration = KREDS_BALANCE_TTL` | `RepositoryResult<KredsLoyaltyBalanceResponse?>` | The same read, reported rather than thrown. See the note below |
 | `getKredsQuote` | `packageTypeId: Int, loyaltyPointsAmount: Double` | `KredsQuoteResponse` | Get pricing quote with Kreds |
 | `getMokafaaQuote` | `packageTypeId: Int, loyaltyPointsToUse: Int` | `KredsQuoteResponse` | Get pricing quote with Mokafaa points |
-| `initiateMokafaaOtp` | `purpose: String, platform: String = "android"` | `MokafaaOtpInitiateResponse` | Start a Mokafaa OTP session (`purpose`: `enrollment` or `checkout`); countdown should be driven by `expiresAt` |
+| `initiateMokafaaOtp` | `purpose: String, platform: String = MokafaaOtpInitiateRequest.Platform.ANDROID` | `MokafaaOtpInitiateResponse` | Start a Mokafaa OTP session (`purpose`: `enrollment` or `checkout`); countdown should be driven by `expiresAt`. `Platform.ANDROID` is `"android"` |
 | `validateMokafaaOtp` | `sessionId: String, otp: String, points: Int? = null, packageTypeId: Int? = null` | `MokafaaOtpValidateResponse` | Validate the SMS OTP; `points` required for checkout, omitted for enrollment |
 | `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
 
@@ -760,8 +774,8 @@ if (result.isOffline) showOfflineHint()
 
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
-| `fetchPageTheme` | `page: String` | `ThemePage?` | Theme for a named page; `null` if the API has none |
-| `fetchDestinationTheme` | `countryCode: String` | `ThemeDestination?` | Theme for a destination, matched case-insensitively |
+| `fetchPageTheme` | `page: String, forceRefresh: Boolean = false, cacheTTL: Duration = THEME_TTL` | `ThemePage?` | Theme for a named page; `null` if the API has none |
+| `fetchDestinationTheme` | `countryCode: String, forceRefresh: Boolean = false, cacheTTL: Duration = THEME_TTL` | `ThemeDestination?` | Theme for a destination, matched case-insensitively |
 | `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
 
 Cached (`THEME_TTL` = 1 h). `…Result` twins: `fetchPageThemeResult`, `fetchDestinationThemeResult`.
@@ -772,10 +786,41 @@ Cached (`THEME_TTL` = 1 h). `…Result` twins: `fetchPageThemeResult`, `fetchDes
 
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
-| `fetchDestinationFaqs` | `countryNameSlug: String` | `List<Faq>` | FAQs for a destination slug |
+| `fetchDestinationFaqs` | `countryNameSlug: String, forceRefresh: Boolean = false, cacheTTL: Duration = FAQS_TTL` | `List<Faq>` | FAQs for a destination slug |
+| `fetchTerms` | `language: String, forceRefresh: Boolean = false, cacheTTL: Duration = FAQS_TTL` | `ContentDocument?` | Terms of service as a structured document |
+| `fetchPrivacy` | `language: String, forceRefresh: Boolean = false, cacheTTL: Duration = FAQS_TTL` | `ContentDocument?` | Privacy policy as a structured document |
+| `fetchFaqs` | `language: String, forceRefresh: Boolean = false, cacheTTL: Duration = FAQS_TTL` | `ContentDocument?` | General FAQs as a structured document |
 | `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
 
-Cached (`FAQS_TTL` = 24 h). `…Result` twin: `fetchDestinationFaqsResult`.
+Cached (`FAQS_TTL` = 24 h). `…Result` twins: `fetchDestinationFaqsResult`, `fetchTermsResult`, `fetchPrivacyResult`, `fetchFaqsResult`.
+
+The three content documents come back in the customer's language. `language` is **not** sent to the
+server — it only keys the cache, so switching language does not serve you the previous language's
+document. The language the server answers in comes from the `accept-language` header the SDK already
+sends on every request: `Customer.preferredLanguage` once signed in, or whatever your
+`customHeadersProvider` returns. See [Language and currency](#language-and-currency).
+
+---
+
+### MarketingRepository
+
+| Function | Parameters | Returns | Description |
+|----------|-----------|---------|-------------|
+| `fetchPromos` | `language: String, forceRefresh: Boolean = false, cacheTTL: Duration = MARKETING_TTL` | `List<Promo>` | Marketing promos for the carousel, in display order |
+| `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
+
+Cached (`MARKETING_TTL` = 1 h) — shorter than the content documents above, because promos change more
+often than legal text. `…Result` twin: `fetchPromosResult`.
+
+As with the content documents, `language` is **not** sent to the server — it only keys the cache, so
+switching language does not serve you the previous language's carousel. The language the server
+answers in comes from the `accept-language` header the SDK already sends on every request. See
+[Language and currency](#language-and-currency).
+
+A promo whose fields the API omits or nulls still decodes: every field but `slug` and `title` is
+nullable, and those two fall back to an empty string. One incomplete promo therefore never empties the
+carousel. When the network read fails and an expired entry is cached, the previous carousel comes back
+flagged `isStale`; with nothing cached you get an empty list and the failure on the `…Result` twin.
 
 ---
 
@@ -783,7 +828,7 @@ Cached (`FAQS_TTL` = 24 h). `…Result` twin: `fetchDestinationFaqsResult`.
 
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
-| `fetchStoreReview` | — | `RatingApiResponse` | Store review summary, reviews and stats |
+| `fetchStoreReview` | `forceRefresh: Boolean = false, cacheTTL: Duration = STORE_REVIEW_TTL` | `RatingApiResponse` | Store review summary, reviews and stats |
 | `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
 
 Cached (`STORE_REVIEW_TTL` = 24 h). `…Result` twin: `fetchStoreReviewResult`.
@@ -1885,6 +1930,107 @@ The full FAQ document for a destination. `FaqAndSupportRepository.fetchDestinati
 | name | String | Destination name |
 | language | String | Language the FAQs are written in |
 | faqs | List\<Faq\> | The questions and answers |
+
+### Promo
+
+One entry in the marketing carousel. Returned inside the list from `MarketingRepository.fetchPromos`.
+Every field is optional or defaulted, so a promo missing a field still decodes.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| slug | String | Destination the promo links to; `""` when the API omits it |
+| title | String | Promo title; `""` when the API omits it |
+| color | String? | Background colour as a hex string, e.g. `#1E1E1E` |
+| image | String? | Full-bleed promo image URL, kept as a `String` so a malformed one cannot fail the response |
+| content | String? | Body copy |
+| faqs | List\<PromoFaq\> | Questions and answers shown under the promo; empty when omitted |
+| ctaHeading | String? | Heading above the call to action (`cta_heading`) |
+| ctaText | String? | Call-to-action button label (`cta_text`) |
+| faqHeading | String? | Heading above the FAQ list (`faq_heading`) |
+| sliderImage | String? | Carousel thumbnail URL (`slider_image`) |
+| sliderHeading | String? | Carousel headline (`slider_heading`) |
+| sliderSubheading | String? | Carousel subheadline (`slider_subheading`) |
+
+`destinationUrl` is a computed `String?` on top of `slug`: it trims the slug, gives back `null` when
+nothing is left, and prefixes `https://` when the slug carries no scheme of its own.
+
+### PromoFaq
+
+| Field | Type | Description |
+|-------|------|-------------|
+| question | String | The question; `""` when the API omits it |
+| answer | String | The answer; `""` when the API omits it |
+
+### ContentDocument
+
+Returned by `FaqAndSupportRepository.fetchTerms`, `fetchPrivacy` and `fetchFaqs`. A document is a title
+plus an ordered tree: `blocks` are the renderable content at this level, `children` are the sections
+below it.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| language | String | Language the server answered in |
+| id | String? | Stable slug for the document |
+| title | String? | Document title |
+| description | String? | Short summary |
+| updatedAt | String? | Verbatim "last updated" text, not a date |
+| blocks | List\<ContentBlock\> | Content at the root of the document |
+| children | List\<ContentNode\> | Sections, nested to any depth |
+
+### ContentNode
+
+A section of a document. Identical to `ContentDocument` without `language`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | String? | Stable slug for the section |
+| title | String? | Section heading |
+| description | String? | Short summary |
+| updatedAt | String? | Verbatim "last updated" text, not a date |
+| blocks | List\<ContentBlock\> | Content in this section |
+| children | List\<ContentNode\> | Subsections |
+
+### ContentBlock
+
+One renderable piece of a document. A sealed interface, so `when` over it exhaustively.
+
+| Case | Payload | Description |
+|------|---------|-------------|
+| `ContentBlock.Heading` | `text: String` | A heading within a section |
+| `ContentBlock.Paragraph` | `text: String` | A paragraph of body text |
+| `ContentBlock.ListBlock` | `list: ContentList` | An ordered or unordered list |
+| `ContentBlock.Unknown` | — | A block type this SDK version does not know |
+
+`Unknown` is how the SDK stays forward compatible: when the backend adds a block type, older apps
+decode it as `Unknown` and render the rest of the document instead of failing the whole read. Skip it,
+or show nothing for it.
+
+### ContentList
+
+| Field | Type | Description |
+|-------|------|-------------|
+| ordered | Boolean | Whether the list is numbered |
+| marker | ContentListMarker | Marker style for the items |
+| items | List\<ContentListItem\> | The items |
+
+### ContentListMarker (Enum)
+
+| Case | JSON | Description |
+|------|------|-------------|
+| `DECIMAL` | `decimal` | 1. 2. 3. |
+| `ALPHA` | `alpha` | a. b. c. |
+| `BULLET` | `bullet` | • • • |
+
+A marker the SDK does not recognise decodes as `BULLET` rather than failing the document.
+
+### ContentListItem
+
+| Field | Type | Description |
+|-------|------|-------------|
+| text | String | The item text |
+| items | List\<ContentListItem\> | Nested items, to any depth |
+| ordered | Boolean? | Overrides the parent list; `null` inherits |
+| marker | ContentListMarker? | Overrides the parent list; `null` inherits `BULLET` |
 
 ### Author
 
