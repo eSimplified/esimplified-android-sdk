@@ -541,6 +541,7 @@ One row per `…Result` method in the SDK. They take the same arguments as the m
 | `FaqAndSupportRepository` | `fetchPrivacyResult` | `fetchPrivacy` | `RepositoryResult<ContentDocument?>` |
 | `FaqAndSupportRepository` | `fetchFaqsResult` | `fetchFaqs` | `RepositoryResult<ContentDocument?>` |
 | `LoyaltyRepository` | `getLoyaltyBalanceResult` | `getLoyaltyBalance` | `RepositoryResult<KredsLoyaltyBalanceResponse?>` |
+| `MarketingRepository` | `fetchPromosResult` | `fetchPromos` | `RepositoryResult<List<Promo>>` |
 | `OrdersRepository` | `getOrderHistoryResult` | `getOrderHistory` | `RepositoryResult<List<OrderHistoryItem>>` |
 | `OrdersRepository` | `getOrderDetailsResult` | `getOrderDetails` | `RepositoryResult<OrderDetail?>` |
 | `OrdersRepository` | `getOrdersPageResult` | — none; this one is `Result`-only | `RepositoryResult<OrdersPage>` |
@@ -798,6 +799,28 @@ server — it only keys the cache, so switching language does not serve you the 
 document. The language the server answers in comes from the `accept-language` header the SDK already
 sends on every request: `Customer.preferredLanguage` once signed in, or whatever your
 `customHeadersProvider` returns. See [Language and currency](#language-and-currency).
+
+---
+
+### MarketingRepository
+
+| Function | Parameters | Returns | Description |
+|----------|-----------|---------|-------------|
+| `fetchPromos` | `language: String, forceRefresh: Boolean = false, cacheTTL: Duration = MARKETING_TTL` | `List<Promo>` | Marketing promos for the carousel, in display order |
+| `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
+
+Cached (`MARKETING_TTL` = 1 h) — shorter than the content documents above, because promos change more
+often than legal text. `…Result` twin: `fetchPromosResult`.
+
+As with the content documents, `language` is **not** sent to the server — it only keys the cache, so
+switching language does not serve you the previous language's carousel. The language the server
+answers in comes from the `accept-language` header the SDK already sends on every request. See
+[Language and currency](#language-and-currency).
+
+A promo whose fields the API omits or nulls still decodes: every field but `slug` and `title` is
+nullable, and those two fall back to an empty string. One incomplete promo therefore never empties the
+carousel. When the network read fails and an expired entry is cached, the previous carousel comes back
+flagged `isStale`; with nothing cached you get an empty list and the failure on the `…Result` twin.
 
 ---
 
@@ -1907,6 +1930,36 @@ The full FAQ document for a destination. `FaqAndSupportRepository.fetchDestinati
 | name | String | Destination name |
 | language | String | Language the FAQs are written in |
 | faqs | List\<Faq\> | The questions and answers |
+
+### Promo
+
+One entry in the marketing carousel. Returned inside the list from `MarketingRepository.fetchPromos`.
+Every field is optional or defaulted, so a promo missing a field still decodes.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| slug | String | Destination the promo links to; `""` when the API omits it |
+| title | String | Promo title; `""` when the API omits it |
+| color | String? | Background colour as a hex string, e.g. `#1E1E1E` |
+| image | String? | Full-bleed promo image URL, kept as a `String` so a malformed one cannot fail the response |
+| content | String? | Body copy |
+| faqs | List\<PromoFaq\> | Questions and answers shown under the promo; empty when omitted |
+| ctaHeading | String? | Heading above the call to action (`cta_heading`) |
+| ctaText | String? | Call-to-action button label (`cta_text`) |
+| faqHeading | String? | Heading above the FAQ list (`faq_heading`) |
+| sliderImage | String? | Carousel thumbnail URL (`slider_image`) |
+| sliderHeading | String? | Carousel headline (`slider_heading`) |
+| sliderSubheading | String? | Carousel subheadline (`slider_subheading`) |
+
+`destinationUrl` is a computed `String?` on top of `slug`: it trims the slug, gives back `null` when
+nothing is left, and prefixes `https://` when the slug carries no scheme of its own.
+
+### PromoFaq
+
+| Field | Type | Description |
+|-------|------|-------------|
+| question | String | The question; `""` when the API omits it |
+| answer | String | The answer; `""` when the API omits it |
 
 ### ContentDocument
 
