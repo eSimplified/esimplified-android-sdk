@@ -47,12 +47,12 @@ class EsimRepositoryImplTest {
 
     // region Cache keys
     @Test
-    fun `the default list key carries showLegacy true and the any primary sentinel`() = runTest {
+    fun `the default list key carries the unset legacy and any primary sentinels`() = runTest {
         enqueueEmptyEsims()
 
         repo().getActiveEsims()
 
-        assertTrue(cache.store.containsKey("esims_false_legacytrue_primaryany_qrfalse"))
+        assertTrue(cache.store.containsKey("esims_false_legacyunset_primaryany_qrfalse"))
     }
 
     @Test
@@ -62,7 +62,17 @@ class EsimRepositoryImplTest {
         repo().getActiveEsims(showLegacy = false)
 
         assertTrue(cache.store.containsKey("esims_false_legacyfalse_primaryany_qrfalse"))
-        assertFalse(cache.store.containsKey("esims_false_legacytrue_primaryany_qrfalse"))
+        assertFalse(cache.store.containsKey("esims_false_legacyunset_primaryany_qrfalse"))
+    }
+
+    @Test
+    fun `showLegacy true changes the list key`() = runTest {
+        enqueueEmptyEsims()
+
+        repo().getActiveEsims(showLegacy = true)
+
+        assertTrue(cache.store.containsKey("esims_false_legacytrue_primaryany_qrfalse"))
+        assertFalse(cache.store.containsKey("esims_false_legacyunset_primaryany_qrfalse"))
     }
 
     @Test
@@ -71,7 +81,7 @@ class EsimRepositoryImplTest {
 
         repo().getActiveEsims(isPrimary = true)
 
-        assertTrue(cache.store.containsKey("esims_false_legacytrue_primarytrue_qrfalse"))
+        assertTrue(cache.store.containsKey("esims_false_legacyunset_primarytrue_qrfalse"))
     }
 
     @Test
@@ -80,8 +90,8 @@ class EsimRepositoryImplTest {
 
         repo().getActiveEsims(isPrimary = false)
 
-        assertTrue(cache.store.containsKey("esims_false_legacytrue_primaryfalse_qrfalse"))
-        assertFalse(cache.store.containsKey("esims_false_legacytrue_primaryany_qrfalse"))
+        assertTrue(cache.store.containsKey("esims_false_legacyunset_primaryfalse_qrfalse"))
+        assertFalse(cache.store.containsKey("esims_false_legacyunset_primaryany_qrfalse"))
     }
 
     @Test
@@ -94,21 +104,43 @@ class EsimRepositoryImplTest {
         repo.getActiveEsims(isPrimary = true)
 
         assertEquals(2, mockWebServer.requestCount)
-        assertTrue(cache.store.containsKey("esims_false_legacytrue_primaryany_qrfalse"))
-        assertTrue(cache.store.containsKey("esims_false_legacytrue_primarytrue_qrfalse"))
+        assertTrue(cache.store.containsKey("esims_false_legacyunset_primaryany_qrfalse"))
+        assertTrue(cache.store.containsKey("esims_false_legacyunset_primarytrue_qrfalse"))
     }
 
     @Test
     fun `each showLegacy value caches separately`() = runTest {
         enqueueEmptyEsims()
         enqueueEmptyEsims()
+        enqueueEmptyEsims()
         val repo = repo()
 
+        repo.getActiveEsims(showLegacy = null)
         repo.getActiveEsims(showLegacy = true)
         repo.getActiveEsims(showLegacy = false)
 
-        assertEquals(2, mockWebServer.requestCount)
-        assertEquals(2, cache.store.size)
+        assertEquals(3, mockWebServer.requestCount)
+        assertEquals(3, cache.store.size)
+        assertTrue(cache.store.containsKey("esims_false_legacyunset_primaryany_qrfalse"))
+        assertTrue(cache.store.containsKey("esims_false_legacytrue_primaryany_qrfalse"))
+        assertTrue(cache.store.containsKey("esims_false_legacyfalse_primaryany_qrfalse"))
+    }
+
+    @Test
+    fun `an omitted showLegacy is never served the cached true or false list`() = runTest {
+        enqueueJson(esimsBody("8931"))
+        enqueueJson(esimsBody("8932"))
+        enqueueJson(esimsBody("8933"))
+        val repo = repo()
+
+        val explicitTrue = repo.getActiveEsims(showLegacy = true)
+        val explicitFalse = repo.getActiveEsims(showLegacy = false)
+        val omitted = repo.getActiveEsims()
+
+        assertEquals(3, mockWebServer.requestCount)
+        assertEquals("8931", explicitTrue.single().iccid)
+        assertEquals("8932", explicitFalse.single().iccid)
+        assertEquals("8933", omitted.single().iccid)
     }
 
     @Test
@@ -131,21 +163,21 @@ class EsimRepositoryImplTest {
         repo.getActiveEsims(isPrimary = true)
         repo.getArchivedEsims(isPrimary = true)
 
-        assertTrue(cache.store.containsKey("esims_false_legacytrue_primarytrue_qrfalse"))
+        assertTrue(cache.store.containsKey("esims_false_legacyunset_primarytrue_qrfalse"))
         assertTrue(cache.store.containsKey("esims_true_legacyunset_primarytrue_qrfalse"))
     }
     // endregion
 
     // region Query parameters
     @Test
-    fun `the list request sends show_legacy and omits is_primary when unset`() = runTest {
+    fun `the list request omits show_legacy and is_primary when they are unset`() = runTest {
         enqueueEmptyEsims()
 
         repo().getActiveEsims()
 
         val path = mockWebServer.takeRequest().path
         assertNotNull(path)
-        assertTrue(path!!.contains("show_legacy=true"))
+        assertFalse(path!!.contains("show_legacy"))
         assertFalse(path.contains("is_primary"))
     }
 
@@ -156,6 +188,46 @@ class EsimRepositoryImplTest {
         repo().getActiveEsims(showLegacy = false)
 
         assertTrue(mockWebServer.takeRequest().path!!.contains("show_legacy=false"))
+    }
+
+    @Test
+    fun `the list request sends show_legacy true when legacy is asked for`() = runTest {
+        enqueueEmptyEsims()
+
+        repo().getActiveEsims(showLegacy = true)
+
+        assertTrue(mockWebServer.takeRequest().path!!.contains("show_legacy=true"))
+    }
+
+    @Test
+    fun `the list result read omits show_legacy when it is unset`() = runTest {
+        enqueueEmptyEsims()
+
+        repo().getActiveEsimsResult()
+
+        assertFalse(mockWebServer.takeRequest().path!!.contains("show_legacy"))
+    }
+
+    @Test
+    fun `getEsims omits show_legacy on both legs when it is unset`() = runTest {
+        enqueueEmptyEsims()
+        enqueueEmptyEsims()
+
+        repo().getEsims()
+
+        assertFalse(mockWebServer.takeRequest().path!!.contains("show_legacy"))
+        assertFalse(mockWebServer.takeRequest().path!!.contains("show_legacy"))
+    }
+
+    @Test
+    fun `getEsims sends show_legacy on both legs when it is set`() = runTest {
+        enqueueEmptyEsims()
+        enqueueEmptyEsims()
+
+        repo().getEsims(showLegacy = true)
+
+        assertTrue(mockWebServer.takeRequest().path!!.contains("show_legacy=true"))
+        assertTrue(mockWebServer.takeRequest().path!!.contains("show_legacy=true"))
     }
 
     @Test
@@ -212,14 +284,6 @@ class EsimRepositoryImplTest {
         assertTrue(mockWebServer.takeRequest().path!!.contains("show_legacy=true"))
     }
 
-    @Test
-    fun `the active list is unaffected and still sends show_legacy true by default`() = runTest {
-        enqueueEmptyEsims()
-
-        repo().getActiveEsims()
-
-        assertTrue(mockWebServer.takeRequest().path!!.contains("show_legacy=true"))
-    }
 
     @Test
     fun `the archived list request also sends the sort and the limit`() = runTest {
@@ -383,6 +447,9 @@ class EsimRepositoryImplTest {
     private fun repo() = EsimRepositoryImpl(apiService, cache)
 
     private fun enqueueEmptyEsims() = enqueueJson("""{"count":0,"results":[]}""")
+
+    private fun esimsBody(iccid: String) =
+        """{"count":1,"results":[{"iccid":"$iccid","esim_name":null}]}"""
 
     private fun enqueueUpdateFailure(code: Int, body: String) = mockWebServer.enqueue(
         MockResponse().setResponseCode(code).setBody(body)

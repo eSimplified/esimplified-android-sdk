@@ -23,7 +23,7 @@ internal class EsimRepositoryImpl(
 
     // region eSIMs
     override suspend fun getEsims(
-        showLegacy: Boolean,
+        showLegacy: Boolean?,
         isPrimary: Boolean?,
         forceRefresh: Boolean,
         cacheTTL: Duration,
@@ -33,7 +33,7 @@ internal class EsimRepositoryImpl(
             getArchivedEsims(showLegacy, isPrimary, forceRefresh, cacheTTL, includeBase64QrCode)
 
     override suspend fun getEsimsResult(
-        showLegacy: Boolean,
+        showLegacy: Boolean?,
         isPrimary: Boolean?,
         forceRefresh: Boolean,
         cacheTTL: Duration,
@@ -44,7 +44,7 @@ internal class EsimRepositoryImpl(
     )
 
     override suspend fun getActiveEsims(
-        showLegacy: Boolean,
+        showLegacy: Boolean?,
         isPrimary: Boolean?,
         forceRefresh: Boolean,
         cacheTTL: Duration,
@@ -59,7 +59,7 @@ internal class EsimRepositoryImpl(
     ).listOrThrow()
 
     override suspend fun getActiveEsimsResult(
-        showLegacy: Boolean,
+        showLegacy: Boolean?,
         isPrimary: Boolean?,
         forceRefresh: Boolean,
         cacheTTL: Duration,

@@ -8,7 +8,7 @@ interface EsimRepository {
 
     // region Reads
     suspend fun getEsims(
-        showLegacy: Boolean = true,
+        showLegacy: Boolean? = null,
         isPrimary: Boolean? = null,
         forceRefresh: Boolean = false,
         cacheTTL: Duration = ESIM_LIST_TTL,
@@ -16,7 +16,7 @@ interface EsimRepository {
     ): List<AssignedEsim>
 
     suspend fun getActiveEsims(
-        showLegacy: Boolean = true,
+        showLegacy: Boolean? = null,
         isPrimary: Boolean? = null,
         forceRefresh: Boolean = false,
         cacheTTL: Duration = ESIM_LIST_TTL,
@@ -41,7 +41,7 @@ interface EsimRepository {
 
     // region Result reads
     suspend fun getEsimsResult(
-        showLegacy: Boolean = true,
+        showLegacy: Boolean? = null,
         isPrimary: Boolean? = null,
         forceRefresh: Boolean = false,
         cacheTTL: Duration = ESIM_LIST_TTL,
@@ -50,7 +50,7 @@ interface EsimRepository {
         RepositoryResult(getEsims(showLegacy, isPrimary, forceRefresh, cacheTTL, includeBase64QrCode))
 
     suspend fun getActiveEsimsResult(
-        showLegacy: Boolean = true,
+        showLegacy: Boolean? = null,
         isPrimary: Boolean? = null,
         forceRefresh: Boolean = false,
         cacheTTL: Duration = ESIM_LIST_TTL,
