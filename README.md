@@ -546,15 +546,25 @@ eSIM lifecycle management for authenticated users.
 
 | Method | Signature | Description |
 |---|---|---|
-| `getEsims` | `suspend fun getEsims(showLegacy: Boolean = true, isPrimary: Boolean? = null, forceRefresh: Boolean = false, cacheTTL: Duration = ESIM_LIST_TTL, includeBase64QrCode: Boolean = false): List<AssignedEsim>` | Fetch all eSIMs assigned to the customer |
+| `getEsims` | `suspend fun getEsims(showLegacy: Boolean? = null, isPrimary: Boolean? = null, forceRefresh: Boolean = false, cacheTTL: Duration = ESIM_LIST_TTL, includeBase64QrCode: Boolean = false): List<AssignedEsim>` | Fetch all eSIMs assigned to the customer |
 | `getActiveEsims` | same parameters as `getEsims` | Fetch only non-archived eSIMs |
-| `getArchivedEsims` | same parameters as `getEsims`, except `showLegacy: Boolean? = null` | Fetch only archived eSIMs. `showLegacy = null` leaves `show_legacy` out of the request entirely |
+| `getArchivedEsims` | same parameters as `getEsims` | Fetch only archived eSIMs |
 | `getEsimByIccid` | `suspend fun getEsimByIccid(iccid: String, forceRefresh: Boolean = false, cacheTTL: Duration = ESIM_DETAILS_TTL, includeBase64QrCode: Boolean = false): AssignedEsim` | Fetch a single eSIM from `customer/esims/{iccid}/details/` |
 | `updateEsim` | `suspend fun updateEsim(iccid: String, name: String? = null, isAutoTopUp: Boolean? = null, isArchived: Boolean? = null, isPrimary: Boolean? = null)` | Update eSIM settings. Throws if the server rejects the write |
 | `updateEsimPrimaryStatus` | `suspend fun updateEsimPrimaryStatus(iccid: String, isPrimary: Boolean)` | Convenience wrapper for the primary flag |
 | `invalidateCache` | `suspend fun invalidateCache()` | Drop both the list and detail cache entries |
 
 `…Result` twins: `getEsimsResult`, `getActiveEsimsResult`, `getArchivedEsimsResult`, `getEsimByIccidResult`. Default TTLs: `ESIM_LIST_TTL` = 24 h, `ESIM_DETAILS_TTL` = 5 min.
+
+**`showLegacy` has three cases, not two.** `null` is not the same as `false`, which is why the parameter is `Boolean?` on every list read:
+
+| You pass | The request carries | The API returns |
+|---|---|---|
+| left out, or `null` | no `show_legacy` parameter at all | all **universal** eSIMs, for tenants that `use_universal` |
+| set to `false` | `show_legacy=false` | just universal eSIMs |
+| set to `true` | `show_legacy=true` | **all** eSIMs, universal and legacy |
+
+Leaving the parameter out lets the API decide by tenant; `false` states the choice; `true` widens the list. The three are cached separately, so a list fetched under one never satisfies a read asking for another. This matches the iOS SDK, where `showLegacy` is `Bool?` and defaults to `nil`.
 
 **`includeBase64QrCode`** asks the API to embed the QR code image with the eSIM, so an install screen needs one request rather than two. When it is set, `AssignedEsim.qrCodeImageBase64` is populated alongside `smDpAddress` and `activationCode`, and `AssignedEsim.canInstallDirectly` reports whether the eSIM carries enough to hand straight to the Android eSIM installer — no order lookup required:
 
@@ -923,7 +933,7 @@ For `VisaRewardsResponse`, use the new `remainingOrAllowed: Int?` (`remaining ?:
 
 All have defaults, so existing calls still compile. They are worth adopting:
 
-- `getEsims` / `getActiveEsims` / `getArchivedEsims`: `showLegacy`, `isPrimary`, `forceRefresh`, `cacheTTL`, `includeBase64QrCode` (on the archived reads `showLegacy` is `Boolean?` — see section 9)
+- `getEsims` / `getActiveEsims` / `getArchivedEsims`: `showLegacy`, `isPrimary`, `forceRefresh`, `cacheTTL`, `includeBase64QrCode` (on the archived reads `showLegacy` is `Boolean?` — see section 9; it is `Boolean?` on every list read from 3.0.0, see **Changes since 2.0.0**)
 - `getEsimByIccid`: `forceRefresh`, `cacheTTL`, `includeBase64QrCode`
 - `updateEsim`: `isPrimary`
 - `getPackages` / `getTopUpPackages` / `checkStock` / `getCountries` / `getCountriesBy` / `getOrderHistory` / `getOrderDetails` / `getLoyaltyBalance`: `forceRefresh`, `cacheTTL`
@@ -969,6 +979,8 @@ Nothing replaces them: the repository methods that cover these flows (`EsimRepos
 
 Existing calls that pass `showLegacy = true` to an archived read still compile and still send the flag; they are now redundant and can be dropped. Calls that pass nothing get the new behaviour.
 
+This section describes 2.0. The two rows marked *(unchanged)* changed again in 3.0.0, where the active and combined reads became `Boolean?` as well — see **Changes since 2.0.0**.
+
 **If you implement `EsimRepository` yourself** — a test fake, for instance — update those two overrides to `showLegacy: Boolean?`, or they will no longer override the interface.
 
 The archived list's cache key changed with it: `esims_true_legacyunset_…` when the flag is omitted, `esims_true_legacytrue_…` when it is passed. Only in-memory keys, nothing persisted.
@@ -994,12 +1006,30 @@ To receive SDK lines deliberately, pass `logger` to `SdkConfig` — see [Logging
 - [ ] Handle the exception `updateEsim` can now throw
 - [ ] Delete any construction of the seven removed request types
 - [ ] Drop the `EsimplifiedSdk.clearAllCaches()` call from your logout path — `logout()` does it
-- [ ] Widen any `EsimRepository` implementation of `getArchivedEsims` / `getArchivedEsimsResult` to `showLegacy: Boolean?`
+- [ ] Widen every `EsimRepository` implementation of a list read to `showLegacy: Boolean?`
 - [ ] Declare Timber yourself if you used it and relied on the SDK pulling it in, and pass `SdkConfig.logger` if you want SDK lines
 
 ## Changes since 2.0.0
 
-`2.0.0` is the version on Maven Central and the one this documentation describes. The change below is on `main` and will ship in the next release; it is listed separately so nothing above misrepresents the published artifact.
+`2.0.0` is the version on Maven Central and the one this documentation describes. The changes below are on `main` and will ship in the next release; they are listed separately so nothing above misrepresents the published artifact.
+
+### `showLegacy` is now `Boolean?` on every eSIM list read
+
+`getEsims`, `getActiveEsims`, `getEsimsResult` and `getActiveEsimsResult` took `showLegacy: Boolean = true`. They now take `showLegacy: Boolean? = null`, matching `getArchivedEsims`, which already did.
+
+The parameter has three cases and the old signature could only express two of them:
+
+| You pass | The request carries | The API returns |
+|---|---|---|
+| left out, or `null` | no `show_legacy` parameter at all | all **universal** eSIMs, for tenants that `use_universal` |
+| set to `false` | `show_legacy=false` | just universal eSIMs |
+| set to `true` | `show_legacy=true` | **all** eSIMs, universal and legacy |
+
+**This changes what you get back.** `getEsims()` and `getActiveEsims()` with no arguments used to send `show_legacy=true` and return every eSIM, legacy ones included. They now send nothing and return the universal list. If you want the old result, pass `showLegacy = true` explicitly.
+
+The JVM signature changed from `boolean` to `Boolean`, so a caller compiled against 2.x will not link against this one — recompile rather than swapping the AAR under an already-built app. If you implement `EsimRepository` yourself, widen those four overrides to `Boolean?`.
+
+The three cases occupy three separate cache entries, so a list fetched with one value is never served to a read asking for another.
 
 ### `getOrderHistory` and `getOrderHistoryResult` lost an overload
 
