@@ -2,7 +2,7 @@
 
 For client teams integrating the SDK into an Android app. Covers installation, configuration, every repository method available to you, and the full shape of every model the API returns.
 
-Documents `io.github.esimplified:android-sdk:2.1.0`, the version on Maven Central, with one
+Documents `io.github.esimplified:android-sdk:3.0.0`, the version on Maven Central, with one
 interface change that lands in the next release — `OrdersRepository.getOrderHistory` and
 `getOrderHistoryResult` each lost a redundant overload. The tables below show the new shape;
 [Changes since 2.0.0](README.md#changes-since-200) has the detail.
@@ -78,7 +78,7 @@ The SDK is published to Maven Central, which every Gradle project already resolv
 ```kotlin
 // build.gradle.kts (app)
 dependencies {
-    implementation("io.github.esimplified:android-sdk:2.1.0")
+    implementation("io.github.esimplified:android-sdk:3.0.0")
     implementation("io.insert-koin:koin-android:4.1.1")
 }
 
@@ -104,7 +104,7 @@ Without it Android refuses the socket and every call fails with a `SecurityExcep
 
 ## 3b. Which versions you will receive
 
-Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:2.1.0")` resolves to 2.0.0 and nothing else — there are no version ranges and no BOM in these instructions — so a new release never reaches your build until someone on your team edits that number. Nothing in this section can happen to you without that edit; it describes what you are choosing between when you make it.
+Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.0.0")` resolves to 3.0.0 and nothing else — there are no version ranges and no BOM in these instructions — so a new release never reaches your build until someone on your team edits that number. Nothing in this section can happen to you without that edit; it describes what you are choosing between when you make it.
 
 | What changed | Version goes | What you do |
 |---|---|---|
@@ -648,15 +648,25 @@ All cached (`PACKAGES_TTL` = 1 h). `…Result` twins: `getPackagesResult`, `getP
 
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
-| `getEsims` | `showLegacy: Boolean = true, isPrimary: Boolean? = null, includeBase64QrCode: Boolean = false` | `List<AssignedEsim>` | Get all user's eSIMs |
-| `getActiveEsims` | `showLegacy: Boolean = true, isPrimary: Boolean? = null, includeBase64QrCode: Boolean = false` | `List<AssignedEsim>` | Non-archived eSIMs only |
-| `getArchivedEsims` | `showLegacy: Boolean? = null, isPrimary: Boolean? = null, includeBase64QrCode: Boolean = false` | `List<AssignedEsim>` | Archived eSIMs only. `showLegacy` is nullable here and defaults to `null`, which omits `show_legacy` from the request; pass `true`/`false` to send it |
+| `getEsims` | `showLegacy: Boolean? = null, isPrimary: Boolean? = null, includeBase64QrCode: Boolean = false` | `List<AssignedEsim>` | Get all user's eSIMs. See **`showLegacy` has three cases** below |
+| `getActiveEsims` | `showLegacy: Boolean? = null, isPrimary: Boolean? = null, includeBase64QrCode: Boolean = false` | `List<AssignedEsim>` | Non-archived eSIMs only. See **`showLegacy` has three cases** below |
+| `getArchivedEsims` | `showLegacy: Boolean? = null, isPrimary: Boolean? = null, includeBase64QrCode: Boolean = false` | `List<AssignedEsim>` | Archived eSIMs only. See **`showLegacy` has three cases** below |
 | `getEsimByIccid` | `iccid: String, includeBase64QrCode: Boolean = false` | `AssignedEsim` | Get one eSIM from `customer/esims/{iccid}/details/` |
 | `updateEsim` | `iccid: String, name: String? = null, isAutoTopUp: Boolean? = null, isArchived: Boolean? = null, isPrimary: Boolean? = null` | `Unit` | Update eSIM settings. **Throws if the server rejects the write** — on a non-2xx response, or when the success body is not the API's `eSIM updated successfully`, matching the iOS SDK |
 | `updateEsimPrimaryStatus` | `iccid: String, isPrimary: Boolean` | `Unit` | Convenience wrapper for the primary flag |
 | `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
 
 Cached: `ESIM_LIST_TTL` = 24 h for lists, `ESIM_DETAILS_TTL` = 5 min for details. `…Result` twins: `getEsimsResult`, `getActiveEsimsResult`, `getArchivedEsimsResult`, `getEsimByIccidResult`.
+
+**`showLegacy` has three cases, not two.** `null` is not the same as `false`, which is why the parameter is `Boolean?` on every list read:
+
+| You pass | The request carries | The API returns |
+|---|---|---|
+| left out, or `null` | no `show_legacy` parameter at all | all **universal** eSIMs, for tenants that `use_universal` |
+| set to `false` | `show_legacy=false` | just universal eSIMs |
+| set to `true` | `show_legacy=true` | **all** eSIMs, universal and legacy |
+
+Leaving the parameter out lets the API decide by tenant; `false` states the choice; `true` widens the list. The three are cached separately, so a list fetched under one never satisfies a read asking for another.
 
 `includeBase64QrCode = true` asks the API to embed the QR image, populating `AssignedEsim.qrCodeImageBase64` alongside `smDpAddress` and `activationCode`. `AssignedEsim.canInstallDirectly` reports whether those are enough to install without an order lookup. Lists are requested newest-first (`order_by=-assigned_date`), capped at 1000.
 

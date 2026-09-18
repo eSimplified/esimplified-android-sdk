@@ -177,8 +177,8 @@ class EsimQrCodeTest {
         repo.getActiveEsims()
         repo.getActiveEsims(includeBase64QrCode = true)
 
-        assertTrue(cache.store.containsKey("esims_false_legacytrue_primaryany_qrfalse"))
-        assertTrue(cache.store.containsKey("esims_false_legacytrue_primaryany_qrtrue"))
+        assertTrue(cache.store.containsKey("esims_false_legacyunset_primaryany_qrfalse"))
+        assertTrue(cache.store.containsKey("esims_false_legacyunset_primaryany_qrtrue"))
     }
 
     @Test
