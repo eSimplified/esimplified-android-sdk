@@ -1,6 +1,9 @@
 package io.esimplified.sdk.repository
 
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
+import io.esimplified.sdk.model.ContentBlock
+import io.esimplified.sdk.model.ContentDocument
+import io.esimplified.sdk.model.ContentListMarker
 import io.esimplified.sdk.model.Faq
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.SdkCache
@@ -173,6 +176,163 @@ class FaqAndSupportRepositoryImplTest {
     }
     // endregion
 
+    // region Content documents
+    @Test
+    fun `terms are requested from the content endpoint with no query string`() = runTest {
+        enqueueDocument()
+
+        FaqAndSupportRepositoryImpl(apiService, cache).fetchTerms("en")
+
+        assertEquals("/api/v2/terms/", mockWebServer.takeRequest().path)
+    }
+
+    @Test
+    fun `privacy is requested from the content endpoint with no query string`() = runTest {
+        enqueueDocument()
+
+        FaqAndSupportRepositoryImpl(apiService, cache).fetchPrivacy("ar")
+
+        assertEquals("/api/v2/privacy/", mockWebServer.takeRequest().path)
+    }
+
+    @Test
+    fun `general FAQs are requested from the content endpoint with no query string`() = runTest {
+        enqueueDocument()
+
+        FaqAndSupportRepositoryImpl(apiService, cache).fetchFaqs("en")
+
+        assertEquals("/api/v2/faqs/", mockWebServer.takeRequest().path)
+    }
+
+    @Test
+    fun `a content document decodes its sections and blocks`() = runTest {
+        enqueueDocument()
+
+        val document = FaqAndSupportRepositoryImpl(apiService, cache).fetchTerms("en")
+
+        assertNotNull(document)
+        assertEquals("en", document!!.language)
+        assertEquals("Last updated: 28 April 2025", document.updatedAt)
+        assertEquals(1, document.children.size)
+        assertEquals(
+            listOf(ContentBlock.Paragraph("Body.")),
+            document.children.first().blocks,
+        )
+    }
+
+    @Test
+    fun `a fresh cached document is served without touching the network`() = runTest {
+        enqueueDocument()
+        val repo = FaqAndSupportRepositoryImpl(apiService, cache)
+
+        val first = repo.fetchFaqs("en")
+        val second = repo.fetchFaqsResult("en")
+
+        assertEquals(1, mockWebServer.requestCount)
+        assertEquals(first, second.value)
+        assertFalse(second.isStale)
+        assertFalse(second.didFail)
+        assertNotNull(cache.getExpired<ContentDocument>("faqs_en"))
+    }
+
+    @Test
+    fun `each language caches its document separately`() = runTest {
+        enqueueDocument()
+        enqueueDocument(language = "ar")
+        val repo = FaqAndSupportRepositoryImpl(apiService, cache)
+
+        repo.fetchPrivacy("en")
+        repo.fetchPrivacy("ar")
+
+        assertEquals(2, mockWebServer.requestCount)
+        assertTrue(cache.store.containsKey("privacy_en"))
+        assertTrue(cache.store.containsKey("privacy_ar"))
+    }
+
+    @Test
+    fun `forceRefresh bypasses a fresh document cache entry`() = runTest {
+        enqueueDocument()
+        enqueueDocument(title = "Newer")
+        val repo = FaqAndSupportRepositoryImpl(apiService, cache)
+
+        val cached = repo.fetchTerms("en")
+        val refreshed = repo.fetchTerms("en", forceRefresh = true)
+
+        assertEquals(2, mockWebServer.requestCount)
+        assertEquals("Doc", cached?.title)
+        assertEquals("Newer", refreshed?.title)
+    }
+
+    @Test
+    fun `a failed document fetch falls back to the expired entry and reports it as stale`() = runTest {
+        enqueueDocument()
+        val repo = FaqAndSupportRepositoryImpl(apiService, cache)
+        repo.fetchTerms("en", cacheTTL = Duration.ZERO)
+
+        enqueueServerError()
+        val result = repo.fetchTermsResult("en")
+
+        assertEquals(2, mockWebServer.requestCount)
+        assertEquals("Doc", result.value?.title)
+        assertTrue(result.isStale)
+        assertTrue(result.didFail)
+        assertNotNull(result.failure)
+    }
+
+    @Test
+    fun `a failed document fetch with no cached data returns null and the failure`() = runTest {
+        enqueueServerError()
+        val repo = FaqAndSupportRepositoryImpl(apiService, cache)
+
+        val result = repo.fetchPrivacyResult("en")
+
+        assertNull(result.value)
+        assertFalse(result.isStale)
+        assertTrue(result.didFail)
+        assertNotNull(result.failure)
+    }
+
+    @Test
+    fun `a failed document fetch with no cached data returns null from the plain method`() = runTest {
+        enqueueServerError()
+
+        val document = FaqAndSupportRepositoryImpl(apiService, cache).fetchFaqs("en")
+
+        assertNull(document)
+    }
+
+    @Test
+    fun `an unknown block type in a live document does not fail the whole read`() = runTest {
+        enqueueJson(
+            """
+            {"language":"en","id":"doc","title":"Doc","blocks":[
+              {"type":"carousel","slides":[]},
+              {"type":"list","ordered":true,"marker":"roman","items":[{"text":"One"}]}
+            ],"children":[]}
+            """.trimIndent()
+        )
+
+        val document = FaqAndSupportRepositoryImpl(apiService, cache).fetchTerms("en")
+
+        assertNotNull(document)
+        assertEquals(ContentBlock.Unknown, document!!.blocks.first())
+        val list = (document.blocks[1] as ContentBlock.ListBlock).list
+        assertEquals(ContentListMarker.BULLET, list.marker)
+        assertEquals("One", list.items.single().text)
+    }
+
+    @Test
+    fun `the document cacheTTL argument overrides the cache default`() = runTest {
+        enqueueDocument()
+
+        FaqAndSupportRepositoryImpl(apiService, cache).fetchTerms("en", cacheTTL = 5.seconds)
+
+        val entry = cache.store["terms_en"]
+        assertNotNull(entry)
+        assertTrue(entry!!.expiresAt - System.currentTimeMillis() <= 5_000)
+    }
+    // endregion
+
     // region Invalidation
     @Test
     fun `Faq invalidateCache clears every faqs key but leaves others`() = runTest {
@@ -186,6 +346,24 @@ class FaqAndSupportRepositoryImplTest {
         assertNull(cache.getExpired<List<Faq>>("faqs_destination_australia"))
         assertNotNull(cache.getExpired<List<String>>("countries_all"))
         assertEquals(0, mockWebServer.requestCount)
+    }
+
+    @Test
+    fun `Faq invalidateCache clears the faqs terms and privacy prefixes`() = runTest {
+        val document = ContentDocument(language = "en")
+        cache.set("faqs_en", document)
+        cache.set("faqs_destination_south-africa", listOf(Faq("q", "a")))
+        cache.set("terms_en", document)
+        cache.set("privacy_en", document)
+        cache.set("theme_page_home", "untouched")
+
+        FaqAndSupportRepositoryImpl(apiService, cache).invalidateCache()
+
+        assertNull(cache.getExpired<ContentDocument>("faqs_en"))
+        assertNull(cache.getExpired<List<Faq>>("faqs_destination_south-africa"))
+        assertNull(cache.getExpired<ContentDocument>("terms_en"))
+        assertNull(cache.getExpired<ContentDocument>("privacy_en"))
+        assertEquals("untouched", cache.getExpired<String>("theme_page_home"))
     }
     // endregion
 
@@ -221,6 +399,34 @@ class FaqAndSupportRepositoryImplTest {
               "faqs": [
                 { "question": "$firstQuestion", "answer": "Yes." },
                 { "question": "How much?", "answer": "Ten." }
+              ]
+            }
+            """.trimIndent()
+        )
+    }
+
+    private fun enqueueDocument(
+        language: String = "en",
+        title: String = "Doc",
+    ) {
+        enqueueJson(
+            """
+            {
+              "language": "$language",
+              "id": "doc",
+              "title": "$title",
+              "description": null,
+              "updatedAt": "Last updated: 28 April 2025",
+              "blocks": [],
+              "children": [
+                {
+                  "id": "one",
+                  "title": "One",
+                  "description": null,
+                  "updatedAt": null,
+                  "blocks": [{ "type": "paragraph", "text": "Body." }],
+                  "children": []
+                }
               ]
             }
             """.trimIndent()
