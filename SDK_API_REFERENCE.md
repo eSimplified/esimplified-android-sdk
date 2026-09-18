@@ -507,7 +507,7 @@ The SDK's other public exception types, all thrown rather than returned:
 
 ## 8. Caching
 
-Every list and detail read is served through an in-process cache keyed by call and arguments. Two optional arguments appear on those methods, omitted from the tables in [Repository reference](#9-repository-reference) for brevity:
+Every list and detail read is served through an in-process cache keyed by call and arguments. Two optional arguments appear on those methods. Every row in [Repository reference](#9-repository-reference) spells them out in place; what they mean is here:
 
 | Parameter | Default | Meaning |
 |-----------|---------|---------|
@@ -558,12 +558,22 @@ One row per `…Result` method in the SDK. They take the same arguments as the m
 ## 9. Repository reference
 
 One row per method, and every method appears exactly once — count the rows and
-you have counted the API. The `Parameters` column carries each parameter's name,
-type and default. The two arguments every cached read also accepts,
-`forceRefresh` and `cacheTTL`, are left out of these tables and described once
-under [Caching](#8-caching); so are the `…Result` twins, which take the same
-arguments as the method they wrap and are listed in full
-[there](#every-result-twin).
+you have counted the API. The `Parameters` column carries the whole parameter
+list: every parameter's name, type and default, in declaration order, written as
+Kotlin. Nothing is elided, so a row tells you exactly what you may pass and what
+you may leave out. That includes `forceRefresh` and `cacheTTL` on every cached
+read — what those two mean is explained once under [Caching](#8-caching).
+
+Defaults are shown as the source writes them, so a default that is a named
+constant appears as that constant (`cacheTTL: Duration = FAQS_TTL`,
+`limit: Int = ORDERS_PAGE_LIMIT`) rather than the value behind it; the
+Description column gives the value where it is worth knowing. A test in the
+SDK's own suite compares this column against the interface declarations, so a
+parameter that is added, reordered or given a different default fails the build
+until this table says so too.
+
+The `…Result` twins are not repeated here. Each takes the same arguments as the
+method it wraps and they are listed [there](#every-result-twin).
 
 All repository functions are `suspend` unless noted. Inject via Koin, which
 your app must declare as a dependency — see
@@ -620,8 +630,8 @@ inside a `@Composable` (that one needs `koin-androidx-compose`).
 
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
-| `getCountries` | — | `List<Country>` | Get all available countries |
-| `getCountriesBy` | `destination: Destination` | `List<Country>` | Filter by code, name, slug, or region |
+| `getCountries` | `forceRefresh: Boolean = false, cacheTTL: Duration = COUNTRIES_TTL` | `List<Country>` | Get all available countries |
+| `getCountriesBy` | `destination: Destination, forceRefresh: Boolean = false, cacheTTL: Duration = COUNTRIES_TTL` | `List<Country>` | Filter by code, name, slug, or region |
 | `search` | `query: String` | `List<Country>` | Search countries by name/code |
 | `getUserLocation` | — | `UserLocationResponse` | Get user's location by IP (never cached) |
 | `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
@@ -634,10 +644,10 @@ Cached: `getCountries`, `getCountriesBy` (`COUNTRIES_TTL` = 24 h). `…Result` t
 
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
-| `getPackages` | `destination: Destination` | `List<PackagePlan>` | Get eSIM packages for a destination |
-| `getPackagesPage` | `destination: Destination` | `PackagesPage` | Same read plus total count and the page's promo code |
-| `getTopUpPackages` | `iccid: String` | `List<PackagePlan>` | Get top-up packages for an existing eSIM |
-| `checkStock` | `packageTypeId: Int` | `CheckStockResponse` | Check package availability |
+| `getPackages` | `destination: Destination, forceRefresh: Boolean = false, cacheTTL: Duration = PACKAGES_TTL` | `List<PackagePlan>` | Get eSIM packages for a destination |
+| `getPackagesPage` | `destination: Destination, forceRefresh: Boolean = false, cacheTTL: Duration = PACKAGES_TTL` | `PackagesPage` | Same read plus total count and the page's promo code |
+| `getTopUpPackages` | `iccid: String, forceRefresh: Boolean = false, cacheTTL: Duration = PACKAGES_TTL` | `List<PackagePlan>` | Get top-up packages for an existing eSIM |
+| `checkStock` | `packageTypeId: Int, forceRefresh: Boolean = false, cacheTTL: Duration = PACKAGES_TTL` | `CheckStockResponse` | Check package availability |
 | `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
 
 All cached (`PACKAGES_TTL` = 1 h). `…Result` twins: `getPackagesResult`, `getPackagesPageResult`, `getTopUpPackagesResult`, `checkStockResult`.
@@ -650,10 +660,10 @@ All cached (`PACKAGES_TTL` = 1 h). `…Result` twins: `getPackagesResult`, `getP
 
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
-| `getEsims` | `showLegacy: Boolean = true, isPrimary: Boolean? = null, includeBase64QrCode: Boolean = false` | `List<AssignedEsim>` | Get all user's eSIMs |
-| `getActiveEsims` | `showLegacy: Boolean = true, isPrimary: Boolean? = null, includeBase64QrCode: Boolean = false` | `List<AssignedEsim>` | Non-archived eSIMs only |
-| `getArchivedEsims` | `showLegacy: Boolean? = null, isPrimary: Boolean? = null, includeBase64QrCode: Boolean = false` | `List<AssignedEsim>` | Archived eSIMs only. `showLegacy` is nullable here and defaults to `null`, which omits `show_legacy` from the request; pass `true`/`false` to send it |
-| `getEsimByIccid` | `iccid: String, includeBase64QrCode: Boolean = false` | `AssignedEsim` | Get one eSIM from `customer/esims/{iccid}/details/` |
+| `getEsims` | `showLegacy: Boolean = true, isPrimary: Boolean? = null, forceRefresh: Boolean = false, cacheTTL: Duration = ESIM_LIST_TTL, includeBase64QrCode: Boolean = false` | `List<AssignedEsim>` | Get all user's eSIMs |
+| `getActiveEsims` | `showLegacy: Boolean = true, isPrimary: Boolean? = null, forceRefresh: Boolean = false, cacheTTL: Duration = ESIM_LIST_TTL, includeBase64QrCode: Boolean = false` | `List<AssignedEsim>` | Non-archived eSIMs only |
+| `getArchivedEsims` | `showLegacy: Boolean? = null, isPrimary: Boolean? = null, forceRefresh: Boolean = false, cacheTTL: Duration = ESIM_LIST_TTL, includeBase64QrCode: Boolean = false` | `List<AssignedEsim>` | Archived eSIMs only. `showLegacy` is nullable here and defaults to `null`, which omits `show_legacy` from the request; pass `true`/`false` to send it |
+| `getEsimByIccid` | `iccid: String, forceRefresh: Boolean = false, cacheTTL: Duration = ESIM_DETAILS_TTL, includeBase64QrCode: Boolean = false` | `AssignedEsim` | Get one eSIM from `customer/esims/{iccid}/details/` |
 | `updateEsim` | `iccid: String, name: String? = null, isAutoTopUp: Boolean? = null, isArchived: Boolean? = null, isPrimary: Boolean? = null` | `Unit` | Update eSIM settings. **Throws if the server rejects the write** — on a non-2xx response, or when the success body is not the API's `eSIM updated successfully`, matching the iOS SDK |
 | `updateEsimPrimaryStatus` | `iccid: String, isPrimary: Boolean` | `Unit` | Convenience wrapper for the primary flag |
 | `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
@@ -668,9 +678,9 @@ Cached: `ESIM_LIST_TTL` = 24 h for lists, `ESIM_DETAILS_TTL` = 5 min for details
 
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
-| `getOrderHistory` | `withLoyaltyPoints: Boolean = false` | `List<OrderHistoryItem>` | Past orders. `withLoyaltyPoints = true` asks the API for the points earned and spent on each |
-| `getOrderDetails` | `orderUuid: String` | `OrderDetail` | Get detailed order info |
-| `getOrdersPageResult` | `limit: Int = 100, offset: Int = 0, withLoyaltyPoints: Boolean = false` | `RepositoryResult<OrdersPage>` | Paged order read |
+| `getOrderHistory` | `withLoyaltyPoints: Boolean = false, forceRefresh: Boolean = false, cacheTTL: Duration = ORDERS_LIST_TTL` | `List<OrderHistoryItem>` | Past orders. `withLoyaltyPoints = true` asks the API for the points earned and spent on each |
+| `getOrderDetails` | `orderUuid: String, forceRefresh: Boolean = false, cacheTTL: Duration = ORDER_DETAIL_TTL` | `OrderDetail` | Get detailed order info |
+| `getOrdersPageResult` | `limit: Int = ORDERS_PAGE_LIMIT, offset: Int = 0, withLoyaltyPoints: Boolean = false, forceRefresh: Boolean = false, cacheTTL: Duration = ORDERS_LIST_TTL` | `RepositoryResult<OrdersPage>` | Paged order read. `OrdersRepository.ORDERS_PAGE_LIMIT` is 100 |
 | `getOrderInvoice` | `orderUuid: String` | `ByteArray` | Download the order's PDF invoice bytes |
 | `trackOrder` | `orderUuid: String` | `Unit` | Mark the order's conversion as tracked (never throws) |
 | `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
@@ -721,11 +731,11 @@ PaymentRequest(
 
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
-| `getLoyaltyBalance` | `forceRefresh: Boolean = true` | `KredsLoyaltyBalanceResponse` | Get Kreds points balance. Note `forceRefresh` defaults to `true` |
-| `getLoyaltyBalanceResult` | `forceRefresh: Boolean = true` | `RepositoryResult<KredsLoyaltyBalanceResponse?>` | The same read, reported rather than thrown. See the note below |
+| `getLoyaltyBalance` | `forceRefresh: Boolean = true, cacheTTL: Duration = KREDS_BALANCE_TTL` | `KredsLoyaltyBalanceResponse` | Get Kreds points balance. Note `forceRefresh` defaults to `true` |
+| `getLoyaltyBalanceResult` | `forceRefresh: Boolean = true, cacheTTL: Duration = KREDS_BALANCE_TTL` | `RepositoryResult<KredsLoyaltyBalanceResponse?>` | The same read, reported rather than thrown. See the note below |
 | `getKredsQuote` | `packageTypeId: Int, loyaltyPointsAmount: Double` | `KredsQuoteResponse` | Get pricing quote with Kreds |
 | `getMokafaaQuote` | `packageTypeId: Int, loyaltyPointsToUse: Int` | `KredsQuoteResponse` | Get pricing quote with Mokafaa points |
-| `initiateMokafaaOtp` | `purpose: String, platform: String = "android"` | `MokafaaOtpInitiateResponse` | Start a Mokafaa OTP session (`purpose`: `enrollment` or `checkout`); countdown should be driven by `expiresAt` |
+| `initiateMokafaaOtp` | `purpose: String, platform: String = MokafaaOtpInitiateRequest.Platform.ANDROID` | `MokafaaOtpInitiateResponse` | Start a Mokafaa OTP session (`purpose`: `enrollment` or `checkout`); countdown should be driven by `expiresAt`. `Platform.ANDROID` is `"android"` |
 | `validateMokafaaOtp` | `sessionId: String, otp: String, points: Int? = null, packageTypeId: Int? = null` | `MokafaaOtpValidateResponse` | Validate the SMS OTP; `points` required for checkout, omitted for enrollment |
 | `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
 
@@ -752,8 +762,8 @@ if (result.isOffline) showOfflineHint()
 
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
-| `fetchPageTheme` | `page: String` | `ThemePage?` | Theme for a named page; `null` if the API has none |
-| `fetchDestinationTheme` | `countryCode: String` | `ThemeDestination?` | Theme for a destination, matched case-insensitively |
+| `fetchPageTheme` | `page: String, forceRefresh: Boolean = false, cacheTTL: Duration = THEME_TTL` | `ThemePage?` | Theme for a named page; `null` if the API has none |
+| `fetchDestinationTheme` | `countryCode: String, forceRefresh: Boolean = false, cacheTTL: Duration = THEME_TTL` | `ThemeDestination?` | Theme for a destination, matched case-insensitively |
 | `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
 
 Cached (`THEME_TTL` = 1 h). `…Result` twins: `fetchPageThemeResult`, `fetchDestinationThemeResult`.
@@ -764,10 +774,10 @@ Cached (`THEME_TTL` = 1 h). `…Result` twins: `fetchPageThemeResult`, `fetchDes
 
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
-| `fetchDestinationFaqs` | `countryNameSlug: String` | `List<Faq>` | FAQs for a destination slug |
-| `fetchTerms` | `language: String` | `ContentDocument?` | Terms of service as a structured document |
-| `fetchPrivacy` | `language: String` | `ContentDocument?` | Privacy policy as a structured document |
-| `fetchFaqs` | `language: String` | `ContentDocument?` | General FAQs as a structured document |
+| `fetchDestinationFaqs` | `countryNameSlug: String, forceRefresh: Boolean = false, cacheTTL: Duration = FAQS_TTL` | `List<Faq>` | FAQs for a destination slug |
+| `fetchTerms` | `language: String, forceRefresh: Boolean = false, cacheTTL: Duration = FAQS_TTL` | `ContentDocument?` | Terms of service as a structured document |
+| `fetchPrivacy` | `language: String, forceRefresh: Boolean = false, cacheTTL: Duration = FAQS_TTL` | `ContentDocument?` | Privacy policy as a structured document |
+| `fetchFaqs` | `language: String, forceRefresh: Boolean = false, cacheTTL: Duration = FAQS_TTL` | `ContentDocument?` | General FAQs as a structured document |
 | `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
 
 Cached (`FAQS_TTL` = 24 h). `…Result` twins: `fetchDestinationFaqsResult`, `fetchTermsResult`, `fetchPrivacyResult`, `fetchFaqsResult`.
@@ -784,7 +794,7 @@ sends on every request: `Customer.preferredLanguage` once signed in, or whatever
 
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
-| `fetchStoreReview` | — | `RatingApiResponse` | Store review summary, reviews and stats |
+| `fetchStoreReview` | `forceRefresh: Boolean = false, cacheTTL: Duration = STORE_REVIEW_TTL` | `RatingApiResponse` | Store review summary, reviews and stats |
 | `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
 
 Cached (`STORE_REVIEW_TTL` = 24 h). `…Result` twin: `fetchStoreReviewResult`.
