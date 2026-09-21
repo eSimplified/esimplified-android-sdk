@@ -773,10 +773,13 @@ The SDK's internal OkHttp interceptor handles token refresh transparently:
    - Sends a refresh token request to `POST /auth/token/` (grant_type=refresh_token)
    - Updates the stored tokens via `SessionManager.save()`
    - Retries the original request with the new access token
-3. If the refresh **is rejected** — HTTP 400, 401 or 403, or there is no refresh token to send — the session ends and the user is signed out
-4. If the refresh fails for any other reason — a 500, a gateway error, a dropped connection — the session is **kept** and the failure is surfaced to the caller as an `SdkError.NetworkError`
+3. A `403` is **not** a refresh trigger. Only the OAuth server answers 401 for an expired token; a 403 comes from the edge — a WAF rule, a geo block — and refreshing against it only earns a second 403
+4. If the refresh **is rejected** — a 401, or a 400 or 403 whose body carries `invalid_grant` or `invalid_token`, or there is no refresh token to send — the session ends and the user is signed out
+5. If the refresh fails for any other reason — a 500, a 429, a gateway error, an edge 403, a dropped connection, a body with no access token — the session is **kept** and the failure is surfaced to the caller as an `SdkError.NetworkError`
 
-Point 4 is a behaviour change in 2.0. Before, any non-2xx refresh response ended the session, so a brief server-side blip signed users out.
+`AuthRepository.loginWithRefreshToken` follows the same rules and shares the same lock, so a manual refresh and the interceptor's own never race each other over a single-use token.
+
+Points 4 and 5 are a behaviour change. Before 2.0, any non-2xx refresh response ended the session; up to 3.2.0, so did any 400 or 403, whoever sent it.
 
 The interceptor also adds:
 - `Authorization: Basic {base64(clientId:clientSecret)}` for unauthenticated requests
@@ -968,7 +971,7 @@ All have defaults, so existing calls still compile. They are worth adopting:
 ### 7. Behaviour changes with no signature change
 
 - **`updateEsim` now throws** when the server rejects the write. 1.x called an endpoint typed `Response<…>` and never checked `isSuccessful`, so a rejected rename or archive returned normally and looked like a success. 2.0 throws on a non-2xx response, and also when the success body is not the API's `eSIM updated successfully`. Wrap existing calls in the error handling you already use for other writes.
-- **A failed token refresh no longer always ends the session.** Only 400/401/403 (or a missing refresh token) sign the user out; transient server and network failures keep the session and surface an error. If your app has a workaround that re-logs users in after a blip, you can remove it.
+- **A failed token refresh no longer always ends the session.** Only a 401, a 400 or 403 whose body carries `invalid_grant` or `invalid_token`, or a missing refresh token sign the user out; transient server failures, throttling, edge refusals and network failures keep the session and surface an error. If your app has a workaround that re-logs users in after a blip, you can remove it.
 - **`updatePreferences()` and `updateCustomerProfile()` now return the server's customer**, re-fetched from `GET api/v2/customer/` after the write, rather than a locally patched copy. If the re-fetch fails, the 1.x local-copy behaviour is used as a fallback, so an update never fails because the follow-up read did. `getUser()` already read from `GET api/v2/customer/` in 1.x and is unchanged apart from keeping a referral code the profile response omits.
 - **`getOrderDetails` retries a `pending` order** up to 5 times, one second apart. A checkout screen that polls on its own can stop.
 - **Reads are cached in memory.** If your app relies on every call hitting the network, pass `forceRefresh = true` or set `enableCaching = false` in `SdkConfig`.

@@ -280,7 +280,7 @@ The active `SessionManager`, for reading auth state outside a repository.
 
 The SDK persists the session for you. `EsimplifiedSdk.initialize` takes two optional collaborators, and supplying neither is a valid choice:
 
-- **`SecureStorageProvider`** — where tokens are written. Omit it and the SDK uses `EncryptedSharedPreferences` (AES-256-GCM values, AES-256-SIV keys). Supply your own only if you already own a secure store. It never falls back to plaintext: if `EncryptedSharedPreferences` cannot be initialised the default implementation throws `SecureStorageInitException`, and the right response is to sign the customer out and ask them to authenticate again.
+- **`SecureStorageProvider`** — where tokens are written. Omit it and the SDK uses `EncryptedSharedPreferences` (AES-256-GCM values, AES-256-SIV keys). Supply your own only if you already own a secure store. It never falls back to plaintext: if `EncryptedSharedPreferences` cannot be initialised the default implementation throws `SecureStorageInitException`, and the right response is to sign the customer out and ask them to authenticate again. The default implementation commits the access token, refresh token, expiry and customer id rather than writing them lazily, and reports a write it could not land; a provider you supply is written through `secureSave` as before. A stored session whose refresh token is missing or cannot be read is restored as `Auth.Unauthenticated` — it could never have been renewed — and storage is left untouched so a later read can still recover it.
 - **`SessionManager`** — how auth state is decided and observed. Omit it and the SDK uses its own, which reads and writes through whichever `SecureStorageProvider` is in play. Supply your own when the session already lives in your app.
 
 ```kotlin
@@ -294,7 +294,7 @@ EsimplifiedSdk.initialize(
 
 Full method lists for both are in [Supporting types](#9b-supporting-types).
 
-Token refresh is automatic. An access token within five minutes of expiry is refreshed before the request goes out, and a 401 or 403 on an authenticated request triggers one refresh-and-retry. Concurrent calls share a single refresh rather than racing it. A refresh the server rejects ends the session — `SessionManager.onAuthenticationFailed()` fires and the state becomes `Auth.Unauthenticated` — while a network failure during refresh does not.
+Token refresh is automatic. An access token within five minutes of expiry is refreshed before the request goes out, and a 401 on an authenticated request triggers one refresh-and-retry; a 403 does not, because it comes from the edge rather than the OAuth server. Concurrent calls share a single refresh rather than racing it, and `AuthRepository.loginWithRefreshToken` shares that same lock. A refresh the OAuth server rejects — a 401, or a 400 or 403 whose body carries `invalid_grant` or `invalid_token` — ends the session: `SessionManager.onAuthenticationFailed()` fires and the state becomes `Auth.Unauthenticated`. Any other refresh failure — a 5xx, a 429, an edge 403, a dropped connection — leaves the session signed in and surfaces an `SdkError.NetworkError`.
 
 Read the current state anywhere with `EsimplifiedSdk.sessionManager`:
 
