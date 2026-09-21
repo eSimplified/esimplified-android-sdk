@@ -8,7 +8,7 @@
 
 Kotlin SDK for integrating the eSimplified eSIM platform into Android applications. Provides typed repository interfaces for authentication, eSIM management, package browsing, orders, payments, and more. All networking, authentication, and token management are handled internally -- consuming apps interact only with clean Kotlin interfaces.
 
-**Coordinates:** `io.github.esimplified:android-sdk:3.2.0`
+**Coordinates:** `io.github.esimplified:android-sdk:3.3.0`
 
 That is the version this README describes. It adds terms, privacy and general FAQs as structured documents on `FaqAndSupportRepository`; nothing a caller writes has to change to take it.
 
@@ -78,7 +78,7 @@ The SDK is published to Maven Central. No extra repositories or authentication n
 ```kotlin
 // build.gradle.kts (app)
 dependencies {
-    implementation("io.github.esimplified:android-sdk:3.2.0")
+    implementation("io.github.esimplified:android-sdk:3.3.0")
 
     // Required. The SDK declares its own dependencies as `implementation`, so they
     // resolve at runtime but are NOT on your compile classpath. You call
@@ -105,7 +105,7 @@ Everything else the SDK needs — Retrofit, OkHttp, kotlinx.serialization, kotli
 
 ## Versioning
 
-The SDK follows semantic versioning, and Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.2.0")` resolves to 3.2.0 and nothing else — there are no version ranges and no BOM anywhere in these instructions, so no release reaches your build until someone edits that line. Nothing below can arrive unannounced; this section tells you what to expect when you do choose to raise the number.
+The SDK follows semantic versioning, and Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.3.0")` resolves to 3.3.0 and nothing else — there are no version ranges and no BOM anywhere in these instructions, so no release reaches your build until someone edits that line. Nothing below can arrive unannounced; this section tells you what to expect when you do choose to raise the number.
 
 | What changed | Version goes | What you do |
 |---|---|---|
@@ -113,7 +113,7 @@ The SDK follows semantic versioning, and Gradle pins you to an exact version. `i
 | Something added | 2.1.0 → 2.2.0 | Nothing |
 | Something you call changed or went away | 2.1.0 → 3.0.0 | Update your code, then raise the version you depend on |
 
-Those numbers are illustrative; 3.0.0 is the current release.
+Those numbers are illustrative; 3.3.0 is the current release.
 
 The convention maps straight onto our commit messages. A `fix:` commit is a patch, a `feat:` commit is a minor, and the major only moves for a change that breaks **callers** — a method you call renamed, removed, or given a new required parameter. Commits that break callers are marked with a `!`, as in `refactor(orders)!:`.
 
@@ -468,12 +468,23 @@ The plain (non-`Result`) methods keep the old behaviour: a cache miss plus a fai
 
 | Case | Meaning |
 |---|---|
-| `NetworkError(statusCode, message)` | Server responded with an error status |
+| `NetworkError(statusCode, message)` | Server responded with an error status. `message` is the backend's own text, ready to show |
 | `AuthenticationRequired` | No valid session |
 | `NoInternetConnection` | Host unreachable / connection refused |
-| `DecodingError(cause)` | Response did not match the model |
+| `DecodingError(cause)` | Response did not match the model. `message` is deliberately generic; `cause` carries the detail |
 | `InvalidURL(url)` | Malformed URL |
 | `Unknown(cause)` | Anything else |
+
+Every API rejection a repository raises is a `NetworkError`, and its `message` is safe to put in front of a
+customer — it is the text the backend sent, with no status code or class name wrapped around it. Every other
+case means the SDK itself failed, and its message is for your logs. That is the whole test a screen needs:
+
+```kotlin
+val text = when (error) {
+    is SdkError.NetworkError -> error.message
+    else -> getString(R.string.generic_error)
+}
+```
 
 Cache control:
 
@@ -1116,7 +1127,7 @@ The published coordinate is `io.github.esimplified:android-sdk:<version>`, and t
 
 ```kotlin
 mavenPublishing {
-    coordinates("io.github.esimplified", "android-sdk", "3.2.0")
+    coordinates("io.github.esimplified", "android-sdk", "3.3.0")
 }
 ```
 
@@ -1126,7 +1137,7 @@ Gradle pins consumers to an exact version — no ranges, no BOM — so nothing p
 
 **The version bump landing on `main`.** Nothing else.
 
-`.github/workflows/release.yml` runs on every push to `main`. It reads the coordinate out of `sdk/build.gradle.kts` and asks whether a tag for that version already exists, accepting either `3.2.0` or `v3.2.0`. If the tag exists it stops and says so in the run summary. If it does not, it publishes, tags, and writes the release notes. So a merge that leaves the version alone is a no-op, and a merge that changes it is a release. There is no button to press.
+`.github/workflows/release.yml` runs on every push to `main`. It reads the coordinate out of `sdk/build.gradle.kts` and asks whether a tag for that version already exists, accepting either `3.3.0` or `v3.3.0`. If the tag exists it stops and says so in the run summary. If it does not, it publishes, tags, and writes the release notes. So a merge that leaves the version alone is a no-op, and a merge that changes it is a release. There is no button to press.
 
 **Pushing a tag by hand publishes nothing.** No workflow listens for tags. Worse, a hand-pushed tag is the tag `release.yml` will then find already present, so it *suppresses* the real release instead of causing one. If you have pushed one, delete it before merging the bump.
 

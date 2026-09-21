@@ -2,7 +2,7 @@
 
 For client teams integrating the SDK into an Android app. Covers installation, configuration, every repository method available to you, and the full shape of every model the API returns.
 
-Documents `io.github.esimplified:android-sdk:3.2.0`, the next release, with one
+Documents `io.github.esimplified:android-sdk:3.3.0`, the next release, with one
 interface change that lands in the next release — `OrdersRepository.getOrderHistory` and
 `getOrderHistoryResult` each lost a redundant overload. The tables below show the new shape;
 [Changes since 2.0.0](README.md#changes-since-200) has the detail.
@@ -78,7 +78,7 @@ The SDK is published to Maven Central, which every Gradle project already resolv
 ```kotlin
 // build.gradle.kts (app)
 dependencies {
-    implementation("io.github.esimplified:android-sdk:3.2.0")
+    implementation("io.github.esimplified:android-sdk:3.3.0")
     implementation("io.insert-koin:koin-android:4.1.1")
 }
 
@@ -104,7 +104,7 @@ Without it Android refuses the socket and every call fails with a `SecurityExcep
 
 ## 3b. Which versions you will receive
 
-Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.2.0")` resolves to 3.2.0 and nothing else — there are no version ranges and no BOM in these instructions — so a new release never reaches your build until someone on your team edits that number. Nothing in this section can happen to you without that edit; it describes what you are choosing between when you make it.
+Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.3.0")` resolves to 3.3.0 and nothing else — there are no version ranges and no BOM in these instructions — so a new release never reaches your build until someone on your team edits that number. Nothing in this section can happen to you without that edit; it describes what you are choosing between when you make it.
 
 | What changed | Version goes | What you do |
 |---|---|---|
@@ -484,10 +484,10 @@ if (result.isStale && result.isOffline) showOfflineBanner()
 
 | Case | Constructor | Meaning |
 |---|---|---|
-| `NetworkError` | `NetworkError(statusCode: Int, message: String)` | Server responded with an error status |
+| `NetworkError` | `NetworkError(statusCode: Int, message: String)` | Server rejected the request. `message` is the backend's own text verbatim, safe to show a customer |
 | `AuthenticationRequired` | `AuthenticationRequired()` | No valid session |
 | `NoInternetConnection` | `NoInternetConnection()` | Host unreachable or connection refused |
-| `DecodingError` | `DecodingError(cause: Throwable)` | Response did not match the model. `cause` names the field that broke |
+| `DecodingError` | `DecodingError(cause: Throwable)` | Response did not match the model. `message` is always the generic `SdkError.GENERIC_FAILURE_MESSAGE`; `cause` names the field that broke |
 | `InvalidURL` | `InvalidURL(url: String)` | Malformed URL |
 | `Unknown` | `Unknown(cause: Throwable)` | Anything else |
 
@@ -502,7 +502,16 @@ The SDK's other public exception types, all thrown rather than returned:
 | `PaymentApiException(httpCode: Int, type: String?, message: String?)` | `io.esimplified.sdk.network` | `PaymentsRepository.getPaymentIntent` | Payment rejected. `type` is `PaymentApiException.TYPE_VALIDATION_ERROR` for a bad request |
 | `SecureStorageInitException(cause: Throwable)` | `io.esimplified.sdk.auth` | `EsimplifiedSdk.initialize()`, via the default storage provider | `EncryptedSharedPreferences` could not be initialised. The SDK refuses to fall back to plaintext — sign the customer out and re-prompt |
 
-`VouchersRepository.redeemVoucher` is the one method that returns Kotlin's own `Result<T>` instead. Other API failures surface as a plain `Exception` whose message is the backend's error text, parsed out of the response body.
+`VouchersRepository.redeemVoucher` is the one method that returns Kotlin's own `Result<T>` instead; its failure is an `SdkError` like any other.
+
+Every API rejection a repository raises is an `SdkError.NetworkError` whose `message` is the backend's error text, parsed out of the response body and carried verbatim. Every other `SdkError` means the SDK itself failed and its message belongs in your logs, not on screen. Branch on the type rather than on the message:
+
+```kotlin
+val text = when (error) {
+    is SdkError.NetworkError -> error.message
+    else -> getString(R.string.generic_error)
+}
+```
 
 ---
 
