@@ -6,6 +6,8 @@ import io.esimplified.sdk.model.PaymentRequest
 import io.esimplified.sdk.model.PaymentResponse
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.PaymentApiException
+import io.esimplified.sdk.repository.apiRejection
+import io.esimplified.sdk.repository.asNetworkError
 import kotlinx.serialization.json.Json
 import retrofit2.HttpException
 
@@ -20,7 +22,7 @@ internal class PaymentsRepositoryImpl(
         try {
             val response = apiService.getCheckoutPaymentIntent(request)
             if (response.detail != null && response.transaction == null) {
-                throw Exception(response.detail)
+                throw apiRejection(response.detail)
             }
             return response
         } catch (e: HttpException) {
@@ -35,7 +37,7 @@ internal class PaymentsRepositoryImpl(
             if (parsed?.type != null) {
                 throw PaymentApiException(e.code(), parsed.type, parsed.message ?: parsed.detail)
             }
-            throw Exception(parsed?.detail ?: e.message)
+            throw e.asNetworkError(parsed?.detail)
         }
     }
     // endregion

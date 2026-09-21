@@ -2,7 +2,6 @@ package io.esimplified.sdk.repository.impl
 
 import io.esimplified.sdk.model.ContentDocument
 import io.esimplified.sdk.model.Faq
-import io.esimplified.sdk.network.ApiErrorMessage
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.SdkCache
 import io.esimplified.sdk.repository.FaqAndSupportRepository
@@ -10,7 +9,6 @@ import io.esimplified.sdk.repository.RepositoryResult
 import io.esimplified.sdk.repository.cachedListResult
 import io.esimplified.sdk.repository.cachedResult
 import kotlin.time.Duration
-import retrofit2.HttpException
 
 internal class FaqAndSupportRepositoryImpl(
     private val apiService: ApiService,
@@ -30,11 +28,7 @@ internal class FaqAndSupportRepositoryImpl(
         cacheTTL: Duration,
     ): RepositoryResult<List<Faq>> =
         cache.cachedListResult(destinationFaqsKey(countryNameSlug), forceRefresh, cacheTTL) {
-            try {
-                apiService.getDestinationFaqs(countryNameSlug = countryNameSlug).faqs
-            } catch (e: HttpException) {
-                throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
-            }
+            apiService.getDestinationFaqs(countryNameSlug = countryNameSlug).faqs
         }
     // endregion
 
@@ -79,11 +73,7 @@ internal class FaqAndSupportRepositoryImpl(
         fetch: suspend () -> ContentDocument,
     ): RepositoryResult<ContentDocument?> =
         cache.cachedResult(cacheKey, forceRefresh, cacheTTL) {
-            try {
-                fetch()
-            } catch (e: HttpException) {
-                throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
-            }
+            fetch()
         }
     // endregion
 

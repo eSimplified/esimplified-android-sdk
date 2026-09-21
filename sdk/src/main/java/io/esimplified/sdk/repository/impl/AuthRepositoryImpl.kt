@@ -2,6 +2,9 @@ package io.esimplified.sdk.repository.impl
 
 import io.esimplified.sdk.repository.AuthRepository
 import io.esimplified.sdk.repository.InvalidRefreshTokenException
+import io.esimplified.sdk.repository.apiRead
+import io.esimplified.sdk.repository.apiRejection
+import io.esimplified.sdk.repository.asNetworkError
 
 import io.esimplified.sdk.model.ChangePasswordResponse
 import io.esimplified.sdk.model.CustomerChangePassword
@@ -14,7 +17,6 @@ import io.esimplified.sdk.model.VerifyEmailRequest
 import io.esimplified.sdk.model.VerifyEmailResponse
 import io.esimplified.sdk.model.GetTokenResponse
 import io.esimplified.sdk.model.Customer
-import io.esimplified.sdk.network.ApiErrorMessage
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.SdkCache
 import io.esimplified.sdk.auth.Auth
@@ -38,6 +40,9 @@ internal class AuthRepositoryImpl(
         private const val KEY_USER_ID = "user_id"
         private const val KEY_USER_EMAIL = "email"
         private const val UPDATE_FAILED_MESSAGE = "Update failed"
+        private const val LOGIN_FAILED_MESSAGE = "Login failed"
+        private const val GOOGLE_SIGN_IN_FAILED_MESSAGE = "Google sign-in failed"
+        private const val EMAIL_VERIFICATION_FAILED_MESSAGE = "Email verification failed"
     }
 
     // region Authentication
@@ -60,17 +65,17 @@ internal class AuthRepositoryImpl(
             } catch (_: Exception) {
                 null
             }
-            throw Exception(message ?: "Login failed (${response.code()})")
+            throw apiRejection(message, LOGIN_FAILED_MESSAGE, response.code())
         }
 
-        val body = response.body() ?: throw Exception("Login failed: empty response")
+        val body = response.body() ?: throw apiRejection(null, LOGIN_FAILED_MESSAGE)
 
         if (!body.error.isNullOrEmpty() || !body.detail.isNullOrEmpty()) {
-            throw Exception(body.description ?: body.detail ?: "Login failed")
+            throw apiRejection(body.description ?: body.detail, LOGIN_FAILED_MESSAGE)
         }
 
-        val user = body.user ?: throw Exception("Login failed")
-        val accessToken = body.accessToken ?: throw Exception("Login failed")
+        val user = body.user ?: throw apiRejection(null, LOGIN_FAILED_MESSAGE)
+        val accessToken = body.accessToken ?: throw apiRejection(null, LOGIN_FAILED_MESSAGE)
 
         val auth = Auth.Authenticated(
             user = user,
@@ -155,11 +160,11 @@ internal class AuthRepositoryImpl(
             )
 
             if (!response.error.isNullOrEmpty() || !response.detail.isNullOrEmpty()) {
-                throw Exception(response.description ?: response.detail ?: "Google sign-in failed")
+                throw apiRejection(response.description ?: response.detail, GOOGLE_SIGN_IN_FAILED_MESSAGE)
             }
 
-            val user = response.user ?: throw Exception("Google sign-in failed")
-            val accessToken = response.accessToken ?: throw Exception("Google sign-in failed")
+            val user = response.user ?: throw apiRejection(null, GOOGLE_SIGN_IN_FAILED_MESSAGE)
+            val accessToken = response.accessToken ?: throw apiRejection(null, GOOGLE_SIGN_IN_FAILED_MESSAGE)
 
             val auth = Auth.Authenticated(
                 user = user,
@@ -171,7 +176,7 @@ internal class AuthRepositoryImpl(
 
             return user
         } catch (e: HttpException) {
-            throw Exception(ApiErrorMessage.parseOrNull(e) ?: "Google sign-in failed")
+            throw e.asNetworkError(GOOGLE_SIGN_IN_FAILED_MESSAGE)
         }
     }
     // endregion
@@ -203,12 +208,12 @@ internal class AuthRepositoryImpl(
             )
 
             if (!response.detail.isNullOrEmpty()) {
-                throw Exception(response.detail)
+                throw apiRejection(response.detail)
             }
 
             return response
         } catch (e: HttpException) {
-            throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
+            throw e.asNetworkError()
         }
     }
     // endregion
@@ -219,12 +224,12 @@ internal class AuthRepositoryImpl(
             val response = apiService.forgetPassword(CustomerForgetPassword(email = email))
 
             if (!response.detail.isNullOrEmpty()) {
-                throw Exception(response.detail)
+                throw apiRejection(response.detail)
             }
 
             return response
         } catch (e: HttpException) {
-            throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
+            throw e.asNetworkError()
         }
     }
 
@@ -240,17 +245,11 @@ internal class AuthRepositoryImpl(
                 CustomerChangePassword(id = userId, password = currentPassword, newPassword = newPassword)
             )
             if (!response.detail.isNullOrEmpty()) {
-                throw Exception(response.detail)
+                throw apiRejection(response.detail)
             }
             return response
         } catch (e: HttpException) {
-            val errorBody = e.response()?.errorBody()?.string()
-            val message = if (errorBody != null) {
-                json.decodeFromString<ChangePasswordResponse>(errorBody).detail
-            } else {
-                e.message
-            }
-            throw Exception(message)
+            throw e.asNetworkError()
         }
     }
 
@@ -264,17 +263,11 @@ internal class AuthRepositoryImpl(
                 CustomerChangePassword(email = email, token = token, newPassword = newPassword)
             )
             if (!response.detail.isNullOrEmpty()) {
-                throw Exception(response.detail)
+                throw apiRejection(response.detail)
             }
             return response
         } catch (e: HttpException) {
-            val errorBody = e.response()?.errorBody()?.string()
-            val message = if (errorBody != null) {
-                json.decodeFromString<ChangePasswordResponse>(errorBody).detail
-            } else {
-                e.message
-            }
-            throw Exception(message)
+            throw e.asNetworkError()
         }
     }
     // endregion
@@ -284,19 +277,18 @@ internal class AuthRepositoryImpl(
         try {
             val response = apiService.verifyEmail(VerifyEmailRequest(email, token, orderUUID))
             if (!response.isVerified) {
-                throw Exception(response.detail ?: "Email verification failed")
+                throw apiRejection(response.detail, EMAIL_VERIFICATION_FAILED_MESSAGE)
             }
             return response
         } catch (e: HttpException) {
-            throw Exception(ApiErrorMessage.parseOrNull(e) ?: "Email verification failed")
+            throw e.asNetworkError(EMAIL_VERIFICATION_FAILED_MESSAGE)
         }
     }
     // endregion
 
     // region Profile
-    override suspend fun deleteProfile(): io.esimplified.sdk.model.DeleteProfileResponse {
-        return apiService.deleteProfile()
-    }
+    override suspend fun deleteProfile(): io.esimplified.sdk.model.DeleteProfileResponse =
+        apiRead { apiService.deleteProfile() }
     // endregion
 
     // region User & Preferences
@@ -414,11 +406,11 @@ internal class AuthRepositoryImpl(
             )
 
             if (response.detail != null) {
-                throw Exception(response.detail)
+                throw apiRejection(response.detail, UPDATE_FAILED_MESSAGE)
             }
 
             if (response.success == false || response.updated == false) {
-                throw Exception(response.detail ?: response.message ?: UPDATE_FAILED_MESSAGE)
+                throw apiRejection(response.detail ?: response.message, UPDATE_FAILED_MESSAGE)
             }
 
             val refreshed = refreshedProfileOrNull()
@@ -452,7 +444,7 @@ internal class AuthRepositoryImpl(
 
             return response
         } catch (e: HttpException) {
-            throw Exception(ApiErrorMessage.parseOrNull(e) ?: UPDATE_FAILED_MESSAGE)
+            throw e.asNetworkError(UPDATE_FAILED_MESSAGE)
         }
     }
 
@@ -482,11 +474,11 @@ internal class AuthRepositoryImpl(
             )
 
             if (response.detail != null) {
-                throw Exception(response.detail)
+                throw apiRejection(response.detail, UPDATE_FAILED_MESSAGE)
             }
 
             if (response.success == false || response.updated == false) {
-                throw Exception(response.detail ?: response.message ?: "Update failed")
+                throw apiRejection(response.detail ?: response.message, UPDATE_FAILED_MESSAGE)
             }
 
             val snapshot = sessionManager.getAuthState()
@@ -506,7 +498,7 @@ internal class AuthRepositoryImpl(
 
             return response
         } catch (e: HttpException) {
-            throw Exception(ApiErrorMessage.parseOrNull(e) ?: "Update failed")
+            throw e.asNetworkError(UPDATE_FAILED_MESSAGE)
         }
     }
     // endregion

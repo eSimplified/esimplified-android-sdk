@@ -3,16 +3,15 @@ package io.esimplified.sdk.repository.impl
 import io.esimplified.sdk.model.ThemeDestination
 import io.esimplified.sdk.model.ThemePage
 import io.esimplified.sdk.model.ThemeResponse
-import io.esimplified.sdk.network.ApiErrorMessage
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.SdkCache
 import io.esimplified.sdk.repository.RepositoryResult
 import io.esimplified.sdk.repository.ThemeRepository
+import io.esimplified.sdk.repository.apiRead
 import io.esimplified.sdk.repository.asSdkError
 import io.esimplified.sdk.repository.originalOrSelf
 import kotlin.time.Duration
 import kotlinx.coroutines.CancellationException
-import retrofit2.HttpException
 
 internal class ThemeRepositoryImpl(
     private val apiService: ApiService,
@@ -90,13 +89,8 @@ internal class ThemeRepositoryImpl(
     }
     // endregion
 
-    private suspend fun fetchTheme(url: String): ThemeResponse {
-        try {
-            return apiService.getTheme(url = url)
-        } catch (e: HttpException) {
-            throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
-        }
-    }
+    private suspend fun fetchTheme(url: String): ThemeResponse =
+        apiRead { apiService.getTheme(url = url) }
 
     private fun <T : Any> RepositoryResult<T?>.valueOrThrowFailure(): T? {
         val cached = value

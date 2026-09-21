@@ -5,10 +5,10 @@ import io.esimplified.sdk.repository.OrdersRepository
 import io.esimplified.sdk.model.OrderHistoryItem
 import io.esimplified.sdk.model.OrderDetail
 import io.esimplified.sdk.model.OrdersPage
-import io.esimplified.sdk.network.ApiErrorMessage
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.SdkCache
 import io.esimplified.sdk.repository.RepositoryResult
+import io.esimplified.sdk.repository.apiRead
 import io.esimplified.sdk.repository.cachedListResult
 import io.esimplified.sdk.repository.cachedResult
 import io.esimplified.sdk.repository.listOrThrow
@@ -16,7 +16,6 @@ import io.esimplified.sdk.repository.valueOrThrow
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.delay
-import retrofit2.HttpException
 import io.esimplified.sdk.SdkLog
 
 internal class OrdersRepositoryImpl(
@@ -41,14 +40,10 @@ internal class OrdersRepositoryImpl(
         cacheTTL: Duration,
     ): RepositoryResult<List<OrderHistoryItem>> =
         cache.cachedListResult("$ORDERS_KEY_PREFIX$withLoyaltyPoints", forceRefresh, cacheTTL) {
-            try {
-                apiService.getOrderHistory(
-                    usedPoints = if (withLoyaltyPoints) true else null,
-                    limit = UNPAGED_LIMIT,
-                ).results
-            } catch (e: HttpException) {
-                throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
-            }
+            apiService.getOrderHistory(
+                usedPoints = if (withLoyaltyPoints) true else null,
+                limit = UNPAGED_LIMIT,
+            ).results
         }
 
     override suspend fun getOrdersPageResult(
@@ -63,20 +58,16 @@ internal class OrdersRepositoryImpl(
             forceRefresh,
             cacheTTL,
         ) {
-            try {
-                val response = apiService.getOrderHistory(
-                    usedPoints = if (withLoyaltyPoints) true else null,
-                    limit = limit,
-                    offset = offset,
-                )
-                OrdersPage(
-                    orders = response.results,
-                    totalCount = response.count,
-                    hasMore = !response.next.isNullOrEmpty(),
-                )
-            } catch (e: HttpException) {
-                throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
-            }
+            val response = apiService.getOrderHistory(
+                usedPoints = if (withLoyaltyPoints) true else null,
+                limit = limit,
+                offset = offset,
+            )
+            OrdersPage(
+                orders = response.results,
+                totalCount = response.count,
+                hasMore = !response.next.isNullOrEmpty(),
+            )
         }
         return RepositoryResult(
             value = result.value ?: OrdersPage(),
@@ -104,11 +95,7 @@ internal class OrdersRepositoryImpl(
         var attempt = 1
         while (true) {
             val result = cache.cachedResult<OrderDetail>(key, forceRefresh = true, cacheTTL) {
-                try {
-                    apiService.getOrderDetails(orderUuid, esimStatus = true, encodeQRCode = true)
-                } catch (e: HttpException) {
-                    throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
-                }
+                apiService.getOrderDetails(orderUuid, esimStatus = true, encodeQRCode = true)
             }
             val order = result.value
             if (result.didFail || order == null || order.orderStatus != PENDING_ORDER_STATUS) {
@@ -125,11 +112,7 @@ internal class OrdersRepositoryImpl(
     }
 
     override suspend fun getOrderInvoice(orderUuid: String): ByteArray =
-        try {
-            apiService.getOrderInvoice(orderUuid).bytes()
-        } catch (e: HttpException) {
-            throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
-        }
+        apiRead { apiService.getOrderInvoice(orderUuid).bytes() }
 
     override suspend fun trackOrder(orderUuid: String) {
         runCatching {

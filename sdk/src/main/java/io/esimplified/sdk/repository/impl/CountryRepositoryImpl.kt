@@ -5,14 +5,13 @@ import io.esimplified.sdk.repository.CountryRepository
 import io.esimplified.sdk.model.Destination
 import io.esimplified.sdk.model.UserLocationResponse
 import io.esimplified.sdk.model.Country
-import io.esimplified.sdk.network.ApiErrorMessage
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.SdkCache
 import io.esimplified.sdk.repository.RepositoryResult
 import io.esimplified.sdk.repository.cachedListResult
+import io.esimplified.sdk.repository.apiRead
 import io.esimplified.sdk.repository.listOrThrow
 import kotlin.time.Duration
-import retrofit2.HttpException
 
 internal class CountryRepositoryImpl(
     private val apiService: ApiService,
@@ -28,11 +27,7 @@ internal class CountryRepositoryImpl(
         cacheTTL: Duration,
     ): RepositoryResult<List<Country>> =
         cache.cachedListResult(ALL_COUNTRIES_KEY, forceRefresh, cacheTTL) {
-            try {
-                apiService.getCountryList().results
-            } catch (e: HttpException) {
-                throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
-            }
+            apiService.getCountryList().results
         }
 
     override suspend fun getCountriesBy(
@@ -47,34 +42,20 @@ internal class CountryRepositoryImpl(
         cacheTTL: Duration,
     ): RepositoryResult<List<Country>> =
         cache.cachedListResult(countriesByKey(destination), forceRefresh, cacheTTL) {
-            try {
-                apiService.getCountryListBy(
-                    code = destination.code,
-                    name = destination.name,
-                    region = destination.region
-                ).results
-            } catch (e: HttpException) {
-                throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
-            }
+            apiService.getCountryListBy(
+                code = destination.code,
+                name = destination.name,
+                region = destination.region
+            ).results
         }
 
-    override suspend fun search(query: String): List<Country> {
-        try {
-            return apiService.search(query = query).results
-        } catch (e: HttpException) {
-            throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
-        }
-    }
+    override suspend fun search(query: String): List<Country> =
+        apiRead { apiService.search(query = query).results }
     // endregion
 
     // region Location
-    override suspend fun getUserLocation(): UserLocationResponse {
-        try {
-            return apiService.getUserLocation()
-        } catch (e: HttpException) {
-            throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
-        }
-    }
+    override suspend fun getUserLocation(): UserLocationResponse =
+        apiRead { apiService.getUserLocation() }
     // endregion
 
     // region Cache

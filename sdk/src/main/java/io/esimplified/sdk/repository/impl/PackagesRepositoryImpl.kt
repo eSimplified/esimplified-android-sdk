@@ -6,7 +6,6 @@ import io.esimplified.sdk.model.CheckStockResponse
 import io.esimplified.sdk.model.Destination
 import io.esimplified.sdk.model.PackagePlan
 import io.esimplified.sdk.model.PackagesPage
-import io.esimplified.sdk.network.ApiErrorMessage
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.SdkCache
 import io.esimplified.sdk.repository.RepositoryResult
@@ -15,7 +14,6 @@ import io.esimplified.sdk.repository.cachedResult
 import io.esimplified.sdk.repository.listOrThrow
 import io.esimplified.sdk.repository.valueOrThrow
 import kotlin.time.Duration
-import retrofit2.HttpException
 
 internal class PackagesRepositoryImpl(
     private val apiService: ApiService,
@@ -35,15 +33,11 @@ internal class PackagesRepositoryImpl(
         cacheTTL: Duration,
     ): RepositoryResult<List<PackagePlan>> =
         cache.cachedListResult(packagesKey(destination), forceRefresh, cacheTTL) {
-            try {
-                apiService.getPackageListBy(
-                    code = destination.code,
-                    name = destination.name,
-                    slug = destination.slug
-                ).results
-            } catch (e: HttpException) {
-                throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
-            }
+            apiService.getPackageListBy(
+                code = destination.code,
+                name = destination.name,
+                slug = destination.slug
+            ).results
         }
 
     override suspend fun getPackagesPage(
@@ -62,20 +56,16 @@ internal class PackagesRepositoryImpl(
             forceRefresh,
             cacheTTL,
         ) {
-            try {
-                val response = apiService.getPackageListBy(
-                    code = destination.code,
-                    name = destination.name,
-                    slug = destination.slug
-                )
-                PackagesPage(
-                    packages = response.results,
-                    totalCount = response.count,
-                    promoCode = response.promoCode,
-                )
-            } catch (e: HttpException) {
-                throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
-            }
+            val response = apiService.getPackageListBy(
+                code = destination.code,
+                name = destination.name,
+                slug = destination.slug
+            )
+            PackagesPage(
+                packages = response.results,
+                totalCount = response.count,
+                promoCode = response.promoCode,
+            )
         }
         return RepositoryResult(
             value = result.value ?: PackagesPage(),
@@ -96,11 +86,7 @@ internal class PackagesRepositoryImpl(
         cacheTTL: Duration,
     ): RepositoryResult<List<PackagePlan>> =
         cache.cachedListResult(topUpPackagesKey(iccid), forceRefresh, cacheTTL) {
-            try {
-                apiService.getEsimTopUpPackages(iccid = iccid).results
-            } catch (e: HttpException) {
-                throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
-            }
+            apiService.getEsimTopUpPackages(iccid = iccid).results
         }
     // endregion
 
@@ -117,11 +103,7 @@ internal class PackagesRepositoryImpl(
         cacheTTL: Duration,
     ): RepositoryResult<CheckStockResponse?> =
         cache.cachedResult<CheckStockResponse>(checkStockKey(packageTypeId), forceRefresh, cacheTTL) {
-            try {
-                apiService.getPackageStock(packageTypeId = packageTypeId)
-            } catch (e: HttpException) {
-                throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
-            }
+            apiService.getPackageStock(packageTypeId = packageTypeId)
         }
     // endregion
 

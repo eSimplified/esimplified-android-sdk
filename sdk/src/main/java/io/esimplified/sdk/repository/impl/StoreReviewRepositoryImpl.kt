@@ -1,7 +1,6 @@
 package io.esimplified.sdk.repository.impl
 
 import io.esimplified.sdk.model.RatingApiResponse
-import io.esimplified.sdk.network.ApiErrorMessage
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.SdkCache
 import io.esimplified.sdk.repository.RepositoryResult
@@ -9,7 +8,6 @@ import io.esimplified.sdk.repository.StoreReviewRepository
 import io.esimplified.sdk.repository.cachedResult
 import io.esimplified.sdk.repository.valueOrThrow
 import kotlin.time.Duration
-import retrofit2.HttpException
 
 internal class StoreReviewRepositoryImpl(
     private val apiService: ApiService,
@@ -27,11 +25,7 @@ internal class StoreReviewRepositoryImpl(
         cacheTTL: Duration,
     ): RepositoryResult<RatingApiResponse?> =
         cache.cachedResult<RatingApiResponse>(STORE_REVIEW_KEY, forceRefresh, cacheTTL) {
-            try {
-                apiService.getStoreReview()
-            } catch (e: HttpException) {
-                throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
-            }
+            apiService.getStoreReview()
         }
     // endregion
 

@@ -7,6 +7,7 @@ import io.esimplified.sdk.network.ApiErrorMessage
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.SdkCache
 import io.esimplified.sdk.repository.RepositoryResult
+import io.esimplified.sdk.repository.apiRejection
 import io.esimplified.sdk.repository.cachedListResult
 import io.esimplified.sdk.repository.cachedResult
 import io.esimplified.sdk.repository.combineResults
@@ -14,7 +15,6 @@ import io.esimplified.sdk.repository.listOrThrow
 import io.esimplified.sdk.repository.valueOrThrow
 import kotlin.time.Duration
 import okhttp3.ResponseBody
-import retrofit2.HttpException
 
 internal class EsimRepositoryImpl(
     private val apiService: ApiService,
@@ -121,14 +121,10 @@ internal class EsimRepositoryImpl(
             forceRefresh,
             cacheTTL,
         ) {
-            try {
-                apiService.getCustomerEsimByICCID(
-                    iccid = iccid,
-                    includeBase64QrCode = true.takeIf { includeBase64QrCode }
-                )
-            } catch (e: HttpException) {
-                throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
-            }
+            apiService.getCustomerEsimByICCID(
+                iccid = iccid,
+                includeBase64QrCode = true.takeIf { includeBase64QrCode }
+            )
         }
 
     override suspend fun updateEsim(
@@ -147,11 +143,14 @@ internal class EsimRepositoryImpl(
             isPrimary = isPrimary
         )
         if (!response.isSuccessful) {
-            throw Exception(ApiErrorMessage.parse(readBody(response.errorBody())))
+            throw apiRejection(
+                ApiErrorMessage.parse(readBody(response.errorBody())),
+                statusCode = response.code(),
+            )
         }
         val message = ApiErrorMessage.parseOrNull(readBody(response.body()))
         if (message != UPDATE_SUCCEEDED_MESSAGE) {
-            throw Exception(message ?: UPDATE_FAILED_MESSAGE)
+            throw apiRejection(message, UPDATE_FAILED_MESSAGE)
         }
     }
 
@@ -197,21 +196,17 @@ internal class EsimRepositoryImpl(
             forceRefresh,
             cacheTTL,
         ) {
-            try {
-                apiService.getCustomerEsimList(
-                    getESimDetails = true,
-                    getPackageDetails = true,
-                    getBalanceRemaining = true,
-                    showArchived = archived,
-                    showLegacy = showLegacy,
-                    isPrimary = isPrimary,
-                    orderBy = LIST_ORDER_BY,
-                    limit = LIST_LIMIT,
-                    includeBase64QrCode = true.takeIf { includeBase64QrCode }
-                ).results
-            } catch (e: HttpException) {
-                throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
-            }
+            apiService.getCustomerEsimList(
+                getESimDetails = true,
+                getPackageDetails = true,
+                getBalanceRemaining = true,
+                showArchived = archived,
+                showLegacy = showLegacy,
+                isPrimary = isPrimary,
+                orderBy = LIST_ORDER_BY,
+                limit = LIST_LIMIT,
+                includeBase64QrCode = true.takeIf { includeBase64QrCode }
+            ).results
         }
 
     private companion object {

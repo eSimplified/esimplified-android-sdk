@@ -15,6 +15,7 @@ import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.LoyaltyApiException
 import io.esimplified.sdk.network.SdkCache
 import io.esimplified.sdk.repository.RepositoryResult
+import io.esimplified.sdk.repository.apiRead
 import io.esimplified.sdk.repository.cachedResult
 import io.esimplified.sdk.repository.valueOrThrow
 import kotlin.time.Duration
@@ -36,20 +37,11 @@ internal class LoyaltyRepositoryImpl(
         cacheTTL: Duration,
     ): RepositoryResult<KredsLoyaltyBalanceResponse?> =
         cache.cachedResult<KredsLoyaltyBalanceResponse>(KREDS_BALANCE_KEY, forceRefresh, cacheTTL) {
-            try {
-                apiService.getLoyaltyPoints()
-            } catch (e: HttpException) {
-                throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
-            }
+            apiService.getLoyaltyPoints()
         }
 
-    override suspend fun getKredsQuote(packageTypeId: Int, loyaltyPointsAmount: Double): KredsQuoteResponse {
-        try {
-            return apiService.sendKredsQuote(KredsQuoteRequest(packageTypeId, loyaltyPointsAmount))
-        } catch (e: HttpException) {
-            throw Exception(ApiErrorMessage.parseOrNull(e) ?: e.message)
-        }
-    }
+    override suspend fun getKredsQuote(packageTypeId: Int, loyaltyPointsAmount: Double): KredsQuoteResponse =
+        apiRead { apiService.sendKredsQuote(KredsQuoteRequest(packageTypeId, loyaltyPointsAmount)) }
     // endregion
 
     override suspend fun getMokafaaQuote(packageTypeId: Int, loyaltyPointsToUse: Int): KredsQuoteResponse {
