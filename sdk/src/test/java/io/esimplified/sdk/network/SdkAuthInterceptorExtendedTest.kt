@@ -170,11 +170,10 @@ class SdkAuthInterceptorExtendedTest {
     }
 
     @Test
-    fun `SdkError NetworkError carries status code and message`() {
+    fun `SdkError NetworkError carries status code and the bare server message`() {
         val error = SdkError.NetworkError(statusCode = 422, message = "validation failed")
         assertEquals(422, error.statusCode)
-        assertTrue(error.message!!.contains("422"))
-        assertTrue(error.message!!.contains("validation failed"))
+        assertEquals("validation failed", error.message)
     }
 
     @Test
