@@ -237,7 +237,10 @@ internal class SdkAuthInterceptor(
         return try {
             json.decodeFromString<GetTokenResponse>(responseBody)
         } catch (e: Exception) {
-            throw IOException("Failed to parse response body: $responseBody", e)
+            throw IOException(
+                "Failed to parse the token response" +
+                    " (${responseBody.length} chars, ${e::class.simpleName})"
+            )
         }
     }
 

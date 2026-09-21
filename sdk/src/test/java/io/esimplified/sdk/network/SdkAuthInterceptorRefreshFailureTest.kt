@@ -1,6 +1,9 @@
 package io.esimplified.sdk.network
 
 import io.esimplified.sdk.SdkConfig
+import io.esimplified.sdk.SdkLog
+import io.esimplified.sdk.SdkLogLevel
+import io.esimplified.sdk.SdkLogger
 import io.esimplified.sdk.auth.Auth
 import io.esimplified.sdk.auth.DefaultSessionManager
 import io.esimplified.sdk.fake.FakeSecureStorage
@@ -31,9 +34,12 @@ class SdkAuthInterceptorRefreshFailureTest {
     private lateinit var mockWebServer: MockWebServer
     private lateinit var sessionManager: DefaultSessionManager
     private lateinit var client: OkHttpClient
+    private lateinit var logger: RecordingLogger
 
     @Before
     fun setup() {
+        logger = RecordingLogger()
+        SdkLog.delegate = logger
         mockWebServer = MockWebServer()
         mockWebServer.start()
         sessionManager = DefaultSessionManager(FakeSecureStorage())
@@ -49,8 +55,48 @@ class SdkAuthInterceptorRefreshFailureTest {
 
     @After
     fun teardown() {
+        SdkLog.resetForTesting()
         mockWebServer.shutdown()
     }
+
+    // region The token response never leaves the device
+    @Test
+    fun `an unparseable token response never reaches the log or the thrown error`() {
+        sessionManager.save(authenticated())
+        mockWebServer.enqueue(MockResponse().setResponseCode(401))
+        mockWebServer.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"access_token":{"unexpected":true},"refresh_token":"$LEAKED_SECRET"}"""
+            )
+        )
+
+        val thrown = execute()
+
+        assertNotNull("Expected the call to surface an error", thrown)
+        assertFalse(
+            "The token body must not reach the exception message: ${describe(thrown)}",
+            describe(thrown).contains(LEAKED_SECRET)
+        )
+        assertFalse(
+            "The token body must not reach the log: ${logger.rendered()}",
+            logger.rendered().contains(LEAKED_SECRET)
+        )
+        assertTrue(
+            "An unparseable refresh response is not the server rejecting the session",
+            sessionManager.getAuthState() is Auth.Authenticated
+        )
+    }
+
+    private fun describe(error: Throwable?): String {
+        val parts = mutableListOf<String>()
+        var current = error
+        while (current != null) {
+            parts += current.toString()
+            current = current.cause
+        }
+        return parts.joinToString(" | ")
+    }
+    // endregion
 
     // region A refresh the server did not reject keeps the session
     @Test
@@ -276,8 +322,29 @@ class SdkAuthInterceptorRefreshFailureTest {
         expires = LocalDateTime.now().plusHours(1),
     )
 
+    private class RecordingLogger : SdkLogger {
+        private val lines = mutableListOf<String>()
+
+        override fun log(level: SdkLogLevel, message: String, throwable: Throwable?) {
+            synchronized(lines) { lines += "$message ${describeThrowable(throwable)}" }
+        }
+
+        fun rendered(): String = synchronized(lines) { lines.joinToString("\n") }
+
+        private fun describeThrowable(throwable: Throwable?): String {
+            var current = throwable
+            val parts = mutableListOf<String>()
+            while (current != null) {
+                parts += current.toString()
+                current = current.cause
+            }
+            return parts.joinToString(" | ")
+        }
+    }
+
     private companion object {
         const val STALE_TOKEN = "stale-token"
+        const val LEAKED_SECRET = "rotated-refresh-token-that-must-never-be-logged"
         const val FRESH_TOKEN = "fresh-token"
         const val FRESH_REFRESH_TOKEN = "fresh-refresh-token"
     }
