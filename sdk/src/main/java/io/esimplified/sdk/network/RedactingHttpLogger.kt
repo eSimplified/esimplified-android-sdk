@@ -8,10 +8,13 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import okhttp3.HttpUrl
 import okhttp3.Interceptor
+import okhttp3.RequestBody
 import okhttp3.Response
 import okio.Buffer
 import io.esimplified.sdk.SdkLog
+import io.esimplified.sdk.redactedPath
 
 internal class RedactingHttpLogger : Interceptor {
 
@@ -19,17 +22,11 @@ internal class RedactingHttpLogger : Interceptor {
         val request = chain.request()
         val startNanos = System.nanoTime()
 
-        SdkLog.d("$TAG --> ${request.method} ${request.url}")
+        SdkLog.d("$TAG --> ${request.method} ${redactedUrl(request.url)}")
         request.headers.forEach { (name, value) ->
             SdkLog.d("$TAG $name: ${redactHeaderValue(name, value)}")
         }
-        request.body?.let { body ->
-            val buffer = Buffer()
-            body.writeTo(buffer)
-            val raw = buffer.readUtf8()
-            val contentType = body.contentType()?.toString().orEmpty()
-            SdkLog.d("$TAG ${redactBody(raw, contentType)}")
-        }
+        request.body?.let { logRequestBody(it) }
 
         val response: Response
         try {
@@ -40,48 +37,95 @@ internal class RedactingHttpLogger : Interceptor {
         }
 
         val durationMs = (System.nanoTime() - startNanos) / 1_000_000
-        SdkLog.d("$TAG <-- ${response.code} ${response.message} ${request.url} (${durationMs}ms)")
+        SdkLog.d("$TAG <-- ${response.code} ${response.message} ${redactedUrl(request.url)} (${durationMs}ms)")
         response.headers.forEach { (name, value) ->
             SdkLog.d("$TAG $name: ${redactHeaderValue(name, value)}")
         }
 
-        val responseBody = response.body
-        if (responseBody != null) {
-            val source = responseBody.source()
-            source.request(Long.MAX_VALUE)
-            val raw = source.buffer.clone().readUtf8()
-            val contentType = responseBody.contentType()?.toString().orEmpty()
-            SdkLog.d("$TAG ${redactBody(raw, contentType)}")
-        }
+        logResponseBody(response)
 
         return response
     }
 
-    private fun redactHeaderValue(name: String, value: String): String =
-        if (SENSITIVE_HEADERS.contains(name.lowercase())) REDACTED else value
+    // region URLs
+    private fun redactedUrl(url: HttpUrl): String {
+        val path = "${url.host}${url.encodedPath.redactedPath()}"
+        val names = url.queryParameterNames
+        if (names.isEmpty()) return path
+        return names.joinToString(separator = "&", prefix = "$path?") { "$it=$REDACTED" }
+    }
+    // endregion
+
+    // region Bodies
+    private fun logRequestBody(body: RequestBody) {
+        val contentType = body.contentType()?.toString().orEmpty()
+        if (!isRedactable(contentType)) {
+            SdkLog.d("$TAG ${bodySummary(contentType, body.contentLength())}")
+            return
+        }
+        if (body.contentLength() > MAX_LOGGED_BODY_BYTES) {
+            SdkLog.d("$TAG ${bodySummary(contentType, body.contentLength())}")
+            return
+        }
+        val buffer = Buffer()
+        body.writeTo(buffer)
+        if (buffer.size > MAX_LOGGED_BODY_BYTES) {
+            SdkLog.d("$TAG ${bodySummary(contentType, buffer.size)}")
+            return
+        }
+        SdkLog.d("$TAG ${redactBody(buffer.readUtf8(), contentType)}")
+    }
+
+    private fun logResponseBody(response: Response) {
+        val body = response.body ?: return
+        val contentType = body.contentType()?.toString().orEmpty()
+        if (!isRedactable(contentType)) {
+            SdkLog.d("$TAG ${bodySummary(contentType, body.contentLength())}")
+            return
+        }
+        val source = body.source()
+        source.request(MAX_LOGGED_BODY_BYTES + 1)
+        val buffered = source.buffer.size
+        if (buffered > MAX_LOGGED_BODY_BYTES) {
+            SdkLog.d("$TAG ${bodySummary(contentType, body.contentLength().takeIf { it >= 0 } ?: buffered)}")
+            return
+        }
+        SdkLog.d("$TAG ${redactBody(source.buffer.clone().readUtf8(), contentType)}")
+    }
+
+    private fun isRedactable(contentType: String): Boolean =
+        contentType.contains("json", ignoreCase = true) ||
+            contentType.contains("x-www-form-urlencoded", ignoreCase = true)
+
+    private fun bodySummary(contentType: String, byteCount: Long): String {
+        val type = contentType.ifEmpty { "unknown content type" }
+        val size = if (byteCount >= 0) "$byteCount bytes" else "unknown length"
+        return "($type body, $size — not logged)"
+    }
 
     private fun redactBody(raw: String, contentType: String): String {
         if (raw.isEmpty()) return "(empty body)"
         return when {
-            contentType.contains("json", ignoreCase = true) -> redactJsonBody(raw)
+            contentType.contains("json", ignoreCase = true) -> redactJsonBody(raw, contentType)
             contentType.contains("x-www-form-urlencoded", ignoreCase = true) -> redactFormBody(raw)
-            else -> raw
+            else -> bodySummary(contentType, raw.length.toLong())
         }
     }
 
-    private fun redactJsonBody(raw: String): String {
+    private fun redactJsonBody(raw: String, contentType: String): String {
         return try {
             val element = jsonParser.parseToJsonElement(raw)
             jsonParser.encodeToString(JsonElement.serializer(), redactJsonElement(element))
         } catch (_: Exception) {
-            raw
+            "(unparseable ${contentType.ifEmpty { "unknown content type" }} body," +
+                " ${raw.length} chars — not logged)"
         }
     }
 
     private fun redactJsonElement(element: JsonElement): JsonElement = when (element) {
         is JsonObject -> buildJsonObject {
             for ((key, value) in element) {
-                if (SENSITIVE_BODY_KEYS.contains(key.lowercase()) && value is JsonPrimitive && value.contentOrNullIfNull() != null) {
+                if (SENSITIVE_BODY_KEYS.contains(key.lowercase()) && value !is JsonNull) {
                     put(key, JsonPrimitive(REDACTED))
                 } else {
                     put(key, redactJsonElement(value))
@@ -91,9 +135,6 @@ internal class RedactingHttpLogger : Interceptor {
         is JsonArray -> buildJsonArray { element.forEach { add(redactJsonElement(it)) } }
         is JsonPrimitive, JsonNull -> element
     }
-
-    private fun JsonPrimitive.contentOrNullIfNull(): String? =
-        if (this is JsonNull) null else content
 
     private fun redactFormBody(raw: String): String {
         val pairs = raw.split('&').map { pair ->
@@ -105,10 +146,15 @@ internal class RedactingHttpLogger : Interceptor {
         }
         return pairs.joinToString("&")
     }
+    // endregion
+
+    private fun redactHeaderValue(name: String, value: String): String =
+        if (SENSITIVE_HEADERS.contains(name.lowercase())) REDACTED else value
 
     private companion object {
         const val TAG = "EsimplifiedSdkHttp"
         const val REDACTED = "***REDACTED***"
+        const val MAX_LOGGED_BODY_BYTES = 32L * 1024
 
         val SENSITIVE_HEADERS = setOf(
             "authorization",
@@ -123,32 +169,50 @@ internal class RedactingHttpLogger : Interceptor {
             "current_password",
             "new_password",
             "old_password",
+            "password_reset_encoded",
             "client_secret",
             "secret",
             "refresh_token",
             "access_token",
             "token",
+            "otp",
+            "session_id",
             "ephemeral_key",
             "publishable_key",
             "activation_code",
             "qr_code",
+            "qr_code_image_base64",
+            "image_base64",
+            "image_url",
+            "uri",
             "sm_dp_address",
+            "matching_id",
             "customer_ref",
             "id_token",
+            "user",
+            "username",
             "email",
+            "new_email",
             "phone_number",
             "first_name",
             "last_name",
             "full_name",
             "customer_id",
+            "mokafaa_cic_no",
+            "provider_account_id",
             "referral_code",
+            "referred_by",
             "external_reference",
             "iccid",
             "eid",
             "imsi",
             "msisdn",
+            "order_uuid",
+            "transaction_id",
             "voucher_code",
             "promo_code",
+            "discount_code",
+            "coupon_id",
         )
 
         val jsonParser = Json {
