@@ -155,6 +155,63 @@ class SdkAuthInterceptorRefreshFailureTest {
     }
 
     @Test
+    fun `a 403 the oauth server did not author keeps the session`() {
+        sessionManager.save(authenticated())
+        mockWebServer.enqueue(MockResponse().setResponseCode(401))
+        mockWebServer.enqueue(
+            MockResponse().setResponseCode(403).setBody("<html><body>Request blocked</body></html>")
+        )
+
+        val thrown = execute()
+
+        assertFalse(
+            "A 403 without a grant rejection is the edge refusing us, not the session ending",
+            thrown is SdkError.AuthenticationRequired
+        )
+        assertTrue(sessionManager.getAuthState() is Auth.Authenticated)
+    }
+
+    @Test
+    fun `a 400 without a grant rejection keeps the session`() {
+        sessionManager.save(authenticated())
+        mockWebServer.enqueue(MockResponse().setResponseCode(401))
+        mockWebServer.enqueue(MockResponse().setResponseCode(400).setBody("""{"detail":"malformed request"}"""))
+
+        val thrown = execute()
+
+        assertFalse(thrown is SdkError.AuthenticationRequired)
+        assertTrue(sessionManager.getAuthState() is Auth.Authenticated)
+    }
+
+    @Test
+    fun `a 403 on a normal call is not a refresh trigger`() {
+        sessionManager.save(authenticated())
+        mockWebServer.enqueue(MockResponse().setResponseCode(403).setBody("<html>blocked</html>"))
+
+        val code = client.newCall(Request.Builder().url(mockWebServer.url("/api/test")).build())
+            .execute()
+            .use { it.code }
+
+        assertEquals(403, code)
+        assertEquals("A 403 must not send the SDK to the token endpoint", 1, mockWebServer.requestCount)
+        assertTrue(sessionManager.getAuthState() is Auth.Authenticated)
+    }
+
+    @Test
+    fun `a refresh that carries no access token keeps the session`() {
+        sessionManager.save(authenticated())
+        mockWebServer.enqueue(MockResponse().setResponseCode(401))
+        mockWebServer.enqueue(MockResponse().setResponseCode(200).setBody("""{"expires_in":3600}"""))
+
+        val thrown = execute()
+
+        assertFalse(thrown is SdkError.AuthenticationRequired)
+        val state = sessionManager.getAuthState()
+        assertTrue(state is Auth.Authenticated)
+        assertEquals("tok", (state as Auth.Authenticated).accessToken)
+    }
+
+    @Test
     fun `an empty refresh token ends the session without a network call`() {
         sessionManager.save(authenticated(refreshToken = ""))
         mockWebServer.enqueue(MockResponse().setResponseCode(401))

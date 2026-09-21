@@ -20,7 +20,6 @@ internal class SdkAuthInterceptor(
 ) : Interceptor {
 
     private val json = Json { ignoreUnknownKeys = true }
-    private val refreshLock = Any()
 
     private sealed interface RefreshOutcome {
         data object Success : RefreshOutcome
@@ -46,7 +45,7 @@ internal class SdkAuthInterceptor(
         // Proactive token refresh — if token expires within 5 minutes, refresh before sending
         if (authState is Auth.Authenticated && authState.isExpired && !isAuthTokenEndpoint) {
             SdkLog.d("Token near expiry — proactive refresh")
-            synchronized(refreshLock) {
+            TokenRefreshGate.withRefreshPermit {
                 authState = sessionManager.getAuthState()
                 if (authState is Auth.Authenticated && (authState as Auth.Authenticated).isExpired) {
                     authState = when (val outcome = attemptTokenRefresh(chain, authState as Auth.Authenticated)) {
@@ -101,13 +100,13 @@ internal class SdkAuthInterceptor(
         val response = chain.proceed(requestBuilder.build())
         SdkLog.d("Response: ${response.code} for ${originalRequest.url.encodedPath.redactedPath()}")
 
-        if ((response.code == 401 || response.code == 403) && authState is Auth.Authenticated && !isAuthTokenEndpoint) {
+        if (response.code == 401 && authState is Auth.Authenticated && !isAuthTokenEndpoint) {
             SdkLog.w("Got ${response.code} -> attempting reactive token refresh")
             response.close()
 
             val originalAccessToken = (authState as Auth.Authenticated).accessToken
 
-            synchronized(refreshLock) {
+            TokenRefreshGate.withRefreshPermit {
                 val currentAuthState = sessionManager.getAuthState()
                 if (currentAuthState is Auth.Authenticated && currentAuthState.accessToken != originalAccessToken && currentAuthState.accessToken.isNotEmpty()) {
                     SdkLog.d("Token already refreshed by another thread")
@@ -153,25 +152,36 @@ internal class SdkAuthInterceptor(
             SdkLog.d("Refresh response: ${refreshResponse.code}")
             if (refreshResponse.isSuccessful) {
                 val tokens = parseTokenResponse(refreshResponse)
-                val base = (sessionManager.getAuthState() as? Auth.Authenticated)
-                    ?.takeIf { it.refreshToken == authState.refreshToken }
-                    ?: authState
-                sessionManager.save(
-                    base.copy(
-                        expires = calculateExpiration(tokens.expiresIn),
-                        accessToken = tokens.accessToken ?: "",
-                        refreshToken = tokens.refreshToken?.takeIf { it.isNotEmpty() } ?: authState.refreshToken
+                val accessToken = tokens.accessToken?.takeIf { it.isNotEmpty() }
+                if (accessToken == null) {
+                    SdkLog.e("Refresh succeeded without an access token — keeping the session")
+                    RefreshOutcome.Retryable(
+                        SdkError.NetworkError(refreshResponse.code, "The token response carried no access token")
                     )
-                )
-                RefreshOutcome.Success
-            } else if (refreshResponse.code in AUTH_REJECTING_CODES) {
-                SdkLog.e("Refresh rejected with ${refreshResponse.code} — ending the session")
-                RefreshOutcome.AuthRejected
+                } else {
+                    val base = (sessionManager.getAuthState() as? Auth.Authenticated)
+                        ?.takeIf { it.refreshToken == authState.refreshToken }
+                        ?: authState
+                    sessionManager.save(
+                        base.copy(
+                            expires = calculateExpiration(tokens.expiresIn),
+                            accessToken = accessToken,
+                            refreshToken = tokens.refreshToken?.takeIf { it.isNotEmpty() } ?: authState.refreshToken
+                        )
+                    )
+                    RefreshOutcome.Success
+                }
             } else {
-                val message = ApiErrorMessage.parseOrNull(readBody(refreshResponse))
-                    ?: refreshResponse.message.ifEmpty { ApiErrorMessage.FALLBACK }
-                SdkLog.e("Refresh failed with ${refreshResponse.code} — keeping the session")
-                RefreshOutcome.Retryable(SdkError.NetworkError(refreshResponse.code, message))
+                val body = readBody(refreshResponse)
+                if (TokenRefresh.isSessionRejection(refreshResponse.code, body)) {
+                    SdkLog.e("Refresh rejected with ${refreshResponse.code} — ending the session")
+                    RefreshOutcome.AuthRejected
+                } else {
+                    val message = ApiErrorMessage.parseOrNull(body)
+                        ?: refreshResponse.message.ifEmpty { ApiErrorMessage.FALLBACK }
+                    SdkLog.e("Refresh failed with ${refreshResponse.code} — keeping the session")
+                    RefreshOutcome.Retryable(SdkError.NetworkError(refreshResponse.code, message))
+                }
             }
         } catch (parseError: IOException) {
             SdkLog.e("Refresh response parse error", parseError)
@@ -250,10 +260,6 @@ internal class SdkAuthInterceptor(
 
     private fun readBody(response: Response): String? =
         runCatching { response.body?.string() }.getOrNull()
-
-    private companion object {
-        val AUTH_REJECTING_CODES = setOf(400, 401, 403)
-    }
 }
 
 internal fun ByteArray.encodeBase64(): String =
