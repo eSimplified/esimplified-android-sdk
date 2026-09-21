@@ -6,9 +6,27 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import io.esimplified.sdk.SdkLog
 
-internal class DefaultSecureStorage(context: Context) : SecureStorageProvider {
+internal class DefaultSecureStorage(context: Context) : SecureStorageProvider, DurableSecureStorage {
 
     private val prefs: SharedPreferences = createEncryptedPrefs(context)
+
+    override fun secureRead(key: String): StoredValue {
+        return try {
+            prefs.getString(key, null)?.let { StoredValue.Present(it) } ?: StoredValue.Absent
+        } catch (e: Exception) {
+            SdkLog.e("Failed to read key=$key", e)
+            StoredValue.Unreadable
+        }
+    }
+
+    override fun secureSaveDurably(value: String, forKey: String): Boolean {
+        return try {
+            prefs.edit().putString(forKey, value).commit()
+        } catch (e: Exception) {
+            SdkLog.e("Failed to persist key=$forKey", e)
+            false
+        }
+    }
 
     override fun secureLoad(key: String, default: String): String {
         return try {

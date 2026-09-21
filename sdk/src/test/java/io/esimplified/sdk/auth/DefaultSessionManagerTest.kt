@@ -1,7 +1,11 @@
 package io.esimplified.sdk.auth
 
+import io.esimplified.sdk.SdkLog
+import io.esimplified.sdk.SdkLogLevel
+import io.esimplified.sdk.SdkLogger
 import io.esimplified.sdk.fake.FakeSecureStorage
 import io.esimplified.sdk.model.Customer
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -18,6 +22,11 @@ class DefaultSessionManagerTest {
     fun setup() {
         fakeStorage = FakeSecureStorage()
         sessionManager = DefaultSessionManager(fakeStorage)
+    }
+
+    @After
+    fun teardown() {
+        SdkLog.resetForTesting()
     }
 
     private fun createTestAuth(
@@ -190,5 +199,125 @@ class DefaultSessionManagerTest {
         assertEquals("stored@example.com", state.user.email)
         assertEquals("Jane", state.user.firstName)
         assertEquals("Smith", state.user.lastName)
+    }
+
+    // region Tokens that cannot be renewed or cannot be written
+    @Test
+    fun `a stored session without a refresh token restores as signed out`() {
+        fakeStorage.secureSave("stored-access-token", DefaultSessionManager.KEY_ACCESS_TOKEN)
+        fakeStorage.secureSave("user-456", DefaultSessionManager.KEY_USER_ID)
+        fakeStorage.secureSave(
+            LocalDateTime.of(2026, 12, 31, 23, 59, 59).toString(),
+            DefaultSessionManager.KEY_ACCESS_TOKEN_EXPIRE
+        )
+
+        val restoredManager = DefaultSessionManager(fakeStorage)
+
+        assertFalse(restoredManager.isAuthenticated())
+        assertTrue(restoredManager.getAuthState() is Auth.Unauthenticated)
+    }
+
+    @Test
+    fun `an unreadable refresh token restores as signed out without wiping storage`() {
+        val storage = FailingSecureStorage(unreadableKeys = setOf(DefaultSessionManager.KEY_REFRESH_TOKEN))
+        storage.secureSave("stored-access-token", DefaultSessionManager.KEY_ACCESS_TOKEN)
+        storage.secureSave("stored-refresh-token", DefaultSessionManager.KEY_REFRESH_TOKEN)
+        storage.secureSave("user-456", DefaultSessionManager.KEY_USER_ID)
+        storage.secureSave(
+            LocalDateTime.of(2026, 12, 31, 23, 59, 59).toString(),
+            DefaultSessionManager.KEY_ACCESS_TOKEN_EXPIRE
+        )
+
+        val restoredManager = DefaultSessionManager(storage)
+
+        assertTrue(restoredManager.getAuthState() is Auth.Unauthenticated)
+        assertFalse("Storage must be left alone", storage.wasCleared)
+        assertEquals("stored-refresh-token", storage.rawValue(DefaultSessionManager.KEY_REFRESH_TOKEN))
+    }
+
+    @Test
+    fun `a refresh token write that fails is reported`() {
+        val logger = RecordingLogger()
+        SdkLog.delegate = logger
+        val storage = FailingSecureStorage(unwritableKeys = setOf(DefaultSessionManager.KEY_REFRESH_TOKEN))
+        val manager = DefaultSessionManager(storage)
+
+        manager.save(createTestAuth())
+
+        assertTrue(
+            "A failed token write must be reported: ${logger.rendered()}",
+            logger.rendered().contains(DefaultSessionManager.KEY_REFRESH_TOKEN)
+        )
+    }
+
+    @Test
+    fun `token writes go through the durable path`() {
+        val storage = FailingSecureStorage()
+        val manager = DefaultSessionManager(storage)
+
+        manager.save(createTestAuth())
+
+        assertEquals(
+            setOf(
+                DefaultSessionManager.KEY_ACCESS_TOKEN,
+                DefaultSessionManager.KEY_REFRESH_TOKEN,
+                DefaultSessionManager.KEY_ACCESS_TOKEN_EXPIRE,
+                DefaultSessionManager.KEY_USER_ID,
+            ),
+            storage.durablyWritten
+        )
+    }
+    // endregion
+
+    private class FailingSecureStorage(
+        private val unreadableKeys: Set<String> = emptySet(),
+        private val unwritableKeys: Set<String> = emptySet(),
+    ) : SecureStorageProvider, DurableSecureStorage {
+
+        private val store = HashMap<String, String>()
+        val durablyWritten = mutableSetOf<String>()
+        var wasCleared = false
+            private set
+
+        fun rawValue(key: String): String? = store[key]
+
+        override fun secureRead(key: String): StoredValue = when {
+            unreadableKeys.contains(key) -> StoredValue.Unreadable
+            store.containsKey(key) -> StoredValue.Present(store.getValue(key))
+            else -> StoredValue.Absent
+        }
+
+        override fun secureSaveDurably(value: String, forKey: String): Boolean {
+            durablyWritten += forKey
+            if (unwritableKeys.contains(forKey)) return false
+            store[forKey] = value
+            return true
+        }
+
+        override fun secureLoad(key: String, default: String): String = store[key] ?: default
+
+        override fun secureSave(value: String, forKey: String) {
+            store[forKey] = value
+        }
+
+        override fun clearSecureStorage() {
+            wasCleared = true
+            store.clear()
+        }
+
+        @Suppress("UNCHECKED_CAST")
+        override fun <T> load(key: String, default: T): T = default
+
+        override fun <T> save(value: T, forKey: String) = Unit
+    }
+
+    private class RecordingLogger : SdkLogger {
+        private val lines = mutableListOf<String>()
+
+        override fun log(level: SdkLogLevel, message: String, throwable: Throwable?) {
+            lines += message
+        }
+
+        fun rendered(): String = lines.joinToString("\n")
     }
 }

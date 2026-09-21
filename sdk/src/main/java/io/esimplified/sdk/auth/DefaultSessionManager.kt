@@ -12,6 +12,8 @@ internal class DefaultSessionManager(
     private val storage: SecureStorageProvider
 ) : SessionManager {
 
+    private val durableStorage = storage as? DurableSecureStorage
+
     companion object {
         // Same key constants as the app's SessionService so existing logged-in users stay logged in
         const val KEY_USER_ID = "user_id"
@@ -31,13 +33,45 @@ internal class DefaultSessionManager(
         const val AUTH_GRANT_TYPE = "password"
         const val AUTH_GRANT_TYPE_REFRESH_TOKEN = "refresh_token"
         const val AUTH_GRANT_TYPE_CLIENT_CREDENTIALS = "client_credentials"
+
+        private val DURABLE_KEYS = setOf(
+            KEY_ACCESS_TOKEN,
+            KEY_REFRESH_TOKEN,
+            KEY_ACCESS_TOKEN_EXPIRE,
+            KEY_USER_ID,
+        )
+    }
+
+    private fun readToken(key: String): String = when (val stored = durableStorage?.secureRead(key)) {
+        is StoredValue.Present -> stored.value
+        StoredValue.Absent -> ""
+        StoredValue.Unreadable -> {
+            SdkLog.e("Secure storage could not be read for $key — restoring as signed out, storage left intact")
+            ""
+        }
+        null -> storage.secureLoad(key, "")
+    }
+
+    private fun persist(value: String, key: String) {
+        if (key !in DURABLE_KEYS) {
+            storage.secureSave(value, key)
+            return
+        }
+        val durable = durableStorage
+        if (durable == null) {
+            storage.secureSave(value, key)
+            return
+        }
+        if (!durable.secureSaveDurably(value, key)) {
+            SdkLog.e("Secure storage refused the write for $key — the session will not survive a restart")
+        }
     }
 
     private fun getStorageState(): Auth {
         return try {
-            val accessToken = storage.secureLoad(KEY_ACCESS_TOKEN, "")
-            val refreshToken = storage.secureLoad(KEY_REFRESH_TOKEN, "")
-            val expiresIn = storage.secureLoad(KEY_ACCESS_TOKEN_EXPIRE, "")
+            val accessToken = readToken(KEY_ACCESS_TOKEN)
+            val refreshToken = readToken(KEY_REFRESH_TOKEN)
+            val expiresIn = readToken(KEY_ACCESS_TOKEN_EXPIRE)
 
             val user = Customer(
                 id = storage.secureLoad(KEY_USER_ID, ""),
@@ -52,7 +86,10 @@ internal class DefaultSessionManager(
                 preferredCurrency = storage.secureLoad(KEY_USER_PREFERRED_CURRENCY, "").takeIf { it.isNotEmpty() }
             )
 
-            if (accessToken.isEmpty() || user.id.isEmpty()) {
+            if (accessToken.isEmpty() || refreshToken.isEmpty() || user.id.isEmpty()) {
+                if (accessToken.isNotEmpty() && refreshToken.isEmpty()) {
+                    SdkLog.w("A stored session without a refresh token cannot be renewed — restoring as signed out")
+                }
                 Auth.Unauthenticated
             } else {
                 Auth.Authenticated(
@@ -93,7 +130,7 @@ internal class DefaultSessionManager(
                     KEY_REFRESH_TOKEN to auth.refreshToken,
                     KEY_ACCESS_TOKEN_EXPIRE to auth.expires.toString()
                 ).forEach { entry ->
-                    storage.secureSave(entry.value.orEmpty(), entry.key)
+                    persist(entry.value.orEmpty(), entry.key)
                 }
             }
 
