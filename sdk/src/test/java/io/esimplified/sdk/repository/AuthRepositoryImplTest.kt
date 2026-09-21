@@ -125,6 +125,108 @@ class AuthRepositoryImplTest {
         assertEquals("rotated-refresh-token", sessionManager.getRefreshToken())
     }
 
+    // region A refresh the server did not reject keeps the session
+    @Test
+    fun `loginWithRefreshToken keeps the session when the backend returns 500`() = runTest {
+        assertRefreshFailureKeepsTheSession(statusCode = 500)
+    }
+
+    @Test
+    fun `loginWithRefreshToken keeps the session when the backend returns 502`() = runTest {
+        assertRefreshFailureKeepsTheSession(statusCode = 502)
+    }
+
+    @Test
+    fun `loginWithRefreshToken keeps the session when the backend returns 503`() = runTest {
+        assertRefreshFailureKeepsTheSession(statusCode = 503)
+    }
+
+    @Test
+    fun `loginWithRefreshToken keeps the session when the backend returns 429`() = runTest {
+        assertRefreshFailureKeepsTheSession(statusCode = 429)
+    }
+
+    @Test
+    fun `loginWithRefreshToken keeps the session when a 403 carries no grant rejection`() = runTest {
+        assertRefreshFailureKeepsTheSession(statusCode = 403, body = "<html>blocked by the edge</html>")
+    }
+
+    @Test
+    fun `loginWithRefreshToken keeps the session when the response carries no access token`() = runTest {
+        seedAuthenticatedSession(refreshToken = "original-refresh-token")
+        mockWebServer.enqueue(
+            MockResponse().setResponseCode(200).setBody("""{"expires_in":3600}""")
+        )
+
+        val thrown = runCatching { authRepository.loginWithRefreshToken("original-refresh-token") }.exceptionOrNull()
+
+        assertFalse("Expected the session to survive", thrown is InvalidRefreshTokenException)
+        val state = sessionManager.getAuthState()
+        assertTrue(state is Auth.Authenticated)
+        assertEquals("old-access-token", (state as Auth.Authenticated).accessToken)
+    }
+
+    @Test
+    fun `loginWithRefreshToken reuses the stored customer when the response omits one`() = runTest {
+        seedAuthenticatedSession(refreshToken = "original-refresh-token")
+        mockWebServer.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"access_token":"new-access-token","refresh_token":"rotated-refresh-token","expires_in":3600}"""
+            )
+        )
+
+        val customer = authRepository.loginWithRefreshToken("original-refresh-token")
+
+        assertEquals("user-123", customer.id)
+        val state = sessionManager.getAuthState() as Auth.Authenticated
+        assertEquals("new-access-token", state.accessToken)
+        assertEquals("rotated-refresh-token", state.refreshToken)
+        assertEquals("user-123", state.user.id)
+    }
+    // endregion
+
+    // region A refresh the server did reject ends the session
+    @Test
+    fun `loginWithRefreshToken ends the session when the grant is rejected`() = runTest {
+        seedAuthenticatedSession(refreshToken = "burned-refresh-token")
+        mockWebServer.enqueue(
+            MockResponse().setResponseCode(400).setBody("""{"error":"invalid_grant"}""")
+        )
+
+        val thrown = runCatching { authRepository.loginWithRefreshToken("burned-refresh-token") }.exceptionOrNull()
+
+        assertTrue("Expected InvalidRefreshTokenException, got $thrown", thrown is InvalidRefreshTokenException)
+        assertTrue(sessionManager.getAuthState() is Auth.Unauthenticated)
+    }
+
+    @Test
+    fun `loginWithRefreshToken ends the session on a 401`() = runTest {
+        seedAuthenticatedSession(refreshToken = "burned-refresh-token")
+        mockWebServer.enqueue(MockResponse().setResponseCode(401))
+
+        val thrown = runCatching { authRepository.loginWithRefreshToken("burned-refresh-token") }.exceptionOrNull()
+
+        assertTrue("Expected InvalidRefreshTokenException, got $thrown", thrown is InvalidRefreshTokenException)
+        assertTrue(sessionManager.getAuthState() is Auth.Unauthenticated)
+    }
+    // endregion
+
+    private suspend fun assertRefreshFailureKeepsTheSession(statusCode: Int, body: String = "") {
+        seedAuthenticatedSession(refreshToken = "original-refresh-token")
+        mockWebServer.enqueue(MockResponse().setResponseCode(statusCode).setBody(body))
+
+        val thrown = runCatching { authRepository.loginWithRefreshToken("original-refresh-token") }.exceptionOrNull()
+
+        assertTrue("Expected the failure to surface", thrown != null)
+        assertFalse(
+            "HTTP $statusCode on a refresh is not the server rejecting the session",
+            thrown is InvalidRefreshTokenException
+        )
+        val state = sessionManager.getAuthState()
+        assertTrue("HTTP $statusCode must not log the user out", state is Auth.Authenticated)
+        assertEquals("original-refresh-token", (state as Auth.Authenticated).refreshToken)
+    }
+
     private fun simulateInterceptorRotationDuringPreferencesCall(tokenResponseBody: String) {
         mockWebServer.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse {

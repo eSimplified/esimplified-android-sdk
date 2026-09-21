@@ -497,7 +497,7 @@ The SDK's other public exception types, all thrown rather than returned:
 
 | Exception | Package | Thrown by | Meaning |
 |---|---|---|---|
-| `InvalidRefreshTokenException()` | `io.esimplified.sdk.repository` | `AuthRepository.loginWithRefreshToken` | The stored refresh token was rejected. The session has already been cleared — send the customer to sign-in. Its message is `"Session expired. Please sign in again."` |
+| `InvalidRefreshTokenException()` | `io.esimplified.sdk.repository` | `AuthRepository.loginWithRefreshToken` | The OAuth server rejected the stored refresh token — a 401, or a 400 or 403 whose body says `invalid_grant` or `invalid_token`. The session has already been cleared — send the customer to sign-in. Its message is `"Session expired. Please sign in again."`. Every other failure, a 5xx or a 429 or an edge 403 included, throws `SdkError.NetworkError` and leaves the session signed in |
 | `LoyaltyApiException(httpCode: Int, message: String?)` | `io.esimplified.sdk.network` | `LoyaltyRepository`'s Mokafaa methods | Backend error, `message` verbatim. Branch on `httpCode` (400 / 401 / 503) |
 | `PaymentApiException(httpCode: Int, type: String?, message: String?)` | `io.esimplified.sdk.network` | `PaymentsRepository.getPaymentIntent` | Payment rejected. `type` is `PaymentApiException.TYPE_VALIDATION_ERROR` for a bad request |
 | `SecureStorageInitException(cause: Throwable)` | `io.esimplified.sdk.auth` | `EsimplifiedSdk.initialize()`, via the default storage provider | `EncryptedSharedPreferences` could not be initialised. The SDK refuses to fall back to plaintext — sign the customer out and re-prompt |

@@ -736,7 +736,7 @@ Reads taken through a `…Result` method report failure in `RepositoryResult.fai
 | Exception | Thrown by | Meaning |
 |---|---|---|
 | `SdkError` (sealed, extends `IOException`) | cached reads, `getOrderInvoice`, the auth interceptor | Transport or decoding failure. See the case table under [Caching and offline reads](#caching-and-offline-reads) |
-| `InvalidRefreshTokenException` | `AuthRepository.loginWithRefreshToken` | The stored refresh token was rejected. The session has already been cleared — send the user to sign-in |
+| `InvalidRefreshTokenException` | `AuthRepository.loginWithRefreshToken` | The OAuth server rejected the stored refresh token — a 401, or a 400 or 403 whose body says `invalid_grant` or `invalid_token`. The session has already been cleared — send the user to sign-in. Every other failure, a 5xx or a 429 or an edge 403 included, throws `SdkError.NetworkError` and leaves the session signed in |
 | `LoyaltyApiException(httpCode, message)` | `LoyaltyRepository` Mokafaa methods | Backend error, `message` verbatim. Branch on `httpCode` (400 / 401 / 503) |
 | `PaymentApiException(httpCode, type, message)` | `PaymentsRepository.getPaymentIntent` | Payment rejected. `type` is `"VALIDATION_ERROR"` for a bad request |
 | `SecureStorageInitException` | `EsimplifiedSdk.initialize()` | `EncryptedSharedPreferences` could not be initialised. The SDK refuses to fall back to plaintext — sign the user out and re-prompt |

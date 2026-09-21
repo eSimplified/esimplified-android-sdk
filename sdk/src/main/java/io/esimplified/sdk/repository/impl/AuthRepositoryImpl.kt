@@ -17,6 +17,9 @@ import io.esimplified.sdk.model.Customer
 import io.esimplified.sdk.network.ApiErrorMessage
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.SdkCache
+import io.esimplified.sdk.network.SdkError
+import io.esimplified.sdk.network.TokenRefresh
+import io.esimplified.sdk.network.TokenRefreshGate
 import io.esimplified.sdk.auth.Auth
 import io.esimplified.sdk.auth.SessionManager
 import io.esimplified.sdk.auth.SecureStorageProvider
@@ -84,7 +87,10 @@ internal class AuthRepositoryImpl(
         return user
     }
 
-    override suspend fun loginWithRefreshToken(refreshToken: String): Customer {
+    override suspend fun loginWithRefreshToken(refreshToken: String): Customer =
+        TokenRefreshGate.withRefreshPermitSuspending { refreshSession(refreshToken) }
+
+    private suspend fun refreshSession(refreshToken: String): Customer {
         SdkLog.d("Refreshing token")
         val response = apiService.getAuthToken(
             grantType = "refresh_token",
@@ -94,29 +100,47 @@ internal class AuthRepositoryImpl(
         SdkLog.d("Refresh response code: ${response.code()}")
 
         if (!response.isSuccessful) {
-            val errorBody = response.errorBody()?.string().orEmpty()
-            SdkLog.e("Token refresh failed [${response.code()}]")
-            sessionManager.onAuthenticationFailed()
-            throw InvalidRefreshTokenException()
+            val errorBody = runCatching { response.errorBody()?.string() }.getOrNull()
+            if (TokenRefresh.isSessionRejection(response.code(), errorBody)) {
+                SdkLog.e("Token refresh rejected [${response.code()}] — ending the session")
+                sessionManager.onAuthenticationFailed()
+                throw InvalidRefreshTokenException()
+            }
+            SdkLog.e("Token refresh failed [${response.code()}] — keeping the session")
+            throw SdkError.NetworkError(
+                response.code(),
+                ApiErrorMessage.parseOrNull(errorBody)
+                    ?: response.message().ifEmpty { ApiErrorMessage.FALLBACK }
+            )
         }
 
         val body = response.body() ?: run {
-            sessionManager.onAuthenticationFailed()
-            throw InvalidRefreshTokenException()
+            SdkLog.e("Token refresh returned no body — keeping the session")
+            throw SdkError.NetworkError(response.code(), "The token response was empty")
         }
 
         if (!body.error.isNullOrEmpty() || !body.detail.isNullOrEmpty()) {
-            sessionManager.onAuthenticationFailed()
-            throw InvalidRefreshTokenException()
+            val described = listOfNotNull(body.error, body.detail, body.description).joinToString(" ")
+            if (TokenRefresh.carriesGrantRejection(described)) {
+                SdkLog.e("Token refresh rejected by the grant — ending the session")
+                sessionManager.onAuthenticationFailed()
+                throw InvalidRefreshTokenException()
+            }
+            SdkLog.e("Token refresh reported an error — keeping the session")
+            throw SdkError.NetworkError(
+                response.code(),
+                body.description ?: body.detail ?: body.error ?: ApiErrorMessage.FALLBACK
+            )
         }
 
-        val user = body.user ?: run {
-            sessionManager.onAuthenticationFailed()
-            throw InvalidRefreshTokenException()
+        val accessToken = body.accessToken?.takeIf { it.isNotEmpty() } ?: run {
+            SdkLog.e("Token refresh carried no access token — keeping the session")
+            throw SdkError.NetworkError(response.code(), "The token response carried no access token")
         }
-        val accessToken = body.accessToken ?: run {
-            sessionManager.onAuthenticationFailed()
-            throw InvalidRefreshTokenException()
+
+        val user = body.user ?: (sessionManager.getAuthState() as? Auth.Authenticated)?.user ?: run {
+            SdkLog.e("Token refresh carried no customer and none was stored — keeping the session")
+            throw SdkError.NetworkError(response.code(), "The token response carried no customer")
         }
 
         val auth = Auth.Authenticated(
