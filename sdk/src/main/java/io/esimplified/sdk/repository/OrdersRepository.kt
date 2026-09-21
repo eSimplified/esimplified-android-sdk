@@ -50,22 +50,7 @@ interface OrdersRepository {
         withLoyaltyPoints: Boolean = false,
         forceRefresh: Boolean = false,
         cacheTTL: Duration = ORDERS_LIST_TTL,
-    ): RepositoryResult<OrdersPage> {
-        val result = getOrderHistoryResult(
-            withLoyaltyPoints = withLoyaltyPoints,
-            forceRefresh = forceRefresh,
-            cacheTTL = cacheTTL,
-        )
-        return RepositoryResult(
-            value = OrdersPage(
-                orders = result.value,
-                totalCount = result.value.size,
-                hasMore = false,
-            ),
-            isStale = result.isStale,
-            failure = result.failure,
-        )
-    }
+    ): RepositoryResult<OrdersPage>
     // endregion
 
     // region Invoice

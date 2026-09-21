@@ -8,7 +8,7 @@
 
 Kotlin SDK for integrating the eSimplified eSIM platform into Android applications. Provides typed repository interfaces for authentication, eSIM management, package browsing, orders, payments, and more. All networking, authentication, and token management are handled internally -- consuming apps interact only with clean Kotlin interfaces.
 
-**Coordinates:** `io.github.esimplified:android-sdk:3.1.0`
+**Coordinates:** `io.github.esimplified:android-sdk:3.2.0`
 
 That is the version this README describes. It adds terms, privacy and general FAQs as structured documents on `FaqAndSupportRepository`; nothing a caller writes has to change to take it.
 
@@ -78,7 +78,7 @@ The SDK is published to Maven Central. No extra repositories or authentication n
 ```kotlin
 // build.gradle.kts (app)
 dependencies {
-    implementation("io.github.esimplified:android-sdk:3.1.0")
+    implementation("io.github.esimplified:android-sdk:3.2.0")
 
     // Required. The SDK declares its own dependencies as `implementation`, so they
     // resolve at runtime but are NOT on your compile classpath. You call
@@ -105,7 +105,7 @@ Everything else the SDK needs — Retrofit, OkHttp, kotlinx.serialization, kotli
 
 ## Versioning
 
-The SDK follows semantic versioning, and Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.1.0")` resolves to 3.1.0 and nothing else — there are no version ranges and no BOM anywhere in these instructions, so no release reaches your build until someone edits that line. Nothing below can arrive unannounced; this section tells you what to expect when you do choose to raise the number.
+The SDK follows semantic versioning, and Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.2.0")` resolves to 3.2.0 and nothing else — there are no version ranges and no BOM anywhere in these instructions, so no release reaches your build until someone edits that line. Nothing below can arrive unannounced; this section tells you what to expect when you do choose to raise the number.
 
 | What changed | Version goes | What you do |
 |---|---|---|
@@ -1037,7 +1037,17 @@ To receive SDK lines deliberately, pass `logger` to `SdkConfig` — see [Logging
 
 ## Changes since 2.0.0
 
-`2.0.0` is the version on Maven Central and the one this documentation describes. The changes below are on `main` and will ship in the next release; they are listed separately so nothing above misrepresents the published artifact.
+`3.1.0` is the version on Maven Central. The changes below are on `main` and will ship in the next release; they are listed separately so nothing above misrepresents the published artifact.
+
+### Breaking change: `getOrdersPageResult` no longer has a default implementation
+
+`OrdersRepository.getOrdersPageResult` carried a default body so that adding it did not break existing implementations. That default ignored `limit` and `offset`: it called the unpaged `getOrderHistoryResult` and then reported `totalCount` as the size of whatever came back and `hasMore` as permanently `false`.
+
+Nothing the SDK ships ever ran it — `OrdersRepositoryImpl` overrides it and pages correctly — so if you inject the repository we provide, **nothing changes for you**. It only ever executed for someone who writes their own `OrdersRepository` and does not override this method, and for them it silently returned one page and insisted there was no more.
+
+It is now a required member, so the compiler asks for it rather than handing you a fallback that quietly ignores half its arguments.
+
+**If you implement `OrdersRepository` yourself**, add an override. It is a minor release because no calling code changes — this is the interface-method case described under [Versioning](#versioning).
 
 ### `showLegacy` is now `Boolean?` on every eSIM list read
 
@@ -1106,7 +1116,7 @@ The published coordinate is `io.github.esimplified:android-sdk:<version>`, and t
 
 ```kotlin
 mavenPublishing {
-    coordinates("io.github.esimplified", "android-sdk", "3.1.0")
+    coordinates("io.github.esimplified", "android-sdk", "3.2.0")
 }
 ```
 
@@ -1116,7 +1126,7 @@ Gradle pins consumers to an exact version — no ranges, no BOM — so nothing p
 
 **The version bump landing on `main`.** Nothing else.
 
-`.github/workflows/release.yml` runs on every push to `main`. It reads the coordinate out of `sdk/build.gradle.kts` and asks whether a tag for that version already exists, accepting either `3.1.0` or `v3.1.0`. If the tag exists it stops and says so in the run summary. If it does not, it publishes, tags, and writes the release notes. So a merge that leaves the version alone is a no-op, and a merge that changes it is a release. There is no button to press.
+`.github/workflows/release.yml` runs on every push to `main`. It reads the coordinate out of `sdk/build.gradle.kts` and asks whether a tag for that version already exists, accepting either `3.2.0` or `v3.2.0`. If the tag exists it stops and says so in the run summary. If it does not, it publishes, tags, and writes the release notes. So a merge that leaves the version alone is a no-op, and a merge that changes it is a release. There is no button to press.
 
 **Pushing a tag by hand publishes nothing.** No workflow listens for tags. Worse, a hand-pushed tag is the tag `release.yml` will then find already present, so it *suppresses* the real release instead of causing one. If you have pushed one, delete it before merging the bump.
 
