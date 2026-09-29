@@ -25,11 +25,12 @@ internal class VisaRewardsRepositoryImpl(
     override suspend fun verify(token: String): VisaRewardsResponse =
         apiRead { apiService.validatePromotion(token = token) }
 
-    override suspend fun activate(token: String, rewardCode: String): VisaRewardsResponse =
+    override suspend fun activate(token: String, rewardCode: String, iccid: String?): VisaRewardsResponse =
         apiRead {
             apiService.activatePromotion(
                 token = token,
-                rewardCode = rewardCode
+                rewardCode = rewardCode,
+                iccid = iccid,
             )
         }
     // endregion

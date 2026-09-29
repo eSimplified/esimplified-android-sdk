@@ -6,5 +6,5 @@ import io.esimplified.sdk.model.VisaRewardsResponse
 interface VisaRewardsRepository {
     suspend fun getIframe(isEU: Boolean): VisaRewardsIframeResponse
     suspend fun verify(token: String): VisaRewardsResponse
-    suspend fun activate(token: String, rewardCode: String): VisaRewardsResponse
+    suspend fun activate(token: String, rewardCode: String, iccid: String? = null): VisaRewardsResponse
 }

@@ -260,7 +260,9 @@ internal interface ApiService {
     @FormUrlEncoded
     @PATCH("api/v2/customer/promotions/validate/{token}")
     suspend fun activatePromotion(
-        @Path("token") token: String, @Field("reward_type") rewardCode: String
+        @Path("token") token: String,
+        @Field("reward_type") rewardCode: String,
+        @Field("iccid") iccid: String? = null,
     ): VisaRewardsResponse
 
     @PUT("api/v2/customer/esims/{iccid}/")

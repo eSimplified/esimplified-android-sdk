@@ -733,7 +733,7 @@ Visa rewards verification and activation flow.
 |---|---|---|
 | `getIframe` | `suspend fun getIframe(isEU: Boolean): VisaRewardsIframeResponse` | Get the Visa verification iframe URL |
 | `verify` | `suspend fun verify(token: String): VisaRewardsResponse` | Verify a Visa reward token |
-| `activate` | `suspend fun activate(token: String, rewardCode: String): VisaRewardsResponse` | Activate a verified Visa reward |
+| `activate` | `suspend fun activate(token: String, rewardCode: String, iccid: String? = null): VisaRewardsResponse` | Redeem a verified Visa reward; `iccid` puts a global eSIM reward onto an existing eSIM |
 
 ### PhoneVerificationRepository
 
@@ -1140,6 +1140,10 @@ A login rejected because the email was never verified surfaces as a `NetworkErro
 ### `updateEsim` sends JSON
 
 `PUT /customer/esims/{iccid}/` now carries a JSON body with only the fields you passed. The previous form body made the server treat every boolean you left out as `false`, so a rename cleared `is_primary`, `archived` and `auto_top_up`.
+
+### Visa reward redeem can target an existing eSIM
+
+`VisaRewardsRepository.activate(token, rewardCode, iccid = null)` sends `iccid` only when given, so a global eSIM reward can top up an eSIM the customer already owns. `VisaRewardsResponse.orderUuid` reads the created order from `redirect_url`. Implementers of `VisaRewardsRepository` must add the parameter.
 
 ### `CheckStockResponse.promoCode` is nullable
 

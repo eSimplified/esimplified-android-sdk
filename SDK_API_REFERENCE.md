@@ -869,7 +869,7 @@ Cached (`STORE_REVIEW_TTL` = 24 h). `…Result` twin: `fetchStoreReviewResult`.
 |----------|-----------|---------|-------------|
 | `getIframe` | `isEU: Boolean` | `VisaRewardsIframeResponse` | Get Visa rewards iframe URL |
 | `verify` | `token: String` | `VisaRewardsResponse` | Verify a Visa rewards token |
-| `activate` | `token: String, rewardCode: String` | `VisaRewardsResponse` | Activate a Visa reward |
+| `activate` | `token: String, rewardCode: String, iccid: String? = null` | `VisaRewardsResponse` | Redeem a Visa reward (`PATCH customer/promotions/validate/{token}`). Send `rewardCode` exactly as `verify` returned it; pass `iccid` only to put a global eSIM reward onto an eSIM the customer already owns |
 
 ---
 
@@ -1325,6 +1325,7 @@ Decoding is total: any wire value the enum does not recognise becomes `UNKNOWN` 
 | dataGB | Double? | Data reward amount |
 | **Computed properties** | — | Derived in Kotlin from the fields above; not part of the JSON |
 | remainingOrAllowed | Int? | `remaining ?: allowed` |
+| orderUuid | String? | The order created by a redeem: the `id` query item of `redirect_url`, else the text after its last `=` |
 
 ### VoucherRedeemResponse
 

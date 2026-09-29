@@ -20,4 +20,20 @@ data class VisaRewardsResponse(
 ) {
     val remainingOrAllowed: Int?
         get() = remaining ?: allowed
+
+    val orderUuid: String?
+        get() {
+            val url = redirectURl?.takeIf { it.isNotEmpty() } ?: return null
+            val query = url.substringAfter('?', missingDelimiterValue = "")
+            val id = query.split('&')
+                .map { it.split('=', limit = 2) }
+                .firstOrNull { it.size == 2 && it[0] == ORDER_ID_QUERY_ITEM }
+                ?.get(1)
+                ?.takeIf { it.isNotEmpty() }
+            if (id != null) return id
+            if (!url.contains('=')) return null
+            return url.substringAfterLast('=').takeIf { it.isNotEmpty() }
+        }
 }
+
+private const val ORDER_ID_QUERY_ITEM = "id"
