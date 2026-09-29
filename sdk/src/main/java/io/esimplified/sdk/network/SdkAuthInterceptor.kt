@@ -101,6 +101,11 @@ internal class SdkAuthInterceptor(
         val response = chain.proceed(requestBuilder.build())
         SdkLog.d("Response: ${response.code} for ${originalRequest.url.encodedPath.redactedPath()}")
 
+        if (response.code == 403 && response.requiresPhoneVerification()) {
+            SdkLog.d("403 requires phone verification -> handing it to the caller")
+            return response
+        }
+
         if ((response.code == 401 || response.code == 403) && authState is Auth.Authenticated && !isAuthTokenEndpoint) {
             SdkLog.w("Got ${response.code} -> attempting reactive token refresh")
             response.close()
@@ -168,10 +173,13 @@ internal class SdkAuthInterceptor(
                 SdkLog.e("Refresh rejected with ${refreshResponse.code} — ending the session")
                 RefreshOutcome.AuthRejected
             } else {
-                val message = ApiErrorMessage.parseOrNull(readBody(refreshResponse))
+                val body = readBody(refreshResponse)
+                val message = ApiErrorMessage.parseOrNull(body)
                     ?: refreshResponse.message.ifEmpty { ApiErrorMessage.FALLBACK }
                 SdkLog.e("Refresh failed with ${refreshResponse.code} — keeping the session")
-                RefreshOutcome.Retryable(SdkError.NetworkError(refreshResponse.code, message))
+                RefreshOutcome.Retryable(
+                    SdkError.NetworkError(refreshResponse.code, message, ApiErrorMessage.code(body))
+                )
             }
         } catch (parseError: IOException) {
             SdkLog.e("Refresh response parse error", parseError)
@@ -248,8 +256,14 @@ internal class SdkAuthInterceptor(
     private fun readBody(response: Response): String? =
         runCatching { response.body?.string() }.getOrNull()
 
+    private fun Response.requiresPhoneVerification(): Boolean {
+        val body = runCatching { peekBody(PEEK_BODY_LIMIT).string() }.getOrNull()
+        return ApiErrorMessage.code(body) == ApiErrorCode.PHONE_VERIFICATION_REQUIRED.value
+    }
+
     private companion object {
         val AUTH_REJECTING_CODES = setOf(400, 401, 403)
+        const val PEEK_BODY_LIMIT = 64L * 1024L
     }
 }
 

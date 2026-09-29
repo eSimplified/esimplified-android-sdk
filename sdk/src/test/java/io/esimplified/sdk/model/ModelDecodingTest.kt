@@ -67,6 +67,13 @@ class ModelDecodingTest {
     }
 
     @Test
+    fun `Customer decodes phone_verified and leaves it null when absent`() {
+        assertEquals(true, json.decodeFromString<Customer>("""{"customer_id":"u-1","phone_verified":true}""").phoneVerified)
+        assertEquals(false, json.decodeFromString<Customer>("""{"customer_id":"u-1","phone_verified":false}""").phoneVerified)
+        assertNull(json.decodeFromString<Customer>("""{"customer_id":"u-1"}""").phoneVerified)
+    }
+
+    @Test
     fun `Customer decodes with minimum required field only`() {
         val payload = """{"customer_id": "u-1"}"""
         val customer = json.decodeFromString<Customer>(payload)

@@ -3,6 +3,7 @@ package io.esimplified.sdk.repository.impl
 import io.esimplified.sdk.repository.EsimRepository
 
 import io.esimplified.sdk.model.AssignedEsim
+import io.esimplified.sdk.model.EsimUpdateRequest
 import io.esimplified.sdk.network.ApiErrorMessage
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.SdkCache
@@ -137,10 +138,12 @@ internal class EsimRepositoryImpl(
         invalidateEsimCaches(iccid)
         val response = apiService.updateEsim(
             id = iccid,
-            name = name,
-            isArchived = isArchived,
-            autoTopUp = isAutoTopUp,
-            isPrimary = isPrimary
+            data = EsimUpdateRequest(
+                name = name,
+                isArchived = isArchived,
+                autoTopUp = isAutoTopUp,
+                isPrimary = isPrimary,
+            ),
         )
         if (!response.isSuccessful) {
             throw apiRejection(

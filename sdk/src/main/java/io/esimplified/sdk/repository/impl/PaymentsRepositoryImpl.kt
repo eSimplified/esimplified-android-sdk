@@ -4,6 +4,7 @@ import io.esimplified.sdk.repository.PaymentsRepository
 
 import io.esimplified.sdk.model.PaymentRequest
 import io.esimplified.sdk.model.PaymentResponse
+import io.esimplified.sdk.network.ApiErrorMessage
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.PaymentApiException
 import io.esimplified.sdk.repository.apiRejection
@@ -26,7 +27,7 @@ internal class PaymentsRepositoryImpl(
             }
             return response
         } catch (e: HttpException) {
-            val errorBody = e.response()?.errorBody()?.string()
+            val errorBody = ApiErrorMessage.body(e)
             val parsed = errorBody?.let {
                 try {
                     json.decodeFromString<PaymentResponse>(it)
@@ -37,7 +38,7 @@ internal class PaymentsRepositoryImpl(
             if (parsed?.type != null) {
                 throw PaymentApiException(e.code(), parsed.type, parsed.message ?: parsed.detail)
             }
-            throw e.asNetworkError(parsed?.detail)
+            throw e.asNetworkError(parsed?.detail, errorBody)
         }
     }
     // endregion

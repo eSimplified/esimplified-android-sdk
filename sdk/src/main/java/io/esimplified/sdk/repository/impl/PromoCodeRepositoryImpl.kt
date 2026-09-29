@@ -4,6 +4,7 @@ import io.esimplified.sdk.repository.PromoCodeRepository
 
 import io.esimplified.sdk.model.CheckoutCouponRequest
 import io.esimplified.sdk.model.CheckoutCouponResponse
+import io.esimplified.sdk.network.ApiErrorMessage
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.repository.apiRead
 import io.esimplified.sdk.repository.apiRejection
@@ -18,13 +19,17 @@ internal class PromoCodeRepositoryImpl(
     // region Promo Codes
     override suspend fun addPromoCode(code: String): CheckoutCouponResponse = apiRead {
         val generalResponse = apiService.addCheckoutCoupon(CheckoutCouponRequest(code = code))
+        val errorBody = generalResponse.errorBody()?.string()
         val response = generalResponse.body()
-            ?: generalResponse.errorBody()?.string()
-                ?.let { errorBody -> json.decodeFromString<CheckoutCouponResponse>(errorBody) }
+            ?: errorBody?.let { json.decodeFromString<CheckoutCouponResponse>(it) }
             ?: throw HttpException(generalResponse)
 
         if (response.detail != null && !response.valid) {
-            throw apiRejection(response.detail)
+            throw apiRejection(
+                response.detail,
+                statusCode = generalResponse.code(),
+                apiCode = ApiErrorMessage.code(errorBody),
+            )
         }
         response
     }

@@ -309,7 +309,8 @@ class EsimRepositoryImplTest {
         val request = mockWebServer.takeRequest()
         assertEquals("PUT", request.method)
         assertTrue(request.path!!.contains("/api/v2/customer/esims/8931/"))
-        assertEquals("is_primary=true", request.body.readUtf8())
+        assertEquals("application/json", request.getHeader("Content-Type")?.substringBefore(";"))
+        assertEquals("""{"is_primary":true}""", request.body.readUtf8())
     }
 
     @Test
@@ -318,7 +319,7 @@ class EsimRepositoryImplTest {
 
         repo().updateEsimPrimaryStatus(iccid = "8931", isPrimary = false)
 
-        assertEquals("is_primary=false", mockWebServer.takeRequest().body.readUtf8())
+        assertEquals("""{"is_primary":false}""", mockWebServer.takeRequest().body.readUtf8())
     }
 
     @Test
@@ -345,9 +346,16 @@ class EsimRepositoryImplTest {
 
         repo().updateEsim(iccid = "8931", name = "Trip", isPrimary = true)
 
-        val body = mockWebServer.takeRequest().body.readUtf8()
-        assertTrue(body.contains("esim_name=Trip"))
-        assertTrue(body.contains("is_primary=true"))
+        assertEquals("""{"esim_name":"Trip","is_primary":true}""", mockWebServer.takeRequest().body.readUtf8())
+    }
+
+    @Test
+    fun `a rename sends only the name so the other flags are left alone`() = runTest {
+        enqueueUpdateAccepted()
+
+        repo().updateEsim(iccid = "8931", name = "Trip")
+
+        assertEquals("""{"esim_name":"Trip"}""", mockWebServer.takeRequest().body.readUtf8())
     }
 
     @Test

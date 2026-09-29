@@ -8,7 +8,7 @@
 
 Kotlin SDK for integrating the eSimplified eSIM platform into Android applications. Provides typed repository interfaces for authentication, eSIM management, package browsing, orders, payments, and more. All networking, authentication, and token management are handled internally -- consuming apps interact only with clean Kotlin interfaces.
 
-**Coordinates:** `io.github.esimplified:android-sdk:3.3.0`
+**Coordinates:** `io.github.esimplified:android-sdk:3.4.0`
 
 That is the version this README describes. It adds terms, privacy and general FAQs as structured documents on `FaqAndSupportRepository`; nothing a caller writes has to change to take it.
 
@@ -78,7 +78,7 @@ The SDK is published to Maven Central. No extra repositories or authentication n
 ```kotlin
 // build.gradle.kts (app)
 dependencies {
-    implementation("io.github.esimplified:android-sdk:3.3.0")
+    implementation("io.github.esimplified:android-sdk:3.4.0")
 
     // Required. The SDK declares its own dependencies as `implementation`, so they
     // resolve at runtime but are NOT on your compile classpath. You call
@@ -105,7 +105,7 @@ Everything else the SDK needs — Retrofit, OkHttp, kotlinx.serialization, kotli
 
 ## Versioning
 
-The SDK follows semantic versioning, and Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.3.0")` resolves to 3.3.0 and nothing else — there are no version ranges and no BOM anywhere in these instructions, so no release reaches your build until someone edits that line. Nothing below can arrive unannounced; this section tells you what to expect when you do choose to raise the number.
+The SDK follows semantic versioning, and Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.4.0")` resolves to 3.4.0 and nothing else — there are no version ranges and no BOM anywhere in these instructions, so no release reaches your build until someone edits that line. Nothing below can arrive unannounced; this section tells you what to expect when you do choose to raise the number.
 
 | What changed | Version goes | What you do |
 |---|---|---|
@@ -113,7 +113,7 @@ The SDK follows semantic versioning, and Gradle pins you to an exact version. `i
 | Something added | 2.1.0 → 2.2.0 | Nothing |
 | Something you call changed or went away | 2.1.0 → 3.0.0 | Update your code, then raise the version you depend on |
 
-Those numbers are illustrative; 3.3.0 is the current release.
+Those numbers are illustrative; 3.4.0 is the current release.
 
 The convention maps straight onto our commit messages. A `fix:` commit is a patch, a `feat:` commit is a minor, and the major only moves for a change that breaks **callers** — a method you call renamed, removed, or given a new required parameter. Commits that break callers are marked with a `!`, as in `refactor(orders)!:`.
 
@@ -392,7 +392,9 @@ Field-by-field tables for all of these are in [SDK_API_REFERENCE.md](SDK_API_REF
 | `VisaRewardsResponse` | Visa rewards eligibility, status, and reward details |
 | `VoucherRedeemRequest` | Voucher code redemption request |
 | `VoucherRedeemResponse` | Voucher redemption result (success flag + redirect URL) |
-| `VerifyEmailRequest` | Email verification payload (email + token) |
+| `VerifyEmailRequest` | Email verification payload (email + link token or emailed code) |
+| `PhoneOtpSendRequest` / `PhoneOtpSendResponse` | Phone verification: send a code by SMS or WhatsApp |
+| `PhoneOtpVerifyRequest` / `PhoneOtpVerifyResponse` | Phone verification: verify the code |
 | `DeleteProfileResponse` | Account deletion result |
 | `GetTokenResponse` | OAuth token response (access token, refresh token, expiry) |
 | `ProfileResponse` | Registration/profile-update response (customer fields) |
@@ -468,7 +470,7 @@ The plain (non-`Result`) methods keep the old behaviour: a cache miss plus a fai
 
 | Case | Meaning |
 |---|---|
-| `NetworkError(statusCode, message)` | Server responded with an error status. `message` is the backend's own text, ready to show |
+| `NetworkError(statusCode, message, apiCode)` | Server responded with an error status. `message` is the backend's own text, ready to show; `apiCode` is the body's `code`, checked with `hasApiCode(ApiErrorCode.…)` |
 | `AuthenticationRequired` | No valid session |
 | `NoInternetConnection` | Host unreachable / connection refused |
 | `DecodingError(cause)` | Response did not match the model. `message` is deliberately generic; `cause` carries the detail |
@@ -510,13 +512,13 @@ Authentication, registration, password management, profile operations, and sessi
 | `forgotPassword` | `suspend fun forgotPassword(email: String): CustomerForgetPasswordResponse` | Request a password reset email |
 | `changePassword` | `suspend fun changePassword(currentPassword: String, newPassword: String): ChangePasswordResponse` | Change password for authenticated user |
 | `resetPassword` | `suspend fun resetPassword(email: String, token: String, newPassword: String): ChangePasswordResponse` | Reset password using email token |
-| `verifyEmail` | `suspend fun verifyEmail(email: String, token: String, orderUUID: String?): VerifyEmailResponse` | Verify email address with token |
+| `verifyEmail` | `suspend fun verifyEmail(email: String, token: String? = null, orderUUID: String? = null, code: String? = null): VerifyEmailResponse` | Verify an email address with the link token or the emailed 6-digit code |
 | `deleteProfile` | `suspend fun deleteProfile(): DeleteProfileResponse` | Delete the authenticated user's account |
 | `fetchProfile` | `suspend fun fetchProfile(): Customer?` | `GET api/v2/customer/` — the customer of record. Returns `null` when unauthenticated, otherwise fetches the full profile, merges in the loyalty provider and enrolment from `customer/preferences/`, and saves it to the session |
 | `getUser` | `suspend fun getUser(): Customer?` | Alias for `fetchProfile()` |
 | `updatePreferences` | `suspend fun updatePreferences(preferredLanguage: String?, preferredCurrency: String?): Customer` | Update language/currency preferences, then re-fetch the full customer |
-| `updateProfile` | `suspend fun updateProfile(email, firstName?, lastName?, phoneNumber?, password): ProfileResponse` | Update profile fields (requires password confirmation) |
-| `updateCustomerProfile` | `suspend fun updateCustomerProfile(firstName?, lastName?, phoneNumber?, email?, password?): ProfileResponse` | Partial profile update — every field optional — then re-fetch the full customer |
+| `updateProfile` | `suspend fun updateProfile(email, firstName?, lastName?, phoneNumber?, password): ProfileResponse` | Update profile fields (requires password confirmation). The `PATCH customer/edit/` body carries only `first_name`, `last_name`, `new_email` (when the email changed), `phone_number` (when given, E.164) and `password` (when given), matching the iOS SDK |
+| `updateCustomerProfile` | `suspend fun updateCustomerProfile(firstName?, lastName?, phoneNumber?, email?, password?): ProfileResponse` | Partial profile update — every field optional, only the given fields are sent — then re-fetch the full customer |
 | `logout` | `suspend fun logout()` | Clear stored session, tokens and every cached read |
 
 **On `fetchProfile` and the re-fetch:** `updatePreferences` and `updateCustomerProfile` call `fetchProfile()` after a successful write, so the `Customer` you hold afterwards is the server's, not a locally patched copy. If that re-fetch fails the SDK falls back to the 1.x behaviour — patching the cached customer with the fields you just sent — so an update never fails because the follow-up read did.
@@ -529,11 +531,12 @@ Destination country browsing and search.
 |---|---|---|
 | `getCountries` | `suspend fun getCountries(forceRefresh: Boolean = false, cacheTTL: Duration = COUNTRIES_TTL): List<Country>` | Fetch all supported destination countries |
 | `getCountriesBy` | `suspend fun getCountriesBy(destination: Destination, forceRefresh: Boolean = false, cacheTTL: Duration = COUNTRIES_TTL): List<Country>` | Filter countries by code, name, or region |
+| `getPopularCountries` | `suspend fun getPopularCountries(forceRefresh: Boolean = false, cacheTTL: Duration = COUNTRIES_TTL): List<Country>` | The tenant's popular destinations, in the server's order |
 | `search` | `suspend fun search(query: String): List<Country>` | Search countries by name (never cached) |
 | `getUserLocation` | `suspend fun getUserLocation(): UserLocationResponse` | Detect user's current country via IP (never cached) |
 | `invalidateCache` | `suspend fun invalidateCache()` | Drop this repository's cache entries |
 
-`…Result` twins: `getCountriesResult`, `getCountriesByResult`. Default TTL: `COUNTRIES_TTL` = 24 h.
+`…Result` twins: `getCountriesResult`, `getCountriesByResult`, `getPopularCountriesResult`. Default TTL: `COUNTRIES_TTL` = 24 h.
 
 ### PackagesRepository
 
@@ -561,7 +564,7 @@ eSIM lifecycle management for authenticated users.
 | `getActiveEsims` | same parameters as `getEsims` | Fetch only non-archived eSIMs |
 | `getArchivedEsims` | same parameters as `getEsims` | Fetch only archived eSIMs |
 | `getEsimByIccid` | `suspend fun getEsimByIccid(iccid: String, forceRefresh: Boolean = false, cacheTTL: Duration = ESIM_DETAILS_TTL, includeBase64QrCode: Boolean = false): AssignedEsim` | Fetch a single eSIM from `customer/esims/{iccid}/details/` |
-| `updateEsim` | `suspend fun updateEsim(iccid: String, name: String? = null, isAutoTopUp: Boolean? = null, isArchived: Boolean? = null, isPrimary: Boolean? = null)` | Update eSIM settings. Throws if the server rejects the write |
+| `updateEsim` | `suspend fun updateEsim(iccid: String, name: String? = null, isAutoTopUp: Boolean? = null, isArchived: Boolean? = null, isPrimary: Boolean? = null)` | Update eSIM settings. Only the given fields are sent, as JSON, so a rename never resets the primary flag. Throws if the server rejects the write |
 | `updateEsimPrimaryStatus` | `suspend fun updateEsimPrimaryStatus(iccid: String, isPrimary: Boolean)` | Convenience wrapper for the primary flag |
 | `invalidateCache` | `suspend fun invalidateCache()` | Drop both the list and detail cache entries |
 
@@ -732,6 +735,15 @@ Visa rewards verification and activation flow.
 | `verify` | `suspend fun verify(token: String): VisaRewardsResponse` | Verify a Visa reward token |
 | `activate` | `suspend fun activate(token: String, rewardCode: String): VisaRewardsResponse` | Activate a verified Visa reward |
 
+### PhoneVerificationRepository
+
+Phone number verification with a 6-digit code.
+
+| Method | Signature | Description |
+|---|---|---|
+| `sendCode` | `suspend fun sendCode(phoneNumber: String, channel: PhoneOtpChannel): PhoneOtpSendResponse` | Send the code by `SMS` or `WHATSAPP` |
+| `verifyCode` | `suspend fun verifyCode(code: String): PhoneOtpVerifyResponse` | Verify the code, then re-fetch the customer for a fresh `phoneVerified` |
+
 ### VouchersRepository
 
 Voucher code redemption.
@@ -786,6 +798,7 @@ The SDK's internal OkHttp interceptor handles token refresh transparently:
    - Retries the original request with the new access token
 3. If the refresh **is rejected** — HTTP 400, 401 or 403, or there is no refresh token to send — the session ends and the user is signed out
 4. If the refresh fails for any other reason — a 500, a gateway error, a dropped connection — the session is **kept** and the failure is surfaced to the caller as an `SdkError.NetworkError`
+5. A `403` whose body carries `code: phone_verification_required` is handed to the caller untouched — no refresh, no retry — because it is a business rule, not a session problem
 
 Point 4 is a behaviour change in 2.0. Before, any non-2xx refresh response ended the session, so a brief server-side blip signed users out.
 
@@ -1048,7 +1061,7 @@ To receive SDK lines deliberately, pass `logger` to `SdkConfig` — see [Logging
 
 ## Changes since 2.0.0
 
-`3.1.0` is the version on Maven Central. The changes below are on `main` and will ship in the next release; they are listed separately so nothing above misrepresents the published artifact.
+`3.3.0` is the version on Maven Central. The changes below are on `main` and will ship in the next release; they are listed separately so nothing above misrepresents the published artifact.
 
 ### Breaking change: `getOrdersPageResult` no longer has a default implementation
 
@@ -1094,6 +1107,44 @@ Every existing call still compiles — `getOrderHistory()`, `getOrderHistory(tru
 
 One behaviour change: the two forms used to occupy separate cache entries even though they sent the identical request, so `getOrderHistory()` and `getOrderHistory(withLoyaltyPoints = false)` each did their own network call. They now share one entry.
 
+## Changes in 3.4.0
+
+### API error codes
+
+`SdkError.NetworkError` gains `apiCode: String?`, the `code` field of the error body, and `SdkError.hasApiCode(ApiErrorCode)` compares it against the known codes (`invalid_code`, `code_expired`, `phone_already_verified`, `no_pending_verification`, `too_many_requests`, `provider_error`, `phone_verification_required`). `message` is unchanged.
+
+### `phone_verification_required` skips the token refresh
+
+A `403` with that code reaches the caller as a `NetworkError`; every other `401` / `403` still refreshes and retries.
+
+### Popular countries
+
+`CountryRepository.getPopularCountries()` and its `Result` twin read `GET /countries?region=Popular&limit=1000`, cached for 24 h under its own key, in the server's order. Implementers of `CountryRepository` must add it.
+
+### `Customer.phoneVerified`
+
+Mapped from `phone_verified` and kept across a session restore.
+
+### `verifyEmail` takes the emailed code
+
+`verifyEmail(email, token = null, orderUUID = null, code = null)` sends whichever values are set. Implementers of `AuthRepository` must update their override; callers using named arguments keep compiling.
+
+### Unverified email on login
+
+A login rejected because the email was never verified surfaces as a `NetworkError` with `isEmailNotVerified == true` (OAuth `error` `email_not_verified`, or `invalid_grant` with a "not verified" description). The backend has already re-sent the verification code; show the code sheet and retry the login after `verifyEmail(email, code = …)`.
+
+### `PhoneVerificationRepository`
+
+`sendCode(phoneNumber, channel)` and `verifyCode(code)` for `POST /customer/phone/otp/` and `POST /customer/phone/otp/verify/`.
+
+### `updateEsim` sends JSON
+
+`PUT /customer/esims/{iccid}/` now carries a JSON body with only the fields you passed. The previous form body made the server treat every boolean you left out as `false`, so a rename cleared `is_primary`, `archived` and `auto_top_up`.
+
+### Profile updates send only what changed
+
+`updateProfile` and `updateCustomerProfile` send `first_name`, `last_name`, `new_email` (when the email changed), `phone_number` (when given) and `password` (when given), matching the iOS SDK. `customer_id`, `email`, `full_name` and empty strings are no longer sent.
+
 ## Support
 
 For credentials, integration help, or to report a bug, contact:
@@ -1127,7 +1178,7 @@ The published coordinate is `io.github.esimplified:android-sdk:<version>`, and t
 
 ```kotlin
 mavenPublishing {
-    coordinates("io.github.esimplified", "android-sdk", "3.3.0")
+    coordinates("io.github.esimplified", "android-sdk", "3.4.0")
 }
 ```
 
@@ -1137,7 +1188,7 @@ Gradle pins consumers to an exact version — no ranges, no BOM — so nothing p
 
 **The version bump landing on `main`.** Nothing else.
 
-`.github/workflows/release.yml` runs on every push to `main`. It reads the coordinate out of `sdk/build.gradle.kts` and asks whether a tag for that version already exists, accepting either `3.3.0` or `v3.3.0`. If the tag exists it stops and says so in the run summary. If it does not, it publishes, tags, and writes the release notes. So a merge that leaves the version alone is a no-op, and a merge that changes it is a release. There is no button to press.
+`.github/workflows/release.yml` runs on every push to `main`. It reads the coordinate out of `sdk/build.gradle.kts` and asks whether a tag for that version already exists, accepting either `3.4.0` or `v3.4.0`. If the tag exists it stops and says so in the run summary. If it does not, it publishes, tags, and writes the release notes. So a merge that leaves the version alone is a no-op, and a merge that changes it is a release. There is no button to press.
 
 **Pushing a tag by hand publishes nothing.** No workflow listens for tags. Worse, a hand-pushed tag is the tag `release.yml` will then find already present, so it *suppresses* the real release instead of causing one. If you have pushed one, delete it before merging the bump.
 

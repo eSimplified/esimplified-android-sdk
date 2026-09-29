@@ -138,4 +138,24 @@ class ApiErrorMessageTest {
         assertEquals("Card declined", ApiErrorMessage.parseOrNull("""{"message":"Card declined"}"""))
     }
     // endregion
+
+    // region API codes
+    @Test
+    fun `code reads the top level code`() {
+        assertEquals("invalid_code", ApiErrorMessage.code("""{"code":"invalid_code","detail":"Wrong."}"""))
+    }
+
+    @Test
+    fun `code is null when absent, blank or unreadable`() {
+        assertNull(ApiErrorMessage.code("""{"detail":"Wrong."}"""))
+        assertNull(ApiErrorMessage.code("""{"code":"  "}"""))
+        assertNull(ApiErrorMessage.code("not json"))
+        assertNull(ApiErrorMessage.code(null))
+    }
+
+    @Test
+    fun `code does not change the message`() {
+        assertEquals("Wrong.", ApiErrorMessage.parse("""{"code":"invalid_code","detail":"Wrong."}"""))
+    }
+    // endregion
 }

@@ -20,6 +20,7 @@ internal class DefaultSessionManager(
         const val KEY_USER_LAST_NAME = "last_name"
         const val KEY_USER_FULL_NAME = "full_name"
         const val KEY_USER_PHONE_NUMBER = "phone_number"
+        const val KEY_USER_PHONE_VERIFIED = "phone_verified"
         const val KEY_USER_REFERRAL_CODE = "referral_code"
         const val KEY_USER_EXTERNAL_REFERENCE = "external_reference"
         const val KEY_USER_PREFERRED_LANGUAGE = "preferred_language"
@@ -45,6 +46,7 @@ internal class DefaultSessionManager(
                 lastName = storage.secureLoad(KEY_USER_LAST_NAME, ""),
                 fullName = storage.secureLoad(KEY_USER_FULL_NAME, ""),
                 phoneNumber = storage.secureLoad(KEY_USER_PHONE_NUMBER, ""),
+                phoneVerified = storage.secureLoad(KEY_USER_PHONE_VERIFIED, "").toBooleanStrictOrNull(),
                 externalReference = storage.secureLoad(KEY_USER_EXTERNAL_REFERENCE, ""),
                 referralCode = storage.secureLoad(KEY_USER_REFERRAL_CODE, ""),
                 email = storage.secureLoad(KEY_USER_EMAIL, ""),
@@ -85,6 +87,7 @@ internal class DefaultSessionManager(
                     KEY_USER_LAST_NAME to auth.user.lastName,
                     KEY_USER_FULL_NAME to auth.user.fullName,
                     KEY_USER_PHONE_NUMBER to auth.user.phoneNumber,
+                    KEY_USER_PHONE_VERIFIED to auth.user.phoneVerified?.toString(),
                     KEY_USER_REFERRAL_CODE to auth.user.referralCode,
                     KEY_USER_EXTERNAL_REFERENCE to auth.user.externalReference,
                     KEY_USER_PREFERRED_LANGUAGE to (auth.user.preferredLanguage ?: ""),
