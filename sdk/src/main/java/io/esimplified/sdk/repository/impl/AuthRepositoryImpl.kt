@@ -17,6 +17,7 @@ import io.esimplified.sdk.model.VerifyEmailRequest
 import io.esimplified.sdk.model.VerifyEmailResponse
 import io.esimplified.sdk.model.GetTokenResponse
 import io.esimplified.sdk.model.Customer
+import io.esimplified.sdk.network.ApiErrorMessage
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.SdkCache
 import io.esimplified.sdk.auth.Auth
@@ -59,13 +60,14 @@ internal class AuthRepositoryImpl(
         if (!response.isSuccessful) {
             val errorBody = response.errorBody()?.string().orEmpty()
             SdkLog.e("Login failed [${response.code()}]")
-            val message = try {
-                val errorResponse = json.decodeFromString<GetTokenResponse>(errorBody)
-                errorResponse.description ?: errorResponse.detail ?: errorResponse.error
-            } catch (_: Exception) {
-                null
-            }
-            throw apiRejection(message, LOGIN_FAILED_MESSAGE, response.code())
+            val errorResponse = runCatching { json.decodeFromString<GetTokenResponse>(errorBody) }.getOrNull()
+            val message = errorResponse?.description ?: errorResponse?.detail ?: errorResponse?.error
+            throw apiRejection(
+                message,
+                LOGIN_FAILED_MESSAGE,
+                response.code(),
+                apiCode = ApiErrorMessage.code(errorBody) ?: errorResponse?.error,
+            )
         }
 
         val body = response.body() ?: throw apiRejection(null, LOGIN_FAILED_MESSAGE)
@@ -273,9 +275,16 @@ internal class AuthRepositoryImpl(
     // endregion
 
     // region Email Verification
-    override suspend fun verifyEmail(email: String, token: String, orderUUID: String?): VerifyEmailResponse {
+    override suspend fun verifyEmail(
+        email: String,
+        token: String?,
+        orderUUID: String?,
+        code: String?,
+    ): VerifyEmailResponse {
         try {
-            val response = apiService.verifyEmail(VerifyEmailRequest(email, token, orderUUID))
+            val response = apiService.verifyEmail(
+                VerifyEmailRequest(email = email, token = token, orderUUID = orderUUID, code = code)
+            )
             if (!response.isVerified) {
                 throw apiRejection(response.detail, EMAIL_VERIFICATION_FAILED_MESSAGE)
             }
@@ -386,7 +395,6 @@ internal class AuthRepositoryImpl(
         password: String?,
     ): ProfileResponse {
         try {
-            val userId = secureStorage.secureLoad(KEY_USER_ID, "")
             val userEmail = secureStorage.secureLoad(KEY_USER_EMAIL, "")
             val fullName = listOfNotNull(firstName, lastName)
                 .joinToString(" ")
@@ -394,14 +402,11 @@ internal class AuthRepositoryImpl(
 
             val response = apiService.update(
                 CustomerDetails(
-                    id = userId,
-                    email = email,
                     firstName = firstName,
                     lastName = lastName,
-                    fullName = fullName,
-                    phoneNumber = phoneNumber,
+                    phoneNumber = phoneNumber?.takeIf { it.isNotBlank() },
                     newEmail = email?.takeIf { it != userEmail },
-                    password = password,
+                    password = password?.takeIf { it.isNotBlank() },
                 )
             )
 
@@ -456,20 +461,16 @@ internal class AuthRepositoryImpl(
         password: String
     ): ProfileResponse {
         try {
-            val userId = secureStorage.secureLoad(KEY_USER_ID, "")
             val userEmail = secureStorage.secureLoad(KEY_USER_EMAIL, "")
             val fullName = listOfNotNull(firstName, lastName).joinToString(" ")
 
             val response = apiService.update(
                 CustomerDetails(
-                    id = userId,
-                    email = email,
                     firstName = firstName,
                     lastName = lastName,
-                    fullName = fullName,
-                    phoneNumber = phoneNumber,
+                    phoneNumber = phoneNumber?.takeIf { it.isNotBlank() },
                     newEmail = if (userEmail == email) null else email,
-                    password = password,
+                    password = password.takeIf { it.isNotBlank() },
                 )
             )
 
@@ -490,7 +491,7 @@ internal class AuthRepositoryImpl(
                             firstName = firstName,
                             lastName = lastName,
                             fullName = fullName,
-                            phoneNumber = phoneNumber,
+                            phoneNumber = phoneNumber?.takeIf { it.isNotBlank() } ?: snapshot.user.phoneNumber,
                         )
                     )
                 )

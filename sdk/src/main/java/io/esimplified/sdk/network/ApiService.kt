@@ -3,6 +3,7 @@ package io.esimplified.sdk.network
 import io.esimplified.sdk.model.AssignedEsim
 import io.esimplified.sdk.model.ChangePasswordResponse
 import io.esimplified.sdk.model.CheckStockResponse
+import io.esimplified.sdk.model.EsimUpdateRequest
 import io.esimplified.sdk.model.CheckoutCouponRequest
 import io.esimplified.sdk.model.CheckoutCouponResponse
 import io.esimplified.sdk.model.CustomerChangePassword
@@ -27,6 +28,10 @@ import io.esimplified.sdk.model.MokafaaOtpInitiateRequest
 import io.esimplified.sdk.model.MokafaaOtpInitiateResponse
 import io.esimplified.sdk.model.MokafaaOtpValidateRequest
 import io.esimplified.sdk.model.MokafaaOtpValidateResponse
+import io.esimplified.sdk.model.PhoneOtpSendRequest
+import io.esimplified.sdk.model.PhoneOtpSendResponse
+import io.esimplified.sdk.model.PhoneOtpVerifyRequest
+import io.esimplified.sdk.model.PhoneOtpVerifyResponse
 import io.esimplified.sdk.model.Country
 import io.esimplified.sdk.model.ContentDocument
 import io.esimplified.sdk.model.Customer
@@ -153,6 +158,7 @@ internal interface ApiService {
         @Query("country_code") code: String? = null,
         @Query("country_name") name: String? = null,
         @Query("region") region: String? = null,
+        @Query("limit") limit: Int? = null,
     ): BaseResponse<List<Country>>
 
     @GET("api/v2/packages/")
@@ -254,17 +260,16 @@ internal interface ApiService {
     @FormUrlEncoded
     @PATCH("api/v2/customer/promotions/validate/{token}")
     suspend fun activatePromotion(
-        @Path("token") token: String, @Field("reward_type") rewardCode: String
+        @Path("token") token: String,
+        @Field("reward_type") rewardCode: String,
+        @Field("iccid") iccid: String? = null,
     ): VisaRewardsResponse
 
-    @FormUrlEncoded
     @PUT("api/v2/customer/esims/{iccid}/")
+    @Headers("Accept: application/json", "Content-Type: application/json")
     suspend fun updateEsim(
         @Path("iccid") id: String,
-        @Field("auto_top_up") autoTopUp: Boolean? = null,
-        @Field("archived") isArchived: Boolean? = null,
-        @Field("esim_name") name: String? = null,
-        @Field("is_primary") isPrimary: Boolean? = null,
+        @Body data: EsimUpdateRequest,
     ): Response<ResponseBody?>
 
     @GET("api/v2/faqs/destinations/{country_name_slug}/")
@@ -320,4 +325,12 @@ internal interface ApiService {
     @POST("api/v2/loyalty/mokafaa/otp/validate/")
     @Headers("Accept: application/json", "Content-Type: application/json")
     suspend fun validateMokafaaOtp(@Body data: MokafaaOtpValidateRequest): MokafaaOtpValidateResponse
+
+    @POST("api/v2/customer/phone/otp/")
+    @Headers("Accept: application/json", "Content-Type: application/json")
+    suspend fun sendPhoneOtp(@Body data: PhoneOtpSendRequest): PhoneOtpSendResponse
+
+    @POST("api/v2/customer/phone/otp/verify/")
+    @Headers("Accept: application/json", "Content-Type: application/json")
+    suspend fun verifyPhoneOtp(@Body data: PhoneOtpVerifyRequest): PhoneOtpVerifyResponse
 }

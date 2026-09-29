@@ -29,14 +29,22 @@ internal fun Throwable.asSdkError(): SdkError = when {
     else -> SdkError.Unknown(this)
 }
 
-internal fun HttpException.asNetworkError(fallback: String? = null): SdkError.NetworkError =
-    SdkError.NetworkError(code(), ApiErrorMessage.parseOrNull(this) ?: fallback.orFallback(message()))
+internal fun HttpException.asNetworkError(
+    fallback: String? = null,
+    body: String? = ApiErrorMessage.body(this),
+): SdkError.NetworkError =
+    SdkError.NetworkError(
+        statusCode = code(),
+        message = ApiErrorMessage.parseOrNull(body) ?: fallback.orFallback(message()),
+        apiCode = ApiErrorMessage.code(body),
+    )
 
 internal fun apiRejection(
     message: String?,
     fallback: String? = null,
     statusCode: Int = HttpURLConnection.HTTP_OK,
-): SdkError.NetworkError = SdkError.NetworkError(statusCode, message.orFallback(fallback))
+    apiCode: String? = null,
+): SdkError.NetworkError = SdkError.NetworkError(statusCode, message.orFallback(fallback), apiCode)
 
 private fun String?.orFallback(fallback: String?): String =
     this?.trim()?.ifEmpty { null }

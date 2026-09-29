@@ -43,7 +43,12 @@ interface AuthRepository {
     // endregion
 
     // region Email Verification
-    suspend fun verifyEmail(email: String, token: String, orderUUID: String?): VerifyEmailResponse
+    suspend fun verifyEmail(
+        email: String,
+        token: String? = null,
+        orderUUID: String? = null,
+        code: String? = null,
+    ): VerifyEmailResponse
     // endregion
 
     // region Profile

@@ -49,6 +49,17 @@ internal class CountryRepositoryImpl(
             ).results
         }
 
+    override suspend fun getPopularCountries(forceRefresh: Boolean, cacheTTL: Duration): List<Country> =
+        getPopularCountriesResult(forceRefresh, cacheTTL).listOrThrow()
+
+    override suspend fun getPopularCountriesResult(
+        forceRefresh: Boolean,
+        cacheTTL: Duration,
+    ): RepositoryResult<List<Country>> =
+        cache.cachedListResult(POPULAR_COUNTRIES_KEY, forceRefresh, cacheTTL) {
+            apiService.getCountryListBy(region = POPULAR_REGION, limit = POPULAR_LIMIT).results
+        }
+
     override suspend fun search(query: String): List<Country> =
         apiRead { apiService.search(query = query).results }
     // endregion
@@ -70,5 +81,8 @@ internal class CountryRepositoryImpl(
     private companion object {
         const val COUNTRIES_KEY_PREFIX = "countries_"
         const val ALL_COUNTRIES_KEY = "countries_all"
+        const val POPULAR_COUNTRIES_KEY = "countries_popular"
+        const val POPULAR_REGION = "Popular"
+        const val POPULAR_LIMIT = 1000
     }
 }

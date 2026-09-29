@@ -2,7 +2,7 @@
 
 For client teams integrating the SDK into an Android app. Covers installation, configuration, every repository method available to you, and the full shape of every model the API returns.
 
-Documents `io.github.esimplified:android-sdk:3.3.0`, the next release, with one
+Documents `io.github.esimplified:android-sdk:3.4.0`, the next release, with one
 interface change that lands in the next release — `OrdersRepository.getOrderHistory` and
 `getOrderHistoryResult` each lost a redundant overload. The tables below show the new shape;
 [Changes since 2.0.0](README.md#changes-since-200) has the detail.
@@ -78,7 +78,7 @@ The SDK is published to Maven Central, which every Gradle project already resolv
 ```kotlin
 // build.gradle.kts (app)
 dependencies {
-    implementation("io.github.esimplified:android-sdk:3.3.0")
+    implementation("io.github.esimplified:android-sdk:3.4.0")
     implementation("io.insert-koin:koin-android:4.1.1")
 }
 
@@ -104,7 +104,7 @@ Without it Android refuses the socket and every call fails with a `SecurityExcep
 
 ## 3b. Which versions you will receive
 
-Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.3.0")` resolves to 3.3.0 and nothing else — there are no version ranges and no BOM in these instructions — so a new release never reaches your build until someone on your team edits that number. Nothing in this section can happen to you without that edit; it describes what you are choosing between when you make it.
+Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.4.0")` resolves to 3.4.0 and nothing else — there are no version ranges and no BOM in these instructions — so a new release never reaches your build until someone on your team edits that number. Nothing in this section can happen to you without that edit; it describes what you are choosing between when you make it.
 
 | What changed | Version goes | What you do |
 |---|---|---|
@@ -484,7 +484,7 @@ if (result.isStale && result.isOffline) showOfflineBanner()
 
 | Case | Constructor | Meaning |
 |---|---|---|
-| `NetworkError` | `NetworkError(statusCode: Int, message: String)` | Server rejected the request. `message` is the backend's own text verbatim, safe to show a customer |
+| `NetworkError` | `NetworkError(statusCode: Int, message: String, apiCode: String? = null)` | Server rejected the request. `message` is the backend's own text verbatim, safe to show a customer. `apiCode` is the body's machine-readable `code`, when the API sent one |
 | `AuthenticationRequired` | `AuthenticationRequired()` | No valid session |
 | `NoInternetConnection` | `NoInternetConnection()` | Host unreachable or connection refused |
 | `DecodingError` | `DecodingError(cause: Throwable)` | Response did not match the model. `message` is always the generic `SdkError.GENERIC_FAILURE_MESSAGE`; `cause` names the field that broke |
@@ -492,6 +492,23 @@ if (result.isStale && result.isOffline) showOfflineBanner()
 | `Unknown` | `Unknown(cause: Throwable)` | Anything else |
 
 `SdkError.isOffline` is shorthand for `this is NoInternetConnection`.
+
+`SdkError.apiCode` is the `code` field of the error body (`{"code": "invalid_code", "detail": "…"}`), `null` on every case but `NetworkError` and whenever the API did not send one. `hasApiCode(ApiErrorCode)` compares it against the known codes:
+
+| `ApiErrorCode` | Wire value | Sent by |
+|---|---|---|
+| `INVALID_CODE` | `invalid_code` | Email or phone verification: the code is wrong |
+| `CODE_EXPIRED` | `code_expired` | Email verification: a fresh code has already been emailed |
+| `PHONE_ALREADY_VERIFIED` | `phone_already_verified` | Phone verification: the number is verified on another account |
+| `NO_PENDING_VERIFICATION` | `no_pending_verification` | Phone verification: the code expired, send a new one |
+| `TOO_MANY_REQUESTS` | `too_many_requests` | Phone verification: rate limited |
+| `PROVIDER_ERROR` | `provider_error` | Phone verification: the SMS or WhatsApp provider failed |
+| `PHONE_VERIFICATION_REQUIRED` | `phone_verification_required` | Any guarded customer call: verify the phone, then retry |
+| `EMAIL_NOT_VERIFIED` | `email_not_verified` | Login: the email address was never verified; a fresh code has been emailed |
+
+On a rejected login the token endpoint's OAuth `error` (`invalid_grant`, `email_not_verified`) is carried as `apiCode` when the body has no `code`. `SdkError.isEmailNotVerified` is true for `email_not_verified`, and for `invalid_grant` whose description contains "not verified" (case-insensitive) — the backend sends that today and re-emails the verification code; a plain wrong password (`invalid_grant`, "Invalid credentials") is false.
+
+A `403` whose code is `phone_verification_required` is a business rule, not a session problem: the interceptor hands it straight to the caller with no token refresh and no retry. Every other `401` / `403` keeps the refresh-and-retry behaviour described in [section 5](#5-keeping-the-customer-signed-in).
 
 The SDK's other public exception types, all thrown rather than returned:
 
@@ -541,6 +558,7 @@ One row per `…Result` method in the SDK. They take the same arguments as the m
 |---|---|---|---|
 | `CountryRepository` | `getCountriesResult` | `getCountries` | `RepositoryResult<List<Country>>` |
 | `CountryRepository` | `getCountriesByResult` | `getCountriesBy` | `RepositoryResult<List<Country>>` |
+| `CountryRepository` | `getPopularCountriesResult` | `getPopularCountries` | `RepositoryResult<List<Country>>` |
 | `EsimRepository` | `getEsimsResult` | `getEsims` | `RepositoryResult<List<AssignedEsim>>` |
 | `EsimRepository` | `getActiveEsimsResult` | `getActiveEsims` | `RepositoryResult<List<AssignedEsim>>` |
 | `EsimRepository` | `getArchivedEsimsResult` | `getArchivedEsims` | `RepositoryResult<List<AssignedEsim>>` |
@@ -628,10 +646,10 @@ inside a `@Composable` (that one needs `koin-androidx-compose`).
 |----------|-----------|---------|-------------|
 | `fetchProfile` | — | `Customer?` | `GET api/v2/customer/` — the customer of record. `null` when unauthenticated |
 | `getUser` | — | `Customer?` | Alias for `fetchProfile()` |
-| `updateProfile` | `email: String, firstName: String?, lastName: String?, phoneNumber: String?, password: String` | `ProfileResponse` | Update user profile, then re-fetch the customer |
-| `updateCustomerProfile` | `firstName: String? = null, lastName: String? = null, phoneNumber: String? = null, email: String? = null, password: String? = null` | `ProfileResponse` | Partial profile update, then re-fetch the customer |
+| `updateProfile` | `email: String, firstName: String?, lastName: String?, phoneNumber: String?, password: String` | `ProfileResponse` | Update user profile, then re-fetch the customer. Sends only `first_name`, `last_name`, `new_email` (when changed), `phone_number` (when given) and `password` (when given), as iOS does |
+| `updateCustomerProfile` | `firstName: String? = null, lastName: String? = null, phoneNumber: String? = null, email: String? = null, password: String? = null` | `ProfileResponse` | Partial profile update sending only the given fields, then re-fetch the customer |
 | `updatePreferences` | `preferredLanguage: String?, preferredCurrency: String?` | `Customer` | Update language/currency prefs, then re-fetch the customer |
-| `verifyEmail` | `email: String, token: String, orderUUID: String?` | `VerifyEmailResponse` | Verify email address |
+| `verifyEmail` | `email: String, token: String? = null, orderUUID: String? = null, code: String? = null` | `VerifyEmailResponse` | Verify an email address with the link token or the emailed 6-digit `code`. Only the values you pass are sent |
 | `deleteProfile` | — | `DeleteProfileResponse` | Delete user account |
 | `logout` | — | `Unit` | End the session and drop every cached read, so the next customer on the device is not served the previous one's data |
 
@@ -643,11 +661,12 @@ inside a `@Composable` (that one needs `koin-androidx-compose`).
 |----------|-----------|---------|-------------|
 | `getCountries` | `forceRefresh: Boolean = false, cacheTTL: Duration = COUNTRIES_TTL` | `List<Country>` | Get all available countries |
 | `getCountriesBy` | `destination: Destination, forceRefresh: Boolean = false, cacheTTL: Duration = COUNTRIES_TTL` | `List<Country>` | Filter by code, name, slug, or region |
+| `getPopularCountries` | `forceRefresh: Boolean = false, cacheTTL: Duration = COUNTRIES_TTL` | `List<Country>` | The tenant's popular destinations (`region=Popular&limit=1000`), in the server's order |
 | `search` | `query: String` | `List<Country>` | Search countries by name/code |
 | `getUserLocation` | — | `UserLocationResponse` | Get user's location by IP (never cached) |
 | `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
 
-Cached: `getCountries`, `getCountriesBy` (`COUNTRIES_TTL` = 24 h). `…Result` twins: `getCountriesResult`, `getCountriesByResult`.
+Cached: `getCountries`, `getCountriesBy`, `getPopularCountries` (`COUNTRIES_TTL` = 24 h). `…Result` twins: `getCountriesResult`, `getCountriesByResult`, `getPopularCountriesResult`.
 
 ---
 
@@ -675,7 +694,7 @@ All cached (`PACKAGES_TTL` = 1 h). `…Result` twins: `getPackagesResult`, `getP
 | `getActiveEsims` | `showLegacy: Boolean? = null, isPrimary: Boolean? = null, forceRefresh: Boolean = false, cacheTTL: Duration = ESIM_LIST_TTL, includeBase64QrCode: Boolean = false` | `List<AssignedEsim>` | Non-archived eSIMs only. See **`showLegacy` has three cases** below |
 | `getArchivedEsims` | `showLegacy: Boolean? = null, isPrimary: Boolean? = null, forceRefresh: Boolean = false, cacheTTL: Duration = ESIM_LIST_TTL, includeBase64QrCode: Boolean = false` | `List<AssignedEsim>` | Archived eSIMs only. See **`showLegacy` has three cases** below |
 | `getEsimByIccid` | `iccid: String, forceRefresh: Boolean = false, cacheTTL: Duration = ESIM_DETAILS_TTL, includeBase64QrCode: Boolean = false` | `AssignedEsim` | Get one eSIM from `customer/esims/{iccid}/details/` |
-| `updateEsim` | `iccid: String, name: String? = null, isAutoTopUp: Boolean? = null, isArchived: Boolean? = null, isPrimary: Boolean? = null` | `Unit` | Update eSIM settings. **Throws if the server rejects the write** — on a non-2xx response, or when the success body is not the API's `eSIM updated successfully`, matching the iOS SDK |
+| `updateEsim` | `iccid: String, name: String? = null, isAutoTopUp: Boolean? = null, isArchived: Boolean? = null, isPrimary: Boolean? = null` | `Unit` | Update eSIM settings. Sends a JSON body with only the fields given, so a rename leaves `is_primary`, `archived` and `auto_top_up` untouched (a form body reset them). **Throws if the server rejects the write** — on a non-2xx response, or when the success body is not the API's `eSIM updated successfully`, matching the iOS SDK |
 | `updateEsimPrimaryStatus` | `iccid: String, isPrimary: Boolean` | `Unit` | Convenience wrapper for the primary flag |
 | `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
 
@@ -850,7 +869,18 @@ Cached (`STORE_REVIEW_TTL` = 24 h). `…Result` twin: `fetchStoreReviewResult`.
 |----------|-----------|---------|-------------|
 | `getIframe` | `isEU: Boolean` | `VisaRewardsIframeResponse` | Get Visa rewards iframe URL |
 | `verify` | `token: String` | `VisaRewardsResponse` | Verify a Visa rewards token |
-| `activate` | `token: String, rewardCode: String` | `VisaRewardsResponse` | Activate a Visa reward |
+| `activate` | `token: String, rewardCode: String, iccid: String? = null` | `VisaRewardsResponse` | Redeem a Visa reward (`PATCH customer/promotions/validate/{token}`). Send `rewardCode` exactly as `verify` returned it; pass `iccid` only to put a global eSIM reward onto an eSIM the customer already owns |
+
+---
+
+### PhoneVerificationRepository
+
+Customer-token calls. Both throw an `SdkError.NetworkError` carrying the API's `code` (see [Error handling](#7-error-handling)).
+
+| Function | Parameters | Returns | Description |
+|----------|-----------|---------|-------------|
+| `sendCode` | `phoneNumber: String, channel: PhoneOtpChannel` | `PhoneOtpSendResponse` | Send a 6-digit code to the number by SMS or WhatsApp. `404` means the tenant has phone verification off; `409` `phone_already_verified` means the number belongs to another account |
+| `verifyCode` | `code: String` | `PhoneOtpVerifyResponse` | Verify the code (valid for 10 minutes). Re-fetch the customer afterwards so `phoneVerified` is fresh |
 
 ---
 
@@ -991,6 +1021,7 @@ Every type the SDK returns or accepts, with its Kotlin properties and the JSON k
 | lastName | String? | Last name |
 | fullName | String? | Full name |
 | phoneNumber | String? | Phone number |
+| phoneVerified | Boolean? | Whether the phone number has been verified (`phone_verified`). Changing the number resets it on the server |
 | wallet | Double? | Wallet balance |
 | walletCurrency | String? | Wallet currency |
 | referralCode | String? | User's referral code (decodes `referral_code` or `unique_referral_code`) |
@@ -1187,7 +1218,7 @@ Every type the SDK returns or accepts, with its Kotlin properties and the JSON k
 |-------|------|-------------|
 | stock | Boolean | In stock |
 | packageInfo | PackagePlan? | Package details (nullable since 2.0) |
-| promoCode | CheckoutCouponResponse | Active promo |
+| promoCode | CheckoutCouponResponse? | The applied promo the stock check reports, `null` when there is none (nullable since 3.4.0) |
 
 ### KredsLoyaltyBalanceResponse
 
@@ -1294,6 +1325,7 @@ Decoding is total: any wire value the enum does not recognise becomes `UNKNOWN` 
 | dataGB | Double? | Data reward amount |
 | **Computed properties** | — | Derived in Kotlin from the fields above; not part of the JSON |
 | remainingOrAllowed | Int? | `remaining ?: allowed` |
+| orderUuid | String? | The order created by a redeem: the `id` query item of `redirect_url`, else the text after its last `=` |
 
 ### VoucherRedeemResponse
 
@@ -1460,8 +1492,11 @@ Built internally by `AuthRepository.verifyEmail`.
 | Field | Type | Description |
 |-------|------|-------------|
 | email | String | Email address being verified |
-| token | String | Verification token (`email_verification_token`) |
+| token | String? | Verification token from the email link (`email_verification_token`) |
 | orderUUID | String? | Order this verification belongs to, if any |
+| code | String? | The 6-digit code from the email |
+
+Only non-null fields are sent.
 
 ### VerifyEmailResponse
 
@@ -1470,6 +1505,44 @@ Built internally by `AuthRepository.verifyEmail`.
 | email | String? | The verified email address |
 | detail | String? | Backend detail message |
 | isVerified | Boolean | Whether the address is now verified (`email_verified`) |
+
+### PhoneOtpChannel (Enum)
+
+| Value | Wire value |
+|-------|------------|
+| `SMS` | `sms` |
+| `WHATSAPP` | `whatsapp` |
+
+### PhoneOtpSendRequest
+
+Built internally by `PhoneVerificationRepository.sendCode`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| phoneNumber | String | Number in international format (`phone_number`) |
+| channel | PhoneOtpChannel | Delivery channel |
+
+### PhoneOtpSendResponse
+
+| Field | Type | Description |
+|-------|------|-------------|
+| phoneNumber | String | The normalised number the code went to (`phone_number`) |
+| channel | PhoneOtpChannel? | The channel used |
+
+### PhoneOtpVerifyRequest
+
+Built internally by `PhoneVerificationRepository.verifyCode`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| code | String | The 6-digit code |
+
+### PhoneOtpVerifyResponse
+
+| Field | Type | Description |
+|-------|------|-------------|
+| phoneNumber | String | The verified number (`phone_number`) |
+| phoneVerified | Boolean | `true` once verified (`phone_verified`) |
 
 ### DeleteProfileResponse
 
@@ -2082,6 +2155,7 @@ The standard error body. The SDK parses it for you and surfaces the text as an e
 | detail | String? | Detail message |
 | error | String? | Error code |
 | message | String? | Human-readable message |
+| code | String? | Machine-readable code, surfaced as `SdkError.apiCode` |
 
 ### IframeRequest
 

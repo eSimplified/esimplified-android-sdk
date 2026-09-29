@@ -11,6 +11,7 @@ data class Customer(
     @SerialName("customer_id") val id: String,
     val email: String? = null,
     @SerialName("phone_number") val phoneNumber: String? = null,
+    @SerialName("phone_verified") val phoneVerified: Boolean? = null,
     @SerialName("external_reference") val externalReference: String? = null,
     @SerialName("first_name") val firstName: String? = null,
     @SerialName("last_name") val lastName: String? = null,

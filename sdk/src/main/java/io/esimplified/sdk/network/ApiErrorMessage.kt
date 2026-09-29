@@ -19,8 +19,18 @@ internal object ApiErrorMessage {
     // region Parsing
     fun parse(body: String?): String = parseOrNull(body) ?: FALLBACK
 
-    fun parseOrNull(error: HttpException): String? =
-        parseOrNull(runCatching { error.response()?.errorBody()?.string() }.getOrNull())
+    fun body(error: HttpException): String? =
+        runCatching { error.response()?.errorBody()?.string() }.getOrNull()
+
+    fun parseOrNull(error: HttpException): String? = parseOrNull(body(error))
+
+    fun code(body: String?): String? {
+        if (body == null) return null
+        return runCatching { json.decodeFromString<ApiErrorResponse>(body).code }
+            .getOrNull()
+            ?.trim()
+            ?.ifEmpty { null }
+    }
 
     fun parseOrNull(body: String?): String? {
         if (body == null) return null

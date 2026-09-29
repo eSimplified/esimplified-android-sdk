@@ -4,6 +4,7 @@ import io.esimplified.sdk.fake.FakeSecureStorage
 import io.esimplified.sdk.model.Customer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -47,6 +48,25 @@ class DefaultSessionManagerTest {
             refreshToken = refreshToken,
             expires = LocalDateTime.of(2026, 12, 31, 23, 59, 59)
         )
+    }
+
+    @Test
+    fun `phone verification survives a restore from storage`() {
+        val auth = createTestAuth()
+        sessionManager.save(auth.copy(user = auth.user.copy(phoneVerified = true)))
+
+        val restored = DefaultSessionManager(fakeStorage).getAuthState() as Auth.Authenticated
+
+        assertEquals(true, restored.user.phoneVerified)
+    }
+
+    @Test
+    fun `an unknown phone verification restores as null`() {
+        sessionManager.save(createTestAuth())
+
+        val restored = DefaultSessionManager(fakeStorage).getAuthState() as Auth.Authenticated
+
+        assertNull(restored.user.phoneVerified)
     }
 
     @Test

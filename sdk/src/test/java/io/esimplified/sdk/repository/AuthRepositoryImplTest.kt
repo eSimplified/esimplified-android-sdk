@@ -26,6 +26,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import io.esimplified.sdk.network.ApiErrorCode
+import io.esimplified.sdk.network.SdkError
 import org.junit.Test
 import retrofit2.Retrofit
 import retrofit2.create
@@ -160,6 +162,50 @@ class AuthRepositoryImplTest {
     }
 
     @Test
+    fun `a login refused for an unverified email carries the oauth error and is recognised`() = runTest {
+        mockWebServer.enqueue(
+            MockResponse().setResponseCode(400)
+                .setBody("""{"error":"invalid_grant","error_description":"Email not verified, new verification email sent."}""")
+        )
+
+        val failure = runCatching { authRepository.login("test@example.com", "password") }
+            .exceptionOrNull() as SdkError.NetworkError
+
+        assertEquals(400, failure.statusCode)
+        assertEquals("invalid_grant", failure.apiCode)
+        assertEquals("Email not verified, new verification email sent.", failure.message)
+        assertTrue(failure.isEmailNotVerified)
+    }
+
+    @Test
+    fun `a dedicated email not verified code is recognised`() = runTest {
+        mockWebServer.enqueue(
+            MockResponse().setResponseCode(400)
+                .setBody("""{"error":"email_not_verified","error_description":"Verify your email."}""")
+        )
+
+        val failure = runCatching { authRepository.login("test@example.com", "password") }
+            .exceptionOrNull() as SdkError.NetworkError
+
+        assertTrue(failure.hasApiCode(ApiErrorCode.EMAIL_NOT_VERIFIED))
+        assertTrue(failure.isEmailNotVerified)
+    }
+
+    @Test
+    fun `a wrong password is not an unverified email`() = runTest {
+        mockWebServer.enqueue(
+            MockResponse().setResponseCode(400)
+                .setBody("""{"error":"invalid_grant","error_description":"Invalid credentials given."}""")
+        )
+
+        val failure = runCatching { authRepository.login("test@example.com", "password") }
+            .exceptionOrNull() as SdkError.NetworkError
+
+        assertEquals("invalid_grant", failure.apiCode)
+        assertFalse(failure.isEmailNotVerified)
+    }
+
+    @Test
     fun `login reads loyalty fields from the auth response without calling preferences`() = runTest {
         mockWebServer.enqueue(
             MockResponse()
@@ -242,6 +288,60 @@ class AuthRepositoryImplTest {
             "+27831234567",
             (sessionManager.getAuthState() as Auth.Authenticated).user.phoneNumber
         )
+    }
+
+    @Test
+    fun `updateCustomerProfile sends only the fields it was given`() = runTest {
+        seedAuthenticatedSession(refreshToken = "original-refresh-token")
+        serveProfile(
+            """{ "customer_id": "user-123", "email": "test@example.com" }"""
+        )
+
+        authRepository.updateCustomerProfile(phoneNumber = "+27831234567")
+
+        val body = mockWebServer.takeRequest().body.readUtf8()
+        assertEquals("""{"phone_number":"+27831234567"}""", body)
+    }
+
+    @Test
+    fun `updateProfile sends the iOS body when only the number changed`() = runTest {
+        seedAuthenticatedSession(refreshToken = "original-refresh-token")
+        serveProfile(
+            """{ "customer_id": "user-123", "email": "test@example.com" }"""
+        )
+
+        authRepository.updateProfile(
+            email = "test@example.com",
+            firstName = "Kieran",
+            lastName = "Tester",
+            phoneNumber = "+27831234567",
+            password = "secret",
+        )
+
+        val body = mockWebServer.takeRequest().body.readUtf8()
+        assertEquals(
+            """{"password":"secret","first_name":"Kieran","last_name":"Tester","phone_number":"+27831234567"}""",
+            body,
+        )
+    }
+
+    @Test
+    fun `updateProfile leaves out an unchanged number and the password of a provider account`() = runTest {
+        seedAuthenticatedSession(refreshToken = "original-refresh-token")
+        serveProfile(
+            """{ "customer_id": "user-123", "email": "test@example.com" }"""
+        )
+
+        authRepository.updateProfile(
+            email = "new@example.com",
+            firstName = "Kieran",
+            lastName = "Tester",
+            phoneNumber = "",
+            password = "",
+        )
+
+        val body = mockWebServer.takeRequest().body.readUtf8()
+        assertEquals("""{"first_name":"Kieran","last_name":"Tester","new_email":"new@example.com"}""", body)
     }
 
     @Test

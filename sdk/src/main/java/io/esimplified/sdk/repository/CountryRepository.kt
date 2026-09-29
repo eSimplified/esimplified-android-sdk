@@ -20,12 +20,23 @@ interface CountryRepository {
         cacheTTL: Duration = COUNTRIES_TTL,
     ): List<Country>
 
+    suspend fun getPopularCountries(
+        forceRefresh: Boolean = false,
+        cacheTTL: Duration = COUNTRIES_TTL,
+    ): List<Country>
+
     suspend fun search(query: String): List<Country>
 
     suspend fun getUserLocation(): UserLocationResponse
     // endregion
 
     // region Result reads
+    suspend fun getPopularCountriesResult(
+        forceRefresh: Boolean = false,
+        cacheTTL: Duration = COUNTRIES_TTL,
+    ): RepositoryResult<List<Country>> =
+        RepositoryResult(getPopularCountries(forceRefresh, cacheTTL))
+
     suspend fun getCountriesResult(
         forceRefresh: Boolean = false,
         cacheTTL: Duration = COUNTRIES_TTL,
