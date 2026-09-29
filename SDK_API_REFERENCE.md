@@ -1218,7 +1218,7 @@ Every type the SDK returns or accepts, with its Kotlin properties and the JSON k
 |-------|------|-------------|
 | stock | Boolean | In stock |
 | packageInfo | PackagePlan? | Package details (nullable since 2.0) |
-| promoCode | CheckoutCouponResponse | Active promo |
+| promoCode | CheckoutCouponResponse? | The applied promo the stock check reports, `null` when there is none (nullable since 3.4.0) |
 
 ### KredsLoyaltyBalanceResponse
 

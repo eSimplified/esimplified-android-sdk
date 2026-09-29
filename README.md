@@ -1141,6 +1141,10 @@ A login rejected because the email was never verified surfaces as a `NetworkErro
 
 `PUT /customer/esims/{iccid}/` now carries a JSON body with only the fields you passed. The previous form body made the server treat every boolean you left out as `false`, so a rename cleared `is_primary`, `archived` and `auto_top_up`.
 
+### `CheckStockResponse.promoCode` is nullable
+
+It is `null` when the stock check carries no `promo_code`; it used to default to an empty coupon that looked like an applied code.
+
 ### Profile updates send only what changed
 
 `updateProfile` and `updateCustomerProfile` send `first_name`, `last_name`, `new_email` (when the email changed), `phone_number` (when given) and `password` (when given), matching the iOS SDK. `customer_id`, `email`, `full_name` and empty strings are no longer sent.
