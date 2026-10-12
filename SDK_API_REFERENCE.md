@@ -2,7 +2,7 @@
 
 For client teams integrating the SDK into an Android app. Covers installation, configuration, every repository method available to you, and the full shape of every model the API returns.
 
-Documents `io.github.esimplified:android-sdk:3.4.0`, the next release, with one
+Documents `io.github.esimplified:android-sdk:3.4.1`, the next release, with one
 interface change that lands in the next release — `OrdersRepository.getOrderHistory` and
 `getOrderHistoryResult` each lost a redundant overload. The tables below show the new shape;
 [Changes since 2.0.0](README.md#changes-since-200) has the detail.
@@ -78,7 +78,7 @@ The SDK is published to Maven Central, which every Gradle project already resolv
 ```kotlin
 // build.gradle.kts (app)
 dependencies {
-    implementation("io.github.esimplified:android-sdk:3.4.0")
+    implementation("io.github.esimplified:android-sdk:3.4.1")
     implementation("io.insert-koin:koin-android:4.1.1")
 }
 
@@ -104,7 +104,7 @@ Without it Android refuses the socket and every call fails with a `SecurityExcep
 
 ## 3b. Which versions you will receive
 
-Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.4.0")` resolves to 3.4.0 and nothing else — there are no version ranges and no BOM in these instructions — so a new release never reaches your build until someone on your team edits that number. Nothing in this section can happen to you without that edit; it describes what you are choosing between when you make it.
+Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.4.1")` resolves to 3.4.1 and nothing else — there are no version ranges and no BOM in these instructions — so a new release never reaches your build until someone on your team edits that number. Nothing in this section can happen to you without that edit; it describes what you are choosing between when you make it.
 
 | What changed | Version goes | What you do |
 |---|---|---|
@@ -294,7 +294,7 @@ EsimplifiedSdk.initialize(
 
 Full method lists for both are in [Supporting types](#9b-supporting-types).
 
-Token refresh is automatic. An access token within five minutes of expiry is refreshed before the request goes out, and a 401 or 403 on an authenticated request triggers one refresh-and-retry. Concurrent calls share a single refresh rather than racing it. A refresh the server rejects ends the session — `SessionManager.onAuthenticationFailed()` fires and the state becomes `Auth.Unauthenticated` — while a network failure during refresh does not.
+Token refresh is automatic. An access token within five minutes of expiry is refreshed before the request goes out, and a 401, or a 403 with no `code` in the body, on an authenticated request triggers one refresh-and-retry. A 403 whose body carries a `code` is a server decision and is handed to the caller after a single request, with no refresh. Concurrent calls share a single refresh rather than racing it. A refresh the server rejects ends the session — `SessionManager.onAuthenticationFailed()` fires and the state becomes `Auth.Unauthenticated` — while a network failure during refresh does not.
 
 Read the current state anywhere with `EsimplifiedSdk.sessionManager`:
 
@@ -508,7 +508,7 @@ if (result.isStale && result.isOffline) showOfflineBanner()
 
 On a rejected login the token endpoint's OAuth `error` (`invalid_grant`, `email_not_verified`) is carried as `apiCode` when the body has no `code`. `SdkError.isEmailNotVerified` is true for `email_not_verified`, and for `invalid_grant` whose description contains "not verified" (case-insensitive) — the backend sends that today and re-emails the verification code; a plain wrong password (`invalid_grant`, "Invalid credentials") is false.
 
-A `403` whose code is `phone_verification_required` is a business rule, not a session problem: the interceptor hands it straight to the caller with no token refresh and no retry. Every other `401` / `403` keeps the refresh-and-retry behaviour described in [section 5](#5-keeping-the-customer-signed-in).
+A `403` whose body carries a `code` (for example `phone_verification_required` or `redemption_blocked`) is a business rule, not a session problem: the interceptor hands it straight to the caller after one request, with no token refresh and no retry, because the server may count a replay against the customer. A `401`, or a `403` with no `code`, keeps the refresh-and-retry behaviour described in [section 5](#5-keeping-the-customer-signed-in).
 
 The SDK's other public exception types, all thrown rather than returned:
 
