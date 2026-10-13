@@ -8,7 +8,7 @@
 
 Kotlin SDK for integrating the eSimplified eSIM platform into Android applications. Provides typed repository interfaces for authentication, eSIM management, package browsing, orders, payments, and more. All networking, authentication, and token management are handled internally -- consuming apps interact only with clean Kotlin interfaces.
 
-**Coordinates:** `io.github.esimplified:android-sdk:3.4.1`
+**Coordinates:** `io.github.esimplified:android-sdk:3.4.0`
 
 That is the version this README describes. It adds terms, privacy and general FAQs as structured documents on `FaqAndSupportRepository`; nothing a caller writes has to change to take it.
 
@@ -78,7 +78,7 @@ The SDK is published to Maven Central. No extra repositories or authentication n
 ```kotlin
 // build.gradle.kts (app)
 dependencies {
-    implementation("io.github.esimplified:android-sdk:3.4.1")
+    implementation("io.github.esimplified:android-sdk:3.4.0")
 
     // Required. The SDK declares its own dependencies as `implementation`, so they
     // resolve at runtime but are NOT on your compile classpath. You call
@@ -105,7 +105,7 @@ Everything else the SDK needs — Retrofit, OkHttp, kotlinx.serialization, kotli
 
 ## Versioning
 
-The SDK follows semantic versioning, and Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.4.1")` resolves to 3.4.1 and nothing else — there are no version ranges and no BOM anywhere in these instructions, so no release reaches your build until someone edits that line. Nothing below can arrive unannounced; this section tells you what to expect when you do choose to raise the number.
+The SDK follows semantic versioning, and Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.4.0")` resolves to 3.4.0 and nothing else — there are no version ranges and no BOM anywhere in these instructions, so no release reaches your build until someone edits that line. Nothing below can arrive unannounced; this section tells you what to expect when you do choose to raise the number.
 
 | What changed | Version goes | What you do |
 |---|---|---|
@@ -1107,7 +1107,7 @@ Every existing call still compiles — `getOrderHistory()`, `getOrderHistory(tru
 
 One behaviour change: the two forms used to occupy separate cache entries even though they sent the identical request, so `getOrderHistory()` and `getOrderHistory(withLoyaltyPoints = false)` each did their own network call. They now share one entry.
 
-## Changes in 3.4.1
+## Changes since 3.4.0
 
 ### A `403` that carries a `code` is never replayed
 
