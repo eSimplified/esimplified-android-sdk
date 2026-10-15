@@ -798,7 +798,7 @@ The SDK's internal OkHttp interceptor handles token refresh transparently:
    - Retries the original request with the new access token
 3. If the refresh **is rejected** — HTTP 400, 401 or 403, or there is no refresh token to send — the session ends and the user is signed out
 4. If the refresh fails for any other reason — a 500, a gateway error, a dropped connection — the session is **kept** and the failure is surfaced to the caller as an `SdkError.NetworkError`
-5. A `403` whose body carries `code: phone_verification_required` is handed to the caller untouched — no refresh, no retry — because it is a business rule, not a session problem
+5. A `403` whose body carries a `code` (for example `phone_verification_required` or `redemption_blocked`) is handed to the caller untouched — one request, no refresh, no retry — because it is a server decision, not a session problem, and the server may count a replay against the customer. A `403` with no `code` still refreshes and retries
 
 Point 4 is a behaviour change in 2.0. Before, any non-2xx refresh response ended the session, so a brief server-side blip signed users out.
 
@@ -1106,6 +1106,12 @@ suspend fun getOrderHistory(
 Every existing call still compiles — `getOrderHistory()`, `getOrderHistory(true)` and `getOrderHistory(withLoyaltyPoints = true)` all resolve to it. The JVM signature changed, so recompile against the new version rather than swapping the AAR under an already-built app. If you implement `OrdersRepository` yourself, delete the now-duplicate override.
 
 One behaviour change: the two forms used to occupy separate cache entries even though they sent the identical request, so `getOrderHistory()` and `getOrderHistory(withLoyaltyPoints = false)` each did their own network call. They now share one entry.
+
+## Changes since 3.4.0
+
+### A `403` that carries a `code` is never replayed
+
+The interceptor used to refresh the token and resend the request for every `403` except `phone_verification_required`. The backend's redemption risk gate answers `403` with a `code` (`redemption_blocked`, `risk_blocked`, `recaptcha_failed`, …) and counts each refused request as a strike, so the replay turned one strike into two. Any `403` whose body carries a `code` now reaches the caller as a `NetworkError` after a single request, with no refresh. A `401`, or a `403` with no `code`, still refreshes and retries. No API change.
 
 ## Changes in 3.4.0
 

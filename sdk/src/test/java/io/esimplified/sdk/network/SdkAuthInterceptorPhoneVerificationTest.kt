@@ -64,9 +64,53 @@ class SdkAuthInterceptorPhoneVerificationTest {
         assertEquals(body, response.body?.string())
     }
 
+    // endregion
+
+    // region Server decisions carry a code
     @Test
-    fun `a 403 with any other code still refreshes and retries`() {
-        mockWebServer.enqueue(MockResponse().setResponseCode(403).setBody("""{"code":"forbidden","detail":"No."}"""))
+    fun `a 403 with a code in the body is handed to the caller after one request and no refresh`() {
+        val body = """{"code":"redemption_blocked","detail":"We can't verify this card right now."}"""
+        mockWebServer.enqueue(MockResponse().setResponseCode(403).setBody(body))
+
+        val response = client.newCall(Request.Builder().url(mockWebServer.url("/api/v2/customer/promotions/iframe/")).build()).execute()
+
+        assertEquals(403, response.code)
+        assertEquals("a server decision must not be replayed", 1, mockWebServer.requestCount)
+        assertTrue(sessionManager.isAuthenticated())
+        assertEquals("tok", sessionManager.getAccessToken())
+        assertEquals(body, response.body?.string())
+    }
+
+    @Test
+    fun `a 403 phone_range_burst on the OTP send is handed to the caller after one request and no refresh`() {
+        assertCodedForbiddenIsNotReplayed(path = "/api/v2/phone/otp/", code = "phone_range_burst")
+    }
+
+    @Test
+    fun `a 403 phone_change_locked on the OTP send is handed to the caller after one request and no refresh`() {
+        assertCodedForbiddenIsNotReplayed(path = "/api/v2/phone/otp/", code = "phone_change_locked")
+    }
+
+    private fun assertCodedForbiddenIsNotReplayed(path: String, code: String) {
+        val body = """{"detail":"We can't send a code to this number right now.","code":"$code"}"""
+        mockWebServer.enqueue(MockResponse().setResponseCode(403).setBody(body))
+
+        val response = client.newCall(
+            Request.Builder().url(mockWebServer.url(path)).post(okhttp3.RequestBody.create(null, "{}")).build()
+        ).execute()
+
+        assertEquals(403, response.code)
+        assertEquals("a server decision must not be replayed", 1, mockWebServer.requestCount)
+        assertTrue(sessionManager.isAuthenticated())
+        assertEquals("tok", sessionManager.getAccessToken())
+        assertEquals(code, ApiErrorMessage.code(response.body?.string()))
+    }
+
+    @Test
+    fun `a 403 with no code in the body still refreshes and retries`() {
+        mockWebServer.enqueue(
+            MockResponse().setResponseCode(403).setBody("""{"detail":"You do not have permission to perform this action."}""")
+        )
         mockWebServer.enqueue(
             MockResponse().setResponseCode(200).setBody("""{"access_token":"new","refresh_token":"ref2","expires_in":3600}""")
         )

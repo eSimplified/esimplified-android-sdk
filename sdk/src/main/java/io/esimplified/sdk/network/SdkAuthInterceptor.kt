@@ -101,8 +101,8 @@ internal class SdkAuthInterceptor(
         val response = chain.proceed(requestBuilder.build())
         SdkLog.d("Response: ${response.code} for ${originalRequest.url.encodedPath.redactedPath()}")
 
-        if (response.code == 403 && response.requiresPhoneVerification()) {
-            SdkLog.d("403 requires phone verification -> handing it to the caller")
+        if (response.code == 403 && response.carriesApiCode()) {
+            SdkLog.d("403 carries an API code -> server decision, handing it to the caller without a retry")
             return response
         }
 
@@ -256,9 +256,9 @@ internal class SdkAuthInterceptor(
     private fun readBody(response: Response): String? =
         runCatching { response.body?.string() }.getOrNull()
 
-    private fun Response.requiresPhoneVerification(): Boolean {
+    private fun Response.carriesApiCode(): Boolean {
         val body = runCatching { peekBody(PEEK_BODY_LIMIT).string() }.getOrNull()
-        return ApiErrorMessage.code(body) == ApiErrorCode.PHONE_VERIFICATION_REQUIRED.value
+        return ApiErrorMessage.code(body) != null
     }
 
     private companion object {
