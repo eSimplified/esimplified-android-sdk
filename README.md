@@ -8,7 +8,7 @@
 
 Kotlin SDK for integrating the eSimplified eSIM platform into Android applications. Provides typed repository interfaces for authentication, eSIM management, package browsing, orders, payments, and more. All networking, authentication, and token management are handled internally -- consuming apps interact only with clean Kotlin interfaces.
 
-**Coordinates:** `io.github.esimplified:android-sdk:3.4.0`
+**Coordinates:** `io.github.esimplified:android-sdk:3.4.1`
 
 That is the version this README describes. It adds terms, privacy and general FAQs as structured documents on `FaqAndSupportRepository`; nothing a caller writes has to change to take it.
 
@@ -78,7 +78,7 @@ The SDK is published to Maven Central. No extra repositories or authentication n
 ```kotlin
 // build.gradle.kts (app)
 dependencies {
-    implementation("io.github.esimplified:android-sdk:3.4.0")
+    implementation("io.github.esimplified:android-sdk:3.4.1")
 
     // Required. The SDK declares its own dependencies as `implementation`, so they
     // resolve at runtime but are NOT on your compile classpath. You call
@@ -105,7 +105,7 @@ Everything else the SDK needs — Retrofit, OkHttp, kotlinx.serialization, kotli
 
 ## Versioning
 
-The SDK follows semantic versioning, and Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.4.0")` resolves to 3.4.0 and nothing else — there are no version ranges and no BOM anywhere in these instructions, so no release reaches your build until someone edits that line. Nothing below can arrive unannounced; this section tells you what to expect when you do choose to raise the number.
+The SDK follows semantic versioning, and Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.4.1")` resolves to 3.4.1 and nothing else — there are no version ranges and no BOM anywhere in these instructions, so no release reaches your build until someone edits that line. Nothing below can arrive unannounced; this section tells you what to expect when you do choose to raise the number.
 
 | What changed | Version goes | What you do |
 |---|---|---|
@@ -113,7 +113,7 @@ The SDK follows semantic versioning, and Gradle pins you to an exact version. `i
 | Something added | 2.1.0 → 2.2.0 | Nothing |
 | Something you call changed or went away | 2.1.0 → 3.0.0 | Update your code, then raise the version you depend on |
 
-Those numbers are illustrative; 3.4.0 is the current release.
+Those numbers are illustrative; 3.4.1 is the current release.
 
 The convention maps straight onto our commit messages. A `fix:` commit is a patch, a `feat:` commit is a minor, and the major only moves for a change that breaks **callers** — a method you call renamed, removed, or given a new required parameter. Commits that break callers are marked with a `!`, as in `refactor(orders)!:`.
 
@@ -1107,7 +1107,7 @@ Every existing call still compiles — `getOrderHistory()`, `getOrderHistory(tru
 
 One behaviour change: the two forms used to occupy separate cache entries even though they sent the identical request, so `getOrderHistory()` and `getOrderHistory(withLoyaltyPoints = false)` each did their own network call. They now share one entry.
 
-## Changes since 3.4.0
+## Changes in 3.4.1
 
 ### A `403` that carries a `code` is never replayed
 
@@ -1192,7 +1192,7 @@ The published coordinate is `io.github.esimplified:android-sdk:<version>`, and t
 
 ```kotlin
 mavenPublishing {
-    coordinates("io.github.esimplified", "android-sdk", "3.4.0")
+    coordinates("io.github.esimplified", "android-sdk", "3.4.1")
 }
 ```
 
