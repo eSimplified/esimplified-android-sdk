@@ -24,6 +24,13 @@ import io.esimplified.sdk.repository.impl.VouchersRepositoryImpl
 import io.esimplified.sdk.repository.impl.EsimRepositoryImpl
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
+import org.junit.Assert.assertFalse
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.boolean
+import io.esimplified.sdk.model.SavedPaymentMethod
+import io.esimplified.sdk.model.PaymentRequest
+import io.esimplified.sdk.model.CustomerDetails
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
@@ -138,6 +145,74 @@ class RepositoryIntegrationTest {
 
         repo.logout()
         assertTrue(sessionManager.getAuthState() is Auth.Unauthenticated)
+    }
+
+    // MARK: - PaymentsRepository
+
+    @Test
+    fun `PaymentsRepository getPaymentMethods GETs customer payment-methods with the bearer token and decodes the cards`() = runTest {
+        enqueueJson("""[{"payment_method_id":"pm_1UGG","card_brand":"visa","card_last4":"4242","card_exp_month":2,"card_exp_year":2044}]""")
+
+        val repo = PaymentsRepositoryImpl(apiService, sessionManager)
+        val methods = repo.getPaymentMethods()
+
+        assertEquals(
+            listOf(SavedPaymentMethod("pm_1UGG", "visa", "4242", cardExpMonth = 2, cardExpYear = 2044)),
+            methods,
+        )
+        val recorded = mockWebServer.takeRequest()
+        assertEquals("GET", recorded.method)
+        assertEquals("/api/v2/customer/payment-methods/", recorded.path)
+        assertEquals("Bearer tok", recorded.getHeader("authorization"))
+    }
+
+    @Test
+    fun `PaymentsRepository payWithStoredPaymentMethod POSTs payments with the stored card and no save or auto top-up flags`() = runTest {
+        enqueueJson("""{"detail":"ok","data":{"order_id":"o9"}}""")
+
+        val repo = PaymentsRepositoryImpl(apiService, sessionManager)
+        val response = repo.payWithStoredPaymentMethod("pm_1UGG", PaymentRequest.Type.TOP_UP, 42, "8901")
+
+        assertEquals("o9", response.transaction?.orderId)
+        val recorded = mockWebServer.takeRequest()
+        assertEquals("POST", recorded.method)
+        assertEquals("/api/v2/payments/", recorded.path)
+        assertEquals("Bearer tok", recorded.getHeader("authorization"))
+        val body = Json.parseToJsonElement(recorded.body.readUtf8()).jsonObject
+        assertEquals("pm_1UGG", body["stored_payment_method"]?.jsonPrimitive?.content)
+        assertEquals("top-up", body["type"]?.jsonPrimitive?.content)
+        assertEquals("8901", body["iccid"]?.jsonPrimitive?.content)
+        assertEquals("42", body["package_type_id"]?.jsonPrimitive?.content)
+        assertEquals("stripe_intent", body["payment_method"]?.jsonPrimitive?.content)
+        assertEquals("u@e.com", body["customer"]?.jsonObject?.get("email")?.jsonPrimitive?.content)
+        assertFalse(body.containsKey("auto_top_up"))
+        assertFalse(body.containsKey("save_payment_method"))
+        assertFalse(body.containsKey("loyalty_points_amount"))
+    }
+
+    @Test
+    fun `PaymentsRepository a normal purchase body is unchanged by the stored card field`() = runTest {
+        enqueueJson("""{"detail":"ok","data":{"order_id":"o1"}}""")
+
+        val repo = PaymentsRepositoryImpl(apiService, sessionManager)
+        repo.getPaymentIntent(
+            PaymentRequest(
+                type = PaymentRequest.Type.BUY,
+                customer = CustomerDetails(email = "u@e.com"),
+                packageTypeId = 42,
+                paymentMethod = PaymentRequest.Method.STRIPE_INTENT,
+                autoTopUp = false,
+                savePaymentMethod = true,
+            )
+        )
+
+        val body = Json.parseToJsonElement(mockWebServer.takeRequest().body.readUtf8()).jsonObject
+        assertEquals(
+            setOf("type", "customer", "package_type_id", "payment_method", "auto_top_up", "save_payment_method"),
+            body.keys,
+        )
+        assertEquals(false, body["auto_top_up"]?.jsonPrimitive?.boolean)
+        assertEquals(true, body["save_payment_method"]?.jsonPrimitive?.boolean)
     }
 
     // MARK: - CountryRepository

@@ -2,8 +2,12 @@ package io.esimplified.sdk.repository.impl
 
 import io.esimplified.sdk.repository.PaymentsRepository
 
+import io.esimplified.sdk.auth.Auth
+import io.esimplified.sdk.auth.SessionManager
+import io.esimplified.sdk.model.CustomerDetails
 import io.esimplified.sdk.model.PaymentRequest
 import io.esimplified.sdk.model.PaymentResponse
+import io.esimplified.sdk.model.SavedPaymentMethod
 import io.esimplified.sdk.network.ApiErrorMessage
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.PaymentApiException
@@ -13,7 +17,8 @@ import kotlinx.serialization.json.Json
 import retrofit2.HttpException
 
 internal class PaymentsRepositoryImpl(
-    private val apiService: ApiService
+    private val apiService: ApiService,
+    private val sessionManager: SessionManager,
 ) : PaymentsRepository {
 
     private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
@@ -41,5 +46,33 @@ internal class PaymentsRepositoryImpl(
             throw e.asNetworkError(parsed?.detail, errorBody)
         }
     }
+    // endregion
+
+    // region Saved payment methods
+    override suspend fun getPaymentMethods(): List<SavedPaymentMethod> =
+        try {
+            apiService.getPaymentMethods()
+        } catch (e: HttpException) {
+            throw e.asNetworkError()
+        }
+
+    override suspend fun payWithStoredPaymentMethod(
+        paymentMethodId: String,
+        transactionType: String,
+        packageTypeId: Int,
+        iccid: String?,
+    ): PaymentResponse = getPaymentIntent(
+        PaymentRequest(
+            type = transactionType,
+            iccid = iccid,
+            customer = CustomerDetails(email = userEmail()),
+            packageTypeId = packageTypeId,
+            paymentMethod = PaymentRequest.Method.STRIPE_INTENT,
+            storedPaymentMethod = paymentMethodId,
+        )
+    )
+
+    private fun userEmail(): String =
+        (sessionManager.getAuthState() as? Auth.Authenticated)?.user?.email.orEmpty()
     // endregion
 }

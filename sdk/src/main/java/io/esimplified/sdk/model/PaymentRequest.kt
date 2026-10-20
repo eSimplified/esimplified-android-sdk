@@ -11,12 +11,13 @@ data class PaymentRequest(
     @SerialName("customer") val customer: CustomerDetails,
     @SerialName("package_type_id") val packageTypeId: Int,
     @SerialName("payment_method") val paymentMethod: String,
-    @SerialName("auto_top_up") val autoTopUp: Boolean,
-    @SerialName("save_payment_method") val savePaymentMethod: Boolean,
+    @SerialName("auto_top_up") val autoTopUp: Boolean? = null,
+    @SerialName("save_payment_method") val savePaymentMethod: Boolean? = null,
     @SerialName("loyalty_points_amount") val loyaltyPointsAmount: Double? = null,
     @SerialName("loyalty_provider") val loyaltyProvider: String? = null,
     @SerialName("loyalty_points_to_use") val loyaltyPointsToUse: Int? = null,
     @SerialName("coupon_id") val couponId: String? = null,
+    @SerialName("stored_payment_method") val storedPaymentMethod: String? = null,
 ) {
 
     object Type {
