@@ -14,6 +14,7 @@ import io.esimplified.sdk.model.NotificationSettings
 import io.esimplified.sdk.model.UpdateCustomerPreferencesRequest
 import io.esimplified.sdk.model.PaymentRequest
 import io.esimplified.sdk.model.PaymentResponse
+import io.esimplified.sdk.model.SavedPaymentMethod
 import io.esimplified.sdk.model.ProfileResponse
 import io.esimplified.sdk.model.UserLocationResponse
 import io.esimplified.sdk.model.VerifyEmailRequest
@@ -135,6 +136,10 @@ internal interface ApiService {
     @POST("api/v2/payments/")
     @Headers("Accept: application/json", "Content-Type: application/json")
     suspend fun getCheckoutPaymentIntent(@Body data: PaymentRequest): PaymentResponse
+
+    @GET("api/v2/customer/payment-methods/")
+    @Headers("Accept: application/json", "Content-Type: application/json")
+    suspend fun getPaymentMethods(): List<SavedPaymentMethod>
 
     @GET("api/v2/customer/promotions/promo_code/")
     @Headers("Accept: application/json", "Content-Type: application/json")

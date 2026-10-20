@@ -11,6 +11,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
+import io.esimplified.sdk.model.SavedPaymentMethod
 import org.junit.Test
 
 /**
@@ -80,6 +81,25 @@ class ModelDecodingTest {
         assertEquals("u-1", customer.id)
         assertNull(customer.email)
         assertNull(customer.firstName)
+    }
+
+    @Test
+    fun `SavedPaymentMethod decodes the staging payment-methods sample`() {
+        val payload = """[{"payment_method_id":"pm_1UGG","card_brand":"visa","card_last4":"4242","card_exp_month":2,"card_exp_year":2044}]"""
+        val methods = json.decodeFromString<List<SavedPaymentMethod>>(payload)
+        assertEquals(1, methods.size)
+        assertEquals("pm_1UGG", methods[0].paymentMethodId)
+        assertEquals("visa", methods[0].cardBrand)
+        assertEquals("4242", methods[0].cardLast4)
+        assertEquals(2, methods[0].cardExpMonth)
+        assertEquals(2044, methods[0].cardExpYear)
+    }
+
+    @Test
+    fun `SavedPaymentMethod tolerates a card without expiry`() {
+        val methods = json.decodeFromString<List<SavedPaymentMethod>>("""[{"payment_method_id":"pm_2","card_brand":"mastercard","card_last4":"4444"}]""")
+        assertNull(methods[0].cardExpMonth)
+        assertNull(methods[0].cardExpYear)
     }
 
     @Test

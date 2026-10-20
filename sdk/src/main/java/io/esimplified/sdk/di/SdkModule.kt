@@ -68,7 +68,7 @@ internal fun createSdkModule(): Module = module {
     single<PackagesRepository> { PackagesRepositoryImpl(get(), get()) }
     single<EsimRepository> { EsimRepositoryImpl(get(), get()) }
     single<OrdersRepository> { OrdersRepositoryImpl(get(), get()) }
-    single<PaymentsRepository> { PaymentsRepositoryImpl(get()) }
+    single<PaymentsRepository> { PaymentsRepositoryImpl(get(), get()) }
     single<PromoCodeRepository> { PromoCodeRepositoryImpl(get(), get()) }
     single<LoyaltyRepository> { LoyaltyRepositoryImpl(get(), get()) }
     single<UserRepository> { UserRepositoryImpl(get()) }
