@@ -141,7 +141,7 @@ internal class OrdersRepositoryImpl(
                 }
             }
             if (deadline.hasPassedNow()) return OrderSettlement.Pending
-            delay(interval)
+            delay(minOf(interval, -deadline.elapsedNow()))
         }
     }
 

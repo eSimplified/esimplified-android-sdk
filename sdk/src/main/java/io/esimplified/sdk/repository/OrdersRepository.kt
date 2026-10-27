@@ -82,7 +82,7 @@ interface OrdersRepository {
                 if (order.isFulfilled) return OrderSettlement.Fulfilled(order)
             }
             if (deadline.hasPassedNow()) return OrderSettlement.Pending
-            delay(interval)
+            delay(minOf(interval, -deadline.elapsedNow()))
         }
     }
     // endregion
