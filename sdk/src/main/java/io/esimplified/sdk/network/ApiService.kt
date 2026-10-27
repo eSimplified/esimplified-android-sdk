@@ -40,6 +40,7 @@ import io.esimplified.sdk.model.DeleteProfileResponse
 import io.esimplified.sdk.model.DestinationFaqResponse
 import io.esimplified.sdk.model.OrderDetail
 import io.esimplified.sdk.model.OrderInfo
+import io.esimplified.sdk.model.OrderStatusProbe
 import io.esimplified.sdk.model.PackagePlan
 import io.esimplified.sdk.model.RatingApiResponse
 import io.esimplified.sdk.model.ThemeResponse
@@ -226,6 +227,14 @@ internal interface ApiService {
         @Query("show_esim_details") esimStatus: Boolean,
         @Query("include_base64_qr_code") encodeQRCode: Boolean,
     ): OrderDetail
+
+    @GET("api/v2/customer/orders/{order_uuid}")
+    @Headers("Accept: application/json", "Content-Type: application/json")
+    suspend fun getOrderStatusProbe(
+        @Path("order_uuid") id: String,
+        @Query("show_esim_details") esimStatus: Boolean,
+        @Query("include_base64_qr_code") encodeQRCode: Boolean,
+    ): OrderStatusProbe
 
     @POST("api/v2/customer/orders/{order_uuid}")
     @Headers("Accept: application/json", "Content-Type: application/json")
