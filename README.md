@@ -1138,7 +1138,7 @@ SmartPay is Bank Muscat's hosted card page. The customer pays in a browser, not 
 
 `Pending` does not mean the customer did not pay. It means the SDK stopped without an answer: the timeout elapsed or every check failed. Cancelling the calling coroutine cancels the wait as usual (`CancellationException`); no settlement is returned. Show a "we are confirming your payment" state and let the customer check their orders later; do not tell them the payment failed.
 
-Each request is bounded by the time left in the wait, and never by less than one `interval`, so a hung request cannot stall the call indefinitely. The call returns in about `timeout` plus two intervals at most: a probe started at the floor can be followed by a detail fetch at the floor. The SDK reads the full order, and caches it under `ORDER_DETAIL_TTL`, only once it is fulfilled, so a following `getOrderDetails(orderUuid)` costs no extra request.
+Each request is bounded by the time left in the wait, and never by less than one `interval`, so a hung request cannot stall the call indefinitely. The call returns in about `timeout` plus two intervals at most: a probe started at the floor can be followed by a detail fetch at the floor. The SDK reads the full order, and caches it under `ORDER_DETAIL_TTL`, only once it is fulfilled, so a following `getOrderDetails(orderUuid)` costs no extra request while caching is on.
 
 `OrderDetail.isFulfilled` and `OrderDetail.isSettlementFailure` apply the same rules to an order you already hold. They are top-level extension properties in `io.esimplified.sdk.model`, so they need `import io.esimplified.sdk.model.isFulfilled` and `import io.esimplified.sdk.model.isSettlementFailure`.
 
