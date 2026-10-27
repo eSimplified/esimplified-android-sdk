@@ -2,8 +2,8 @@
 
 For client teams integrating the SDK into an Android app. Covers installation, configuration, every repository method available to you, and the full shape of every model the API returns.
 
-Documents `io.github.esimplified:android-sdk:3.6.0`, the version this document describes, with one
-interface change that lands in the next release — `OrdersRepository.getOrderHistory` and
+Documents `io.github.esimplified:android-sdk:3.6.0`, the version this document describes. It includes one
+interface change since 2.0 — `OrdersRepository.getOrderHistory` and
 `getOrderHistoryResult` each lost a redundant overload. The tables below show the new shape;
 [Changes since 2.0.0](README.md#changes-since-200) has the detail.
 
@@ -391,7 +391,7 @@ Build a `CustomerDetails` by hand instead if you are buying for a customer you d
 
 ### An order is not ready the instant it is paid
 
-Provisioning is asynchronous. Immediately after payment the order comes back with `orderStatus` `"pending"` and **no** `qrCode`, `smDpAddress`, `activationCode` or `esimProfile` — every one of those is nullable for exactly this reason. Call `awaitSettlement(orderUuid)`, which polls every 3 seconds for up to 120 seconds and gives the wait a deadline:
+Provisioning is asynchronous. Immediately after payment the order comes back with `orderStatus` `"pending"` and **no** `qrCode`, `smDpAddress`, `activationCode` or `esimProfile` — every one of those is nullable for exactly this reason. Call `awaitSettlement(orderUuid)`, which polls every 3 seconds for up to 120 seconds and gives the wait a deadline (the call returns in about the timeout plus two intervals at most):
 
 ```kotlin
 suspend fun awaitProvisionedOrder(
@@ -406,6 +406,8 @@ suspend fun awaitProvisionedOrder(
 ```
 
 On `Failed`, tell the customer the payment did not complete. On `Pending` the outcome is unknown, not unpaid: tell the customer you are still confirming rather than sending them into an install that cannot succeed. Their payment is safe and the order completes server-side.
+
+`Fulfilled` guarantees a non-empty `iccid` and a success status. It does not guarantee install credentials, so before starting an install check `settlement.order.smDpAddress` and `settlement.order.activationCode` for null and fall back to showing the order as ready without an install button when either is missing.
 
 ## 6c. Installing the eSIM
 
@@ -727,7 +729,7 @@ Cached: `ORDERS_LIST_TTL` = 10 min, `ORDER_DETAIL_TTL` = 5 min. `SETTLEMENT_INTE
 
 `getOrderDetails` retries an order still in `pending` status up to 5 times, one second apart, before returning it.
 
-`awaitSettlement` has a default body that polls `getOrderDetailsResult` against a real-time deadline. A test fake that never settles will spin for the real timeout under `runTest`; override it in the fake or pass a short `timeout`. The shipped implementation reads the same `api/v2/customer/orders/{uuid}` endpoint decoded into a light status shape, reads the full order and caches it under `ORDER_DETAIL_TTL` only once it is fulfilled, and bounds each request by the time remaining, never below one `interval`.
+`awaitSettlement` has a default body that polls `getOrderDetailsResult` against a real-time deadline. A test fake that never settles will spin for the real timeout under `runTest`; override it in the fake or pass a short `timeout`. The shipped implementation reads the same `api/v2/customer/orders/{uuid}` endpoint decoded into a light status shape, reads the full order and caches it under `ORDER_DETAIL_TTL` only once it is fulfilled, and bounds each request by the time remaining, never below one `interval`, so the call returns in about `timeout` plus two intervals at most (a probe at the floor can be followed by a detail fetch at the floor).
 
 ---
 

@@ -370,6 +370,7 @@ Field-by-field tables for all of these are in [SDK_API_REFERENCE.md](SDK_API_REF
 | `EsimProfileState` | Enum: ENABLED, DOWNLOADED, INSTALLED, DISABLED, DELETED, RELEASED, ERROR |
 | `OrderDetail` | Full order with pricing, eSIM profile, QR code, payment info, loyalty points |
 | `OrdersPage` | A page of order history plus its total count and a `hasMore` flag |
+| `OrderSettlement` | Sealed result of `awaitSettlement`: `Fulfilled(order)`, `Failed(order?)` or `Pending` |
 | `OrderHistoryItem` | Summary order for history lists |
 | `PurchaseCountry` | Country the purchase was made from (on `OrderHistoryItem`) |
 | `OrderInfo` | Order info with customer details and QR code |
@@ -1063,7 +1064,7 @@ To receive SDK lines deliberately, pass `logger` to `SdkConfig` — see [Logging
 
 ## Changes since 2.0.0
 
-`3.3.0` is the version on Maven Central. The changes below are on `main` and will ship in the next release; they are listed separately so nothing above misrepresents the published artifact.
+The changes below are listed separately from the sections above, which describe 2.0 and its migration; everything here is in 3.6.0.
 
 ### Breaking change: `getOrdersPageResult` no longer has a default implementation
 
@@ -1137,7 +1138,7 @@ SmartPay is Bank Muscat's hosted card page. The customer pays in a browser, not 
 
 `Pending` does not mean the customer did not pay. It means the SDK stopped without an answer: the timeout elapsed or every check failed. Cancelling the calling coroutine cancels the wait as usual (`CancellationException`); no settlement is returned. Show a "we are confirming your payment" state and let the customer check their orders later; do not tell them the payment failed.
 
-Each request is bounded by the time left in the wait, and never by less than one `interval`, so a hung request cannot hold the call past the timeout. The SDK reads the full order, and caches it under `ORDER_DETAIL_TTL`, only once it is fulfilled, so a following `getOrderDetails(orderUuid)` costs no extra request.
+Each request is bounded by the time left in the wait, and never by less than one `interval`, so a hung request cannot stall the call indefinitely. The call returns in about `timeout` plus two intervals at most: a probe started at the floor can be followed by a detail fetch at the floor. The SDK reads the full order, and caches it under `ORDER_DETAIL_TTL`, only once it is fulfilled, so a following `getOrderDetails(orderUuid)` costs no extra request.
 
 `OrderDetail.isFulfilled` and `OrderDetail.isSettlementFailure` apply the same rules to an order you already hold. They are top-level extension properties in `io.esimplified.sdk.model`, so they need `import io.esimplified.sdk.model.isFulfilled` and `import io.esimplified.sdk.model.isSettlementFailure`.
 
