@@ -17,6 +17,7 @@ import io.esimplified.sdk.repository.listOrThrow
 import io.esimplified.sdk.repository.valueOrThrow
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -123,18 +124,15 @@ internal class OrdersRepositoryImpl(
     ): OrderSettlement {
         val deadline = TimeSource.Monotonic.markNow() + timeout
         while (true) {
-            val budget = maxOf(-deadline.elapsedNow(), interval)
-            val probe = runCatching {
-                withTimeoutOrNull(budget) { apiService.getOrderStatusProbe(orderUuid, true, true) }
-            }.onFailure {
-                if (it is CancellationException) throw it
-            }.getOrNull()
+            val probe = within(budgetFor(deadline, interval)) {
+                apiService.getOrderStatusProbe(orderUuid, true, true)
+            }
             if (probe != null) {
                 if (probe.isSettlementFailure) {
-                    return OrderSettlement.Failed(fetchOrderOnce(orderUuid, budget))
+                    return OrderSettlement.Failed(fetchOrderOnce(orderUuid, deadline, interval))
                 }
                 if (probe.isFulfilled) {
-                    val order = fetchOrderOnce(orderUuid, budget)
+                    val order = fetchOrderOnce(orderUuid, deadline, interval)
                     if (order != null && order.isFulfilled) {
                         cache.set(orderKey(orderUuid), order, OrdersRepository.ORDER_DETAIL_TTL)
                         return OrderSettlement.Fulfilled(order)
@@ -146,12 +144,21 @@ internal class OrdersRepositoryImpl(
         }
     }
 
-    private suspend fun fetchOrderOnce(orderUuid: String, budget: Duration): OrderDetail? =
-        runCatching {
-            withTimeoutOrNull(budget) { apiService.getOrderDetails(orderUuid, true, true) }
-        }.onFailure {
-            if (it is CancellationException) throw it
-        }.getOrNull()
+    private fun budgetFor(deadline: TimeMark, interval: Duration): Duration =
+        maxOf(-deadline.elapsedNow(), interval)
+
+    private suspend fun fetchOrderOnce(
+        orderUuid: String,
+        deadline: TimeMark,
+        interval: Duration,
+    ): OrderDetail? = within(budgetFor(deadline, interval)) {
+        apiService.getOrderDetails(orderUuid, true, true)
+    }
+
+    private suspend fun <T : Any> within(budget: Duration, call: suspend () -> T): T? =
+        runCatching { withTimeoutOrNull(budget) { call() } }
+            .onFailure { if (it is CancellationException) throw it }
+            .getOrNull()
 
     override suspend fun getOrderInvoice(orderUuid: String): ByteArray =
         apiRead { apiService.getOrderInvoice(orderUuid).bytes() }

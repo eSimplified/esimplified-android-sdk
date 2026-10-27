@@ -452,13 +452,14 @@ class OrdersRepositoryImplTest {
         val result = settle("uuid-1", interval = 1.seconds, timeout = 1.seconds)
 
         assertEquals(OrderSettlement.Pending, result)
+        assertTrue(mockWebServer.requestCount >= 2)
     }
 
     @Test
     fun `a zero timeout still probes once and returns pending`() = runTest {
         enqueueJson(PENDING_PROBE_JSON)
 
-        assertEquals(OrderSettlement.Pending, settle("uuid-1", timeout = Duration.ZERO))
+        assertEquals(OrderSettlement.Pending, settle("uuid-1", interval = 1.seconds, timeout = Duration.ZERO))
 
         assertEquals(1, mockWebServer.requestCount)
         assertNull(cache.getExpired<OrderDetail>("order_uuid-1"))

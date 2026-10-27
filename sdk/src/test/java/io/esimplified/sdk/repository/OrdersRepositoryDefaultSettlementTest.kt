@@ -84,6 +84,25 @@ class OrdersRepositoryDefaultSettlementTest {
     }
 
     @Test
+    fun `a failed read carrying a stale fulfilled value is ignored`() = runTest {
+        val orders = ScriptedOrders(
+            listOf(
+                RepositoryResult<OrderDetail?>(
+                    order("success", iccid = "8901"),
+                    isStale = true,
+                    failure = SdkError.NetworkError(500, "boom"),
+                ),
+                ok(order("success", iccid = "8902")),
+            )
+        )
+
+        val result = orders.awaitSettlement("uuid-1") as OrderSettlement.Fulfilled
+
+        assertEquals("8902", result.order.iccid)
+        assertEquals(2, orders.calls)
+    }
+
+    @Test
     fun `a zero timeout with a pending order returns pending after one read`() = runTest {
         val orders = ScriptedOrders(listOf(ok(order("pending"))))
 

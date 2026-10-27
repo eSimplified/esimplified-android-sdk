@@ -71,7 +71,8 @@ interface OrdersRepository {
     ): OrderSettlement {
         val deadline = TimeSource.Monotonic.markNow() + timeout
         while (true) {
-            val order = getOrderDetailsResult(orderUuid, forceRefresh = true, cacheTTL = Duration.ZERO).value
+            val result = getOrderDetailsResult(orderUuid, forceRefresh = true, cacheTTL = Duration.ZERO)
+            val order = result.takeUnless { it.didFail }?.value
             if (order != null) {
                 if (order.isSettlementFailure) return OrderSettlement.Failed(order)
                 if (order.isFulfilled) return OrderSettlement.Fulfilled(order)
