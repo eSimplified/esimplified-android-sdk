@@ -191,6 +191,40 @@ class RepositoryIntegrationTest {
     }
 
     @Test
+    fun `PaymentsRepository startSmartPayPayment POSTs payments with smartpay, the return url, auto top-up off and no card or loyalty fields`() = runTest {
+        enqueueJson("""{"detail":"Payment request created","data":{"uri":"https://osim.stage.esimplified.io/api/v2/payments/smartpay/checkout/tok/","order_id":"o7","is_intent":false}}""")
+        val repo = PaymentsRepositoryImpl(apiService, sessionManager)
+        val response = repo.startSmartPayPayment(PaymentRequest.Type.BUY, 46576, redirectUrl = "https://osim-preview.vercel.app/order")
+        assertEquals("o7", response.transaction?.orderId)
+        assertTrue(response.transaction?.uri.orEmpty().contains("/payments/smartpay/checkout/"))
+        val recorded = mockWebServer.takeRequest()
+        assertEquals("POST", recorded.method)
+        assertEquals("/api/v2/payments/", recorded.path)
+        val body = Json.parseToJsonElement(recorded.body.readUtf8()).jsonObject
+        assertEquals("smartpay", body["payment_method"]?.jsonPrimitive?.content)
+        assertEquals("https://osim-preview.vercel.app/order", body["redirect_url"]?.jsonPrimitive?.content)
+        assertEquals(false, body["auto_top_up"]?.jsonPrimitive?.boolean)
+        assertEquals("buy", body["type"]?.jsonPrimitive?.content)
+        assertEquals("46576", body["package_type_id"]?.jsonPrimitive?.content)
+        assertEquals("u@e.com", body["customer"]?.jsonObject?.get("email")?.jsonPrimitive?.content)
+        assertFalse(body.containsKey("save_payment_method"))
+        assertFalse(body.containsKey("stored_payment_method"))
+        assertFalse(body.containsKey("loyalty_points_amount"))
+        assertFalse(body.containsKey("iccid"))
+    }
+
+    @Test
+    fun `PaymentsRepository startSmartPayPayment carries the iccid and loyalty amount when given`() = runTest {
+        enqueueJson("""{"detail":"ok","data":{"order_id":"o8","uri":"https://x/checkout/","is_intent":false}}""")
+        val repo = PaymentsRepositoryImpl(apiService, sessionManager)
+        repo.startSmartPayPayment(PaymentRequest.Type.TOP_UP, 42, iccid = "8901", loyaltyPointsAmount = 1.5, redirectUrl = "https://osim.omantel.om/order")
+        val body = Json.parseToJsonElement(mockWebServer.takeRequest().body.readUtf8()).jsonObject
+        assertEquals("top-up", body["type"]?.jsonPrimitive?.content)
+        assertEquals("8901", body["iccid"]?.jsonPrimitive?.content)
+        assertEquals(1.5, body["loyalty_points_amount"]?.jsonPrimitive?.content?.toDouble()!!, 0.0)
+    }
+
+    @Test
     fun `PaymentsRepository a normal purchase body is unchanged by the stored card field`() = runTest {
         enqueueJson("""{"detail":"ok","data":{"order_id":"o1"}}""")
 
