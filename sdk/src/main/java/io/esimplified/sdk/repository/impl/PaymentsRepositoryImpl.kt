@@ -15,8 +15,8 @@ import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.PaymentApiException
 import io.esimplified.sdk.repository.apiRejection
 import io.esimplified.sdk.repository.asNetworkError
+import io.esimplified.sdk.repository.orNullIfBlank
 import kotlinx.serialization.json.Json
-import okhttp3.ResponseBody
 import retrofit2.HttpException
 
 internal class PaymentsRepositoryImpl(
@@ -62,7 +62,7 @@ internal class PaymentsRepositoryImpl(
     override suspend fun deletePaymentMethod(paymentMethodId: String) {
         val response = apiService.deletePaymentMethod(paymentMethodId = paymentMethodId)
         if (!response.isSuccessful) {
-            val errorBody = readBody(response.errorBody())
+            val errorBody = ApiErrorMessage.body(response.errorBody())
             throw apiRejection(
                 ApiErrorMessage.parse(errorBody),
                 statusCode = response.code(),
@@ -78,10 +78,16 @@ internal class PaymentsRepositoryImpl(
             throw e.asNetworkError()
         }
 
-    override suspend fun verifyPaymentMethod(paymentMethodId: String, discountCode: String): SavedPaymentMethod =
+    override suspend fun verifyPaymentMethod(
+        paymentMethodId: String,
+        discountCode: String,
+    ): SavedPaymentMethod =
         try {
             apiService.verifyPaymentMethod(
-                VerifyPaymentMethodRequest(paymentMethodId = paymentMethodId, discountCode = discountCode)
+                VerifyPaymentMethodRequest(
+                    paymentMethodId = paymentMethodId,
+                    discountCode = discountCode,
+                )
             )
         } catch (e: HttpException) {
             throw e.asNetworkError()
@@ -107,10 +113,5 @@ internal class PaymentsRepositoryImpl(
 
     private fun userEmail(): String =
         (sessionManager.getAuthState() as? Auth.Authenticated)?.user?.email.orEmpty()
-
-    private fun String?.orNullIfBlank(): String? = this?.takeIf { it.isNotBlank() }
-
-    private fun readBody(body: ResponseBody?): String? =
-        runCatching { body?.string() }.getOrNull()
     // endregion
 }

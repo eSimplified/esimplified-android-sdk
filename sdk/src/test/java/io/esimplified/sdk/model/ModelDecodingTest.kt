@@ -11,8 +11,6 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
-import io.esimplified.sdk.model.PaymentMethodSetupIntent
-import io.esimplified.sdk.model.SavedPaymentMethod
 import org.junit.Test
 
 /**

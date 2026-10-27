@@ -12,6 +12,7 @@ import io.esimplified.sdk.repository.RepositoryResult
 import io.esimplified.sdk.repository.cachedListResult
 import io.esimplified.sdk.repository.cachedResult
 import io.esimplified.sdk.repository.listOrThrow
+import io.esimplified.sdk.repository.orNullIfBlank
 import io.esimplified.sdk.repository.valueOrThrow
 import kotlin.time.Duration
 
@@ -124,15 +125,15 @@ internal class PackagesRepositoryImpl(
     }
 
     private fun packagesKey(destination: Destination, promoCode: String?): String =
-        "$PACKAGES_KEY_PREFIX${destination.code}_${destination.name}_${destination.slug}" + promoKeySuffix(promoCode)
+        "$PACKAGES_KEY_PREFIX${destination.code}_${destination.name}_${destination.slug}" +
+            promoKeySuffix(promoCode)
 
     private fun packagesPageKey(destination: Destination, promoCode: String?): String =
-        "${PACKAGES_KEY_PREFIX}page_${destination.code}_${destination.name}_${destination.slug}" + promoKeySuffix(promoCode)
+        "${PACKAGES_KEY_PREFIX}page_${destination.code}_${destination.name}_${destination.slug}" +
+            promoKeySuffix(promoCode)
 
     private fun promoKeySuffix(promoCode: String?): String =
         promoCode?.let { "|promo=$it" }.orEmpty()
-
-    private fun String?.orNullIfBlank(): String? = this?.takeIf { it.isNotBlank() }
 
     private fun topUpPackagesKey(iccid: String): String = "${PACKAGES_KEY_PREFIX}topup_$iccid"
 

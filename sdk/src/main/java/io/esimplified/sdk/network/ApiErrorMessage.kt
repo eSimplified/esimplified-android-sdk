@@ -6,6 +6,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import okhttp3.ResponseBody
 import retrofit2.HttpException
 
 internal object ApiErrorMessage {
@@ -21,6 +22,9 @@ internal object ApiErrorMessage {
 
     fun body(error: HttpException): String? =
         runCatching { error.response()?.errorBody()?.string() }.getOrNull()
+
+    fun body(body: ResponseBody?): String? =
+        runCatching { body?.string() }.getOrNull()
 
     fun parseOrNull(error: HttpException): String? = parseOrNull(body(error))
 

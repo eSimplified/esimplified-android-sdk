@@ -19,7 +19,10 @@ interface PaymentsRepository {
     suspend fun createPaymentMethodSetupIntent(): PaymentMethodSetupIntent =
         throw UnsupportedOperationException("createPaymentMethodSetupIntent is not implemented")
 
-    suspend fun verifyPaymentMethod(paymentMethodId: String, discountCode: String): SavedPaymentMethod =
+    suspend fun verifyPaymentMethod(
+        paymentMethodId: String,
+        discountCode: String,
+    ): SavedPaymentMethod =
         throw UnsupportedOperationException("verifyPaymentMethod is not implemented")
 
     suspend fun payWithStoredPaymentMethod(

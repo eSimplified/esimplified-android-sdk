@@ -10,7 +10,7 @@ Kotlin SDK for integrating the eSimplified eSIM platform into Android applicatio
 
 **Coordinates:** `io.github.esimplified:android-sdk:3.6.0`
 
-That is the version this README describes. It adds partner-offer card eligibility, card deletion and Stripe setup intents to `PaymentsRepository`, and promo-coded package reads to `PackagesRepository`; nothing a caller writes has to change to take it.
+That is the version this README describes. It adds partner-offer card eligibility, card deletion, Stripe setup intents and discounted stored-card charges to `PaymentsRepository`, and promo-coded package reads to `PackagesRepository`; nothing a caller writes has to change to take it.
 
 ## What the SDK covers
 
@@ -620,7 +620,7 @@ Payment intent creation for Stripe/Google Pay checkout, and the customer's saved
 |---|---|---|
 | `getPaymentIntent` | `suspend fun getPaymentIntent(request: PaymentRequest): PaymentResponse` | Create a payment intent for checkout |
 | `getPaymentMethods` | `suspend fun getPaymentMethods(discountCode: String? = null): List<SavedPaymentMethod>` | The customer's saved cards; with `discountCode`, only the cards eligible for that code |
-| `deletePaymentMethod` | `suspend fun deletePaymentMethod(paymentMethodId: String)` | Remove a saved card |
+| `deletePaymentMethod` | `suspend fun deletePaymentMethod(paymentMethodId: String)` | Remove a saved card. Returns on any `2xx` (the backend sends `204`); any other status throws `SdkError.NetworkError` with that status and the backend's message |
 | `createPaymentMethodSetupIntent` | `suspend fun createPaymentMethodSetupIntent(): PaymentMethodSetupIntent` | A Stripe SetupIntent for saving a new card without charging it |
 | `verifyPaymentMethod` | `suspend fun verifyPaymentMethod(paymentMethodId: String, discountCode: String): SavedPaymentMethod` | Check a saved card against a discount code; `400` when the card is not eligible, `404` when it is not the customer's |
 | `payWithStoredPaymentMethod` | `suspend fun payWithStoredPaymentMethod(paymentMethodId: String, transactionType: String, packageTypeId: Int, iccid: String? = null, discountCode: String? = null): PaymentResponse` | Charge a saved card with no Stripe sheet, optionally under a discount code |
@@ -1129,7 +1129,7 @@ One behaviour change: the two forms used to occupy separate cache entries even t
 
 ### Saving and removing cards
 
-`createPaymentMethodSetupIntent()` posts `/customer/payment-methods/setup-intent/` with no body and returns `PaymentMethodSetupIntent(clientSecret, customerId, publishableKey)` for Stripe's card-collection sheet. `publishableKey` is null on a backend that does not send it. `deletePaymentMethod(paymentMethodId)` sends `DELETE /customer/payment-methods/{id}/` and returns on a `204`; any other status throws `SdkError.NetworkError` with that status and the backend's message.
+`createPaymentMethodSetupIntent()` posts `/customer/payment-methods/setup-intent/` with no body and returns `PaymentMethodSetupIntent(clientSecret, customerId, publishableKey)` for Stripe's card-collection sheet. `clientSecret` is required: a response without `client_secret` fails to decode rather than handing Stripe an empty secret. `publishableKey` is null on a backend that does not send it. `deletePaymentMethod(paymentMethodId)` sends `DELETE /customer/payment-methods/{id}/` and returns on any `2xx` (the backend sends `204`); any other status throws `SdkError.NetworkError` with that status and the backend's message.
 
 ### Discounted stored-card charges
 

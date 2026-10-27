@@ -128,6 +128,7 @@ class SerializableModelGuardTest {
         "KredsQuoteResponse.pricing",
         "MokafaaOtpInitiateResponse.expires_at",
         "MokafaaOtpInitiateResponse.session_id",
+        "PaymentMethodSetupIntent.client_secret",
     )
 
     private val accepted: Set<String> =

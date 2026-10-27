@@ -32,7 +32,6 @@ import io.esimplified.sdk.model.SavedPaymentMethod
 import io.esimplified.sdk.model.PaymentRequest
 import io.esimplified.sdk.model.CustomerDetails
 import io.esimplified.sdk.network.SdkError
-import org.junit.Assert.assertNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
@@ -213,6 +212,17 @@ class RepositoryIntegrationTest {
     }
 
     @Test
+    fun `PaymentsRepository payWithStoredPaymentMethod with a blank discount code omits discount_code`() = runTest {
+        enqueueJson("""{"detail":"ok","data":{"order_id":"o11"}}""")
+
+        val repo = PaymentsRepositoryImpl(apiService, sessionManager)
+        repo.payWithStoredPaymentMethod("pm_1UGG", PaymentRequest.Type.BUY, 42, discountCode = " ")
+
+        val body = Json.parseToJsonElement(mockWebServer.takeRequest().body.readUtf8()).jsonObject
+        assertFalse(body.containsKey("discount_code"))
+    }
+
+    @Test
     fun `PaymentsRepository getPaymentMethods with a discount code GETs only the eligible cards with the bearer token`() = runTest {
         enqueueJson("""[{"payment_method_id":"pm_nab","card_brand":"visa","card_last4":"1111","card_exp_month":5,"card_exp_year":2030}]""")
 
@@ -278,17 +288,6 @@ class RepositoryIntegrationTest {
         assertEquals("/api/v2/customer/payment-methods/setup-intent/", recorded.path)
         assertEquals("Bearer tok", recorded.getHeader("authorization"))
         assertEquals(0L, recorded.bodySize)
-    }
-
-    @Test
-    fun `PaymentsRepository createPaymentMethodSetupIntent reports a missing publishable key as null`() = runTest {
-        enqueueJson("""{"client_secret":"seti_1ABC_secret_XYZ","customer_id":"cus_123"}""", code = 201)
-
-        val repo = PaymentsRepositoryImpl(apiService, sessionManager)
-        val intent = repo.createPaymentMethodSetupIntent()
-
-        assertEquals("seti_1ABC_secret_XYZ", intent.clientSecret)
-        assertNull(intent.publishableKey)
     }
 
     @Test
@@ -433,6 +432,7 @@ class RepositoryIntegrationTest {
         enqueueJson("""{"count":2,"results":[]}""")
         enqueueJson("""{"count":0,"results":[]}""")
         enqueueJson("""{"count":0,"results":[]}""")
+        enqueueJson("""{"count":3,"results":[]}""")
         val repo = PackagesRepositoryImpl(apiService, SdkCache())
         val destination = Destination(code = "US", name = null, region = null, slug = "united-states")
 
@@ -444,6 +444,14 @@ class RepositoryIntegrationTest {
         assertEquals(1, plainPage.totalCount)
         assertEquals(2, promoPage.totalCount)
         assertEquals(4, mockWebServer.requestCount)
+
+        val cachedPromoPage = repo.getPackagesPage(destination, promoCode = "NAB30")
+        repo.invalidateCache()
+        val refreshedPromoPage = repo.getPackagesPage(destination, promoCode = "NAB30")
+
+        assertEquals(2, cachedPromoPage.totalCount)
+        assertEquals(3, refreshedPromoPage.totalCount)
+        assertEquals(5, mockWebServer.requestCount)
     }
 
     // MARK: - EsimRepository

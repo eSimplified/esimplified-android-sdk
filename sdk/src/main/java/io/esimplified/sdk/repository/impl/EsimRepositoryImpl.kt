@@ -15,7 +15,6 @@ import io.esimplified.sdk.repository.combineResults
 import io.esimplified.sdk.repository.listOrThrow
 import io.esimplified.sdk.repository.valueOrThrow
 import kotlin.time.Duration
-import okhttp3.ResponseBody
 
 internal class EsimRepositoryImpl(
     private val apiService: ApiService,
@@ -147,18 +146,15 @@ internal class EsimRepositoryImpl(
         )
         if (!response.isSuccessful) {
             throw apiRejection(
-                ApiErrorMessage.parse(readBody(response.errorBody())),
+                ApiErrorMessage.parse(ApiErrorMessage.body(response.errorBody())),
                 statusCode = response.code(),
             )
         }
-        val message = ApiErrorMessage.parseOrNull(readBody(response.body()))
+        val message = ApiErrorMessage.parseOrNull(ApiErrorMessage.body(response.body()))
         if (message != UPDATE_SUCCEEDED_MESSAGE) {
             throw apiRejection(message, UPDATE_FAILED_MESSAGE)
         }
     }
-
-    private fun readBody(body: ResponseBody?): String? =
-        runCatching { body?.string() }.getOrNull()
     // endregion
 
     // region Cache

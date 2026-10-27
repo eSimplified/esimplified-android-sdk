@@ -2,10 +2,7 @@
 
 For client teams integrating the SDK into an Android app. Covers installation, configuration, every repository method available to you, and the full shape of every model the API returns.
 
-Documents `io.github.esimplified:android-sdk:3.6.0`, the version on Maven Central, with one
-interface change that lands in the next release — `OrdersRepository.getOrderHistory` and
-`getOrderHistoryResult` each lost a redundant overload. The tables below show the new shape;
-[Changes since 2.0.0](README.md#changes-since-200) has the detail.
+Documents `io.github.esimplified:android-sdk:3.6.0`, the version on Maven Central.
 
 For a shorter tour with worked examples, see [README.md](README.md). This document is the complete reference.
 
@@ -737,14 +734,14 @@ Cached: `ORDERS_LIST_TTL` = 10 min, `ORDER_DETAIL_TTL` = 5 min. `…Result` twin
 |----------|-----------|---------|-------------|
 | `getPaymentIntent` | `request: PaymentRequest` | `PaymentResponse` | Create Stripe payment intent |
 | `getPaymentMethods` | `discountCode: String? = null` | `List<SavedPaymentMethod>` | The customer's saved cards, from `GET /customer/payment-methods/`. With `discountCode`, adds `discount_code` and returns only the cards eligible for that code; blank counts as absent. Empty when none |
-| `deletePaymentMethod` | `paymentMethodId: String` | `Unit` | `DELETE /customer/payment-methods/{id}/`. Returns on `204`; any other status throws `SdkError.NetworkError` with that status and the backend's message |
+| `deletePaymentMethod` | `paymentMethodId: String` | `Unit` | `DELETE /customer/payment-methods/{id}/`. Returns on any `2xx` (the backend sends `204`); any other status throws `SdkError.NetworkError` with that status and the backend's message |
 | `createPaymentMethodSetupIntent` | — | `PaymentMethodSetupIntent` | `POST /customer/payment-methods/setup-intent/` with no body. A Stripe SetupIntent for collecting a new card without charging it |
 | `verifyPaymentMethod` | `paymentMethodId: String, discountCode: String` | `SavedPaymentMethod` | `POST /customer/payment-methods/verify/` with `payment_method_id` and `discount_code`. Returns the card when it is eligible. Throws `SdkError.NetworkError` with `statusCode` `400` and the backend's `detail` as `message` when the card is not eligible, and `404` when the card is not the customer's |
 | `payWithStoredPaymentMethod` | `paymentMethodId: String, transactionType: String, packageTypeId: Int, iccid: String? = null, discountCode: String? = null` | `PaymentResponse` | Charge a saved card for a purchase; no Stripe sheet. Sends `stored_payment_method` and no `auto_top_up` / `save_payment_method`; `discountCode` adds `discount_code`. `iccid` only with `PaymentRequest.Type.TOP_UP` |
 
 **SavedPaymentMethod:** `paymentMethodId`, `cardBrand` (as the backend sends it, e.g. `"visa"`), `cardLast4`, `cardExpMonth: Int?`, `cardExpYear: Int?`.
 
-**PaymentMethodSetupIntent:** `clientSecret` (`client_secret`, for Stripe's card sheet), `customerId: String?` (`customer_id`), `publishableKey: String?` (`publishable_key`, null on a backend that does not send it).
+**PaymentMethodSetupIntent:** `clientSecret` (`client_secret`, for Stripe's card sheet; required, so a response without it fails to decode), `customerId: String?` (`customer_id`), `publishableKey: String?` (`publishable_key`, null on a backend that does not send it).
 
 **VerifyPaymentMethodRequest:** `paymentMethodId` (`payment_method_id`), `discountCode` (`discount_code`). Built internally by `verifyPaymentMethod` — you pass the two strings.
 
@@ -1813,6 +1810,37 @@ The payload you build for `PaymentsRepository.getPaymentIntent`. Use the nested 
 | couponId | String? | Promo code to apply |
 | storedPaymentMethod | String? | A saved card's `paymentMethodId` to charge directly. Serialised only when set |
 | discountCode | String? | A partner discount code (`discount_code`) the stored-card charge is priced under. Serialised only when set |
+
+### SavedPaymentMethod
+
+A card the backend has on file for the customer. Returned by `PaymentsRepository.getPaymentMethods` and `verifyPaymentMethod`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| paymentMethodId | String | Stripe payment method id (`payment_method_id`). Pass it to `payWithStoredPaymentMethod`, `verifyPaymentMethod` and `deletePaymentMethod` |
+| cardBrand | String | Card brand as the backend sends it (`card_brand`), e.g. `"visa"` |
+| cardLast4 | String | Last four digits of the card number (`card_last4`) |
+| cardExpMonth | Int? | Expiry month (`card_exp_month`), 1–12. Null when the backend does not send it |
+| cardExpYear | Int? | Four-digit expiry year (`card_exp_year`). Null when the backend does not send it |
+
+### PaymentMethodSetupIntent
+
+A Stripe SetupIntent for collecting a new card without charging it. Returned by `PaymentsRepository.createPaymentMethodSetupIntent`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| clientSecret | String | SetupIntent client secret (`client_secret`) for Stripe's card sheet. Required: a response without it fails to decode |
+| customerId | String? | Stripe customer id (`customer_id`) |
+| publishableKey | String? | Stripe publishable key (`publishable_key`). Null on a backend that does not send it |
+
+### VerifyPaymentMethodRequest
+
+Card eligibility payload. Built internally by `PaymentsRepository.verifyPaymentMethod` — you pass the two strings.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| paymentMethodId | String | The saved card's `paymentMethodId` (`payment_method_id`). Required |
+| discountCode | String | The partner discount code to check the card against (`discount_code`). Required |
 
 ### CheckoutCouponRequest
 
