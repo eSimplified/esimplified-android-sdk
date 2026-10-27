@@ -11,6 +11,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
+import io.esimplified.sdk.model.PaymentMethodSetupIntent
 import io.esimplified.sdk.model.SavedPaymentMethod
 import org.junit.Test
 
@@ -100,6 +101,22 @@ class ModelDecodingTest {
         val methods = json.decodeFromString<List<SavedPaymentMethod>>("""[{"payment_method_id":"pm_2","card_brand":"mastercard","card_last4":"4444"}]""")
         assertNull(methods[0].cardExpMonth)
         assertNull(methods[0].cardExpYear)
+    }
+
+    @Test
+    fun `PaymentMethodSetupIntent decodes the setup-intent sample`() {
+        val payload = """{"client_secret":"seti_1ABC_secret_XYZ","customer_id":"cus_123","publishable_key":"pk_test_456"}"""
+        val intent = json.decodeFromString<PaymentMethodSetupIntent>(payload)
+        assertEquals("seti_1ABC_secret_XYZ", intent.clientSecret)
+        assertEquals("cus_123", intent.customerId)
+        assertEquals("pk_test_456", intent.publishableKey)
+    }
+
+    @Test
+    fun `PaymentMethodSetupIntent tolerates a missing publishable key`() {
+        val intent = json.decodeFromString<PaymentMethodSetupIntent>("""{"client_secret":"seti_1ABC_secret_XYZ","customer_id":"cus_123"}""")
+        assertEquals("seti_1ABC_secret_XYZ", intent.clientSecret)
+        assertNull(intent.publishableKey)
     }
 
     @Test
