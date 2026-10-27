@@ -391,24 +391,21 @@ Build a `CustomerDetails` by hand instead if you are buying for a customer you d
 
 ### An order is not ready the instant it is paid
 
-Provisioning is asynchronous. Immediately after payment the order comes back with `orderStatus` `"pending"` and **no** `qrCode`, `smDpAddress`, `activationCode` or `esimProfile` — every one of those is nullable for exactly this reason. Poll `getOrderDetails(orderUuid, forceRefresh = true)` until `smDpAddress` and `activationCode` are both present, and give the wait a deadline:
+Provisioning is asynchronous. Immediately after payment the order comes back with `orderStatus` `"pending"` and **no** `qrCode`, `smDpAddress`, `activationCode` or `esimProfile` — every one of those is nullable for exactly this reason. Call `awaitSettlement(orderUuid)`, which polls every 3 seconds for up to 120 seconds and gives the wait a deadline:
 
 ```kotlin
 suspend fun awaitProvisionedOrder(
     ordersRepo: OrdersRepository,
     orderUuid: String,
-    attempts: Int = 10,
-): OrderDetail? {
-    repeat(attempts) {
-        val order = ordersRepo.getOrderDetails(orderUuid = orderUuid, forceRefresh = true)
-        if (!order.smDpAddress.isNullOrBlank() && !order.activationCode.isNullOrBlank()) return order
-        delay(3_000)
+): OrderDetail? =
+    when (val settlement = ordersRepo.awaitSettlement(orderUuid)) {
+        is OrderSettlement.Fulfilled -> settlement.order
+        is OrderSettlement.Failed -> null
+        OrderSettlement.Pending -> null
     }
-    return null
-}
 ```
 
-If the deadline expires, tell the customer the order has not completed rather than sending them into an install that cannot succeed. Their payment is safe and the order completes server-side.
+On `Failed`, tell the customer the payment did not complete. On `Pending` the outcome is unknown, not unpaid: tell the customer you are still confirming rather than sending them into an install that cannot succeed. Their payment is safe and the order completes server-side.
 
 ## 6c. Installing the eSIM
 
@@ -722,12 +719,15 @@ Leaving the parameter out lets the API decide by tenant; `false` states the choi
 | `getOrderDetails` | `orderUuid: String, forceRefresh: Boolean = false, cacheTTL: Duration = ORDER_DETAIL_TTL` | `OrderDetail` | Get detailed order info |
 | `getOrdersPageResult` | `limit: Int = ORDERS_PAGE_LIMIT, offset: Int = 0, withLoyaltyPoints: Boolean = false, forceRefresh: Boolean = false, cacheTTL: Duration = ORDERS_LIST_TTL` | `RepositoryResult<OrdersPage>` | Paged order read. `OrdersRepository.ORDERS_PAGE_LIMIT` is 100 |
 | `getOrderInvoice` | `orderUuid: String` | `ByteArray` | Download the order's PDF invoice bytes |
+| `awaitSettlement` | `orderUuid: String, interval: Duration = SETTLEMENT_INTERVAL, timeout: Duration = SETTLEMENT_TIMEOUT` | `OrderSettlement` | Poll every `interval` for up to `timeout` until the order is fulfilled, has failed, or the wait runs out. See [OrderSettlement](#ordersettlement) |
 | `trackOrder` | `orderUuid: String` | `Unit` | Mark the order's conversion as tracked (never throws) |
 | `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
 
-Cached: `ORDERS_LIST_TTL` = 10 min, `ORDER_DETAIL_TTL` = 5 min. `…Result` twins: `getOrderHistoryResult`, `getOrderDetailsResult`.
+Cached: `ORDERS_LIST_TTL` = 10 min, `ORDER_DETAIL_TTL` = 5 min. `SETTLEMENT_INTERVAL` = 3 s, `SETTLEMENT_TIMEOUT` = 120 s. `…Result` twins: `getOrderHistoryResult`, `getOrderDetailsResult`.
 
 `getOrderDetails` retries an order still in `pending` status up to 5 times, one second apart, before returning it.
+
+`awaitSettlement` has a default body that polls `getOrderDetailsResult` against a real-time deadline. A test fake that never settles will spin for the real timeout under `runTest`; override it in the fake or pass a short `timeout`. The shipped implementation checks a light status endpoint, reads the full order and caches it under `ORDER_DETAIL_TTL` only once it is fulfilled, and bounds each request by the time remaining, never below one `interval`.
 
 ---
 
@@ -738,6 +738,7 @@ Cached: `ORDERS_LIST_TTL` = 10 min, `ORDER_DETAIL_TTL` = 5 min. `…Result` twin
 | `getPaymentIntent` | `request: PaymentRequest` | `PaymentResponse` | Create Stripe payment intent |
 | `getPaymentMethods` | — | `List<SavedPaymentMethod>` | The customer's saved cards, from `GET /customer/payment-methods/`. Empty when none |
 | `payWithStoredPaymentMethod` | `paymentMethodId: String, transactionType: String, packageTypeId: Int, iccid: String? = null` | `PaymentResponse` | Charge a saved card for a purchase; no Stripe sheet. Sends `stored_payment_method` and no `auto_top_up` / `save_payment_method`. `iccid` only with `PaymentRequest.Type.TOP_UP` |
+| `startSmartPayPayment` | `transactionType: String, packageTypeId: Int, iccid: String? = null, loyaltyPointsAmount: Double? = null, redirectUrl: String` | `PaymentResponse` | Start a SmartPay (Bank Muscat) hosted checkout. Sends `payment_method = "smartpay"`, `auto_top_up = false` and `redirect_url`. Open `transaction.uri` in a Custom Tab, then call `OrdersRepository.awaitSettlement` with the order UUID from the return link `https://<tenant host>/order/<n>?id=<uuid>`. `iccid` only with `PaymentRequest.Type.TOP_UP` |
 
 **SavedPaymentMethod:** `paymentMethodId`, `cardBrand` (as the backend sends it, e.g. `"visa"`), `cardLast4`, `cardExpMonth: Int?`, `cardExpYear: Int?`.
 
@@ -757,6 +758,7 @@ PaymentRequest(
     loyaltyPointsToUse: Int? = null,
     couponId: String? = null,
     storedPaymentMethod: String? = null, // a saved card's paymentMethodId; serialised only when set
+    redirectUrl: String? = null,         // where SmartPay returns the customer; serialised only when set
 )
 ```
 
@@ -1167,6 +1169,7 @@ Every type the SDK returns or accepts, with its Kotlin properties and the JSON k
 | discountAmount | String | Discount applied, server text verbatim |
 | discountCode | String | Promo code used |
 | paymentMethod | PaymentMethod | How it was paid |
+| paymentStatus | String? | Payment status (`payment_status`); absent on orders that do not report one |
 | loyaltyPointsEarned | LoyaltyPointsDetail? | Kreds earned |
 | loyaltyPointsSpent | LoyaltyPointsDetail? | Kreds spent |
 | customerId | String | Customer the order belongs to (`customer_id`) |
@@ -1183,6 +1186,18 @@ Every type the SDK returns or accepts, with its Kotlin properties and the JSON k
 | priceValue | Double | `price` parsed |
 | finalPriceValue | Double | `finalPrice` parsed |
 | discountAmountValue | Double | `discountAmount` parsed |
+
+### OrderSettlement
+
+Returned by `OrdersRepository.awaitSettlement`. A sealed class with three results:
+
+| Result | Fields | Meaning |
+|--------|--------|---------|
+| `OrderSettlement.Fulfilled` | `order: OrderDetail` | Non-empty `iccid` and `payment_status` `success` (`order_status` `success` when `payment_status` is absent or blank) |
+| `OrderSettlement.Failed` | `order: OrderDetail?` | `payment_status` or `order_status` is `failed`, `cancelled`, `canceled`, `declined` or `expired`, trimmed and lowercased. `order` is `null` when the failed order cannot be decoded as a full `OrderDetail` |
+| `OrderSettlement.Pending` | — | The outcome is unknown: polling stopped at the timeout, every check failed, or the task was cancelled. It does not mean the customer did not pay |
+
+`OrderDetail.isFulfilled` and `OrderDetail.isSettlementFailure` apply the same rules to an order you already hold.
 
 ### PaymentResponse
 
@@ -1257,6 +1272,7 @@ Every type the SDK returns or accepts, with its Kotlin properties and the JSON k
 |-------|---------------|--------------------|
 | STRIPE_INTENT | Stripe | true |
 | STRIPE_CHECKOUT | Stripe | true |
+| SMARTPAY | SmartPay | true |
 | AGENT_PAYMENT | Agent Payment | true |
 | COMPLIMENTARY | Complimentary | false |
 | VOUCHER | Voucher | false |
@@ -1788,7 +1804,7 @@ A standalone order view. Public, but not returned by any repository method in 2.
 
 ### PaymentRequest
 
-The payload you build for `PaymentsRepository.getPaymentIntent`. Use the nested constants rather than raw strings: `PaymentRequest.Type.BUY` / `TOP_UP`, and `PaymentRequest.Method.STRIPE_INTENT` / `STRIPE_CHECKOUT`.
+The payload you build for `PaymentsRepository.getPaymentIntent`. Use the nested constants rather than raw strings: `PaymentRequest.Type.BUY` / `TOP_UP`, and `PaymentRequest.Method.STRIPE_INTENT` / `STRIPE_CHECKOUT` / `SMARTPAY`.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -1796,13 +1812,15 @@ The payload you build for `PaymentsRepository.getPaymentIntent`. Use the nested 
 | iccid | String? | Target eSIM for a top-up. Null for a new purchase |
 | customer | CustomerDetails | Purchasing customer. Required |
 | packageTypeId | Int | Package being bought. Required. Note `PackagePlan.packageTypeId` is a `Long` — narrow it |
-| paymentMethod | String | `stripe_intent` or `stripe_checkout`. Required |
+| paymentMethod | String | `stripe_intent`, `stripe_checkout` or `smartpay`. Required |
 | autoTopUp | Boolean | Enable automatic top-up on the resulting eSIM. Required |
 | savePaymentMethod | Boolean | Store the card for reuse. Required |
 | loyaltyPointsAmount | Double? | Kreds value to apply |
 | loyaltyProvider | String? | `kreds` or `mokafaa`. See `LoyaltyProvider` |
 | loyaltyPointsToUse | Int? | Mokafaa points to burn |
 | couponId | String? | Promo code to apply |
+| storedPaymentMethod | String? | A saved card's `paymentMethodId`; serialised only when set |
+| redirectUrl | String? | Where SmartPay returns the customer (`redirect_url`); serialised only when set |
 
 ### CheckoutCouponRequest
 
