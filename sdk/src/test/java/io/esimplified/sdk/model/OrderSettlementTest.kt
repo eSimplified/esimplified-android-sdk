@@ -45,6 +45,13 @@ class OrderSettlementTest {
     }
 
     @Test
+    fun `a terminal order status is never fulfilled even with a success payment status`() {
+        assertFalse(SettlementRules.isFulfilled("failed", "success", "8901"))
+        assertFalse(SettlementRules.isFulfilled("cancelled", "success", "8901"))
+        assertFalse(SettlementRules.isFulfilled("success", "declined", "8901"))
+    }
+
+    @Test
     fun `blank payment status falls back to order status`() {
         assertTrue(SettlementRules.isFulfilled("success", null, "8901"))
         assertTrue(SettlementRules.isFulfilled("success", "  ", "8901"))

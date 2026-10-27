@@ -12,6 +12,7 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 
 interface OrdersRepository {
 
@@ -74,7 +75,9 @@ interface OrdersRepository {
         val deadline = TimeSource.Monotonic.markNow() + timeout
         while (true) {
             val result = runCatching {
-                getOrderDetailsResult(orderUuid, forceRefresh = true, cacheTTL = Duration.ZERO)
+                withTimeoutOrNull(maxOf(-deadline.elapsedNow(), interval)) {
+                    getOrderDetailsResult(orderUuid, forceRefresh = true, cacheTTL = Duration.ZERO)
+                }
             }.onFailure { if (it is CancellationException) throw it }.getOrNull()
             val order = result?.takeUnless { it.didFail }?.value
             if (order != null) {

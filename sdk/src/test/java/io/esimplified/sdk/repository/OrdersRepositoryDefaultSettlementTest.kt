@@ -6,6 +6,7 @@ import io.esimplified.sdk.model.OrderSettlement
 import io.esimplified.sdk.model.OrdersPage
 import io.esimplified.sdk.network.SdkError
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -15,7 +16,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.measureTime
 
 class OrdersRepositoryDefaultSettlementTest {
 
@@ -77,6 +80,50 @@ class OrdersRepositoryDefaultSettlementTest {
         ): RepositoryResult<OrdersPage> = RepositoryResult(OrdersPage())
 
         override suspend fun trackOrder(orderUuid: String) = Unit
+    }
+
+    private class HangingOrders : OrdersRepository {
+        override suspend fun getOrderDetailsResult(
+            orderUuid: String,
+            forceRefresh: Boolean,
+            cacheTTL: Duration,
+        ): RepositoryResult<OrderDetail?> = awaitCancellation()
+
+        override suspend fun getOrderHistory(
+            withLoyaltyPoints: Boolean,
+            forceRefresh: Boolean,
+            cacheTTL: Duration,
+        ): List<OrderHistoryItem> = emptyList()
+
+        override suspend fun getOrderDetails(
+            orderUuid: String,
+            forceRefresh: Boolean,
+            cacheTTL: Duration,
+        ): OrderDetail = throw UnsupportedOperationException()
+
+        override suspend fun getOrdersPageResult(
+            limit: Int,
+            offset: Int,
+            withLoyaltyPoints: Boolean,
+            forceRefresh: Boolean,
+            cacheTTL: Duration,
+        ): RepositoryResult<OrdersPage> = RepositoryResult(OrdersPage())
+
+        override suspend fun trackOrder(orderUuid: String) = Unit
+    }
+
+    @Test
+    fun `a read that never returns is bounded and the wait ends pending`() = runBlocking {
+        val orders = HangingOrders()
+
+        val elapsed = measureTime {
+            assertEquals(
+                OrderSettlement.Pending,
+                orders.awaitSettlement("uuid-1", interval = 50.milliseconds, timeout = 100.milliseconds),
+            )
+        }
+
+        assertTrue("took $elapsed", elapsed < 2.seconds)
     }
 
     @Test

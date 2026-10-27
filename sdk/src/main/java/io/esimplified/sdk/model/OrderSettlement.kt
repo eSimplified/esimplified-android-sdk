@@ -38,7 +38,7 @@ internal object SettlementRules {
         normalise(paymentStatus) in terminalStatuses || normalise(orderStatus) in terminalStatuses
 
     fun isFulfilled(orderStatus: String, paymentStatus: String?, iccid: String?): Boolean {
-        if (iccid.isNullOrBlank()) return false
+        if (iccid.isNullOrBlank() || isFailure(orderStatus, paymentStatus)) return false
         val status = normalise(paymentStatus) ?: normalise(orderStatus)
         return status == "success"
     }
