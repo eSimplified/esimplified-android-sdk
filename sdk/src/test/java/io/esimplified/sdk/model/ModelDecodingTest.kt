@@ -1163,6 +1163,15 @@ class ModelDecodingTest {
     }
 
     @Test
+    fun `smartpay payment method decodes and encodes as smartpay`() {
+        val json = Json { ignoreUnknownKeys = true }
+        assertEquals(PaymentMethod.SMARTPAY, json.decodeFromString(PaymentMethod.serializer(), "\"smartpay\""))
+        assertEquals("\"smartpay\"", json.encodeToString(PaymentMethod.serializer(), PaymentMethod.SMARTPAY))
+        assertEquals("SmartPay", PaymentMethod.SMARTPAY.displayName)
+        assertTrue(PaymentMethod.SMARTPAY.shouldShowAmount)
+    }
+
+    @Test
     fun `Country decodes an object whose every string is null`() {
         val payload = """
             {
