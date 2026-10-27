@@ -4,7 +4,9 @@ import io.esimplified.sdk.repository.OrdersRepository
 
 import io.esimplified.sdk.model.OrderHistoryItem
 import io.esimplified.sdk.model.OrderDetail
+import io.esimplified.sdk.model.OrderSettlement
 import io.esimplified.sdk.model.OrdersPage
+import io.esimplified.sdk.model.isFulfilled
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.SdkCache
 import io.esimplified.sdk.repository.RepositoryResult
@@ -15,7 +17,10 @@ import io.esimplified.sdk.repository.listOrThrow
 import io.esimplified.sdk.repository.valueOrThrow
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import io.esimplified.sdk.SdkLog
 
 internal class OrdersRepositoryImpl(
@@ -110,6 +115,43 @@ internal class OrdersRepositoryImpl(
             delay(PENDING_ORDER_RETRY_DELAY)
         }
     }
+
+    override suspend fun awaitSettlement(
+        orderUuid: String,
+        interval: Duration,
+        timeout: Duration,
+    ): OrderSettlement {
+        val deadline = TimeSource.Monotonic.markNow() + timeout
+        while (true) {
+            val budget = maxOf(-deadline.elapsedNow(), interval)
+            val probe = runCatching {
+                withTimeoutOrNull(budget) { apiService.getOrderStatusProbe(orderUuid, true, true) }
+            }.onFailure {
+                if (it is CancellationException) throw it
+            }.getOrNull()
+            if (probe != null) {
+                if (probe.isSettlementFailure) {
+                    return OrderSettlement.Failed(fetchOrderOnce(orderUuid, budget))
+                }
+                if (probe.isFulfilled) {
+                    val order = fetchOrderOnce(orderUuid, budget)
+                    if (order != null && order.isFulfilled) {
+                        cache.set(orderKey(orderUuid), order, OrdersRepository.ORDER_DETAIL_TTL)
+                        return OrderSettlement.Fulfilled(order)
+                    }
+                }
+            }
+            if (deadline.hasPassedNow()) return OrderSettlement.Pending
+            delay(interval)
+        }
+    }
+
+    private suspend fun fetchOrderOnce(orderUuid: String, budget: Duration): OrderDetail? =
+        runCatching {
+            withTimeoutOrNull(budget) { apiService.getOrderDetails(orderUuid, true, true) }
+        }.onFailure {
+            if (it is CancellationException) throw it
+        }.getOrNull()
 
     override suspend fun getOrderInvoice(orderUuid: String): ByteArray =
         apiRead { apiService.getOrderInvoice(orderUuid).bytes() }

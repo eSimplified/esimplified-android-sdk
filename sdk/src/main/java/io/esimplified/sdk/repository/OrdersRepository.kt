@@ -2,10 +2,15 @@ package io.esimplified.sdk.repository
 
 import io.esimplified.sdk.model.OrderHistoryItem
 import io.esimplified.sdk.model.OrderDetail
+import io.esimplified.sdk.model.OrderSettlement
 import io.esimplified.sdk.model.OrdersPage
+import io.esimplified.sdk.model.isFulfilled
+import io.esimplified.sdk.model.isSettlementFailure
 import io.esimplified.sdk.network.SdkError
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
+import kotlinx.coroutines.delay
 
 interface OrdersRepository {
 
@@ -58,6 +63,25 @@ interface OrdersRepository {
         throw SdkError.NetworkError(501, "Invoice download is not implemented by this repository")
     // endregion
 
+    // region Settlement
+    suspend fun awaitSettlement(
+        orderUuid: String,
+        interval: Duration = SETTLEMENT_INTERVAL,
+        timeout: Duration = SETTLEMENT_TIMEOUT,
+    ): OrderSettlement {
+        val deadline = TimeSource.Monotonic.markNow() + timeout
+        while (true) {
+            val order = getOrderDetailsResult(orderUuid, forceRefresh = true, cacheTTL = Duration.ZERO).value
+            if (order != null) {
+                if (order.isSettlementFailure) return OrderSettlement.Failed(order)
+                if (order.isFulfilled) return OrderSettlement.Fulfilled(order)
+            }
+            if (deadline.hasPassedNow()) return OrderSettlement.Pending
+            delay(interval)
+        }
+    }
+    // endregion
+
     // region Writes
     suspend fun trackOrder(orderUuid: String)
     // endregion
@@ -70,5 +94,7 @@ interface OrdersRepository {
         val ORDERS_LIST_TTL: Duration = 600.seconds
         val ORDER_DETAIL_TTL: Duration = 300.seconds
         const val ORDERS_PAGE_LIMIT: Int = 100
+        val SETTLEMENT_INTERVAL: Duration = 3.seconds
+        val SETTLEMENT_TIMEOUT: Duration = 120.seconds
     }
 }

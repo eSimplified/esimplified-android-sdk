@@ -2,10 +2,13 @@ package io.esimplified.sdk.repository
 
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import io.esimplified.sdk.model.OrderDetail
+import io.esimplified.sdk.model.OrderSettlement
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.SdkCache
 import io.esimplified.sdk.repository.impl.OrdersRepositoryImpl
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.mockwebserver.MockResponse
@@ -23,6 +26,8 @@ import org.junit.Test
 import retrofit2.Retrofit
 import retrofit2.create
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 class OrdersRepositoryImplTest {
 
@@ -404,6 +409,92 @@ class OrdersRepositoryImplTest {
     }
     // endregion
 
+    // region Settlement
+    @Test
+    fun `settlement polls the probe and returns the fulfilled order`() = runTest {
+        enqueueOrderDetail(status = "pending")
+        enqueueOrderDetail(status = "success", iccid = "8901")
+        enqueueOrderDetail(status = "success", iccid = "8901")
+
+        val result = settle("uuid-1")
+
+        assertTrue(result is OrderSettlement.Fulfilled)
+        assertEquals(3, mockWebServer.requestCount)
+        assertNotNull(cache.get<OrderDetail>("order_uuid-1"))
+    }
+
+    @Test
+    fun `a cancelled unprovisioned order fails on the first probe`() = runTest {
+        enqueueJson(PENDING_PROBE_JSON.replace("pending", "cancelled"))
+        enqueueJson(PENDING_PROBE_JSON.replace("pending", "cancelled"))
+
+        val result = settle("uuid-1")
+
+        assertTrue(result is OrderSettlement.Failed)
+        assertNull((result as OrderSettlement.Failed).order)
+        assertEquals(2, mockWebServer.requestCount)
+    }
+
+    @Test
+    fun `a failed payment status is a failure with the detail when it decodes`() = runTest {
+        enqueueOrderDetail(status = "pending", paymentStatus = "failed")
+        enqueueOrderDetail(status = "pending", paymentStatus = "failed")
+
+        val result = settle("uuid-1") as OrderSettlement.Failed
+
+        assertEquals("failed", result.order?.paymentStatus)
+    }
+
+    @Test
+    fun `a decode error keeps polling until the deadline`() = runTest {
+        repeat(5) { enqueueJson("not json") }
+
+        val result = settle("uuid-1", interval = 1.seconds, timeout = 1.seconds)
+
+        assertEquals(OrderSettlement.Pending, result)
+    }
+
+    @Test
+    fun `a zero timeout still probes once and returns pending`() = runTest {
+        enqueueJson(PENDING_PROBE_JSON)
+
+        assertEquals(OrderSettlement.Pending, settle("uuid-1", timeout = Duration.ZERO))
+
+        assertEquals(1, mockWebServer.requestCount)
+        assertNull(cache.getExpired<OrderDetail>("order_uuid-1"))
+    }
+
+    @Test
+    fun `a fulfilled probe with an unprovisioned detail keeps polling and does not cache it`() = runTest {
+        enqueueOrderDetail(status = "success", iccid = "8901")
+        enqueueOrderDetail(status = "pending")
+        enqueueOrderDetail(status = "success", iccid = "8901")
+        enqueueOrderDetail(status = "success", iccid = "8901")
+
+        val result = settle("uuid-1")
+
+        assertTrue(result is OrderSettlement.Fulfilled)
+        assertEquals(4, mockWebServer.requestCount)
+        assertEquals("8901", cache.get<OrderDetail>("order_uuid-1")?.iccid)
+    }
+
+    @Test
+    fun `padded cancelled status is a failure`() = runTest {
+        enqueueJson(PENDING_PROBE_JSON.replace("\"pending\"", "\" Cancelled \""))
+        enqueueJson(PENDING_PROBE_JSON)
+
+        assertTrue(settle("uuid-1") is OrderSettlement.Failed)
+    }
+    // endregion
+
+    private suspend fun settle(
+        orderUuid: String,
+        interval: Duration = 10.milliseconds,
+        timeout: Duration = OrdersRepository.SETTLEMENT_TIMEOUT,
+    ): OrderSettlement = withContext(Dispatchers.Default) {
+        repo().awaitSettlement(orderUuid, interval, timeout)
+    }
+
     private fun repo() = OrdersRepositoryImpl(apiService, cache)
 
     private fun enqueueOrders(count: Int = 1, next: String? = null) {
@@ -411,8 +502,18 @@ class OrdersRepositoryImplTest {
         enqueueJson("""{"count":$count,"next":$nextField,"previous":null,"results":[$ORDER_JSON]}""")
     }
 
-    private fun enqueueOrderDetail(status: String) {
-        enqueueJson(ORDER_DETAIL_JSON.replace("ORDER_STATUS_PLACEHOLDER", status))
+    private fun enqueueOrderDetail(
+        status: String,
+        paymentStatus: String? = null,
+        iccid: String? = null,
+    ) {
+        var body = ORDER_DETAIL_JSON.replace("ORDER_STATUS_PLACEHOLDER", status)
+        val extras = buildString {
+            if (iccid != null) append("\"iccid\": \"$iccid\", ")
+            if (paymentStatus != null) append("\"payment_status\": \"$paymentStatus\", ")
+        }
+        if (extras.isNotEmpty()) body = body.replaceFirst("{", "{ $extras")
+        enqueueJson(body)
     }
 
     private fun enqueueServerError() {
@@ -438,6 +539,14 @@ class OrdersRepositoryImplTest {
     }
 
     private companion object {
+        const val PENDING_PROBE_JSON = """
+            {
+                "customer_id": "cust-1",
+                "order_number": 1001,
+                "order_status": "pending"
+            }
+        """
+
         const val ORDER_DETAIL_JSON = """
             {
                 "customer_id": "cust-1",
