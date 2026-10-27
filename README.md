@@ -1146,6 +1146,10 @@ Each request is bounded by the time left in the wait, and never by less than one
 
 `PaymentRequest.redirectUrl: String? = null` is added as the last parameter, serialised as `redirect_url` only when set, along with the `PaymentRequest.Method.SMARTPAY` constant (`"smartpay"`). `PaymentMethod.SMARTPAY` decodes the wire value `smartpay` and has `displayName` "SmartPay" and `shouldShowAmount = true`. `OrderDetail.paymentStatus: String? = null` reads `payment_status`.
 
+### `enableCaching = false` now disables the cache
+
+`SdkConfig(enableCaching = false)` was documented as giving every cache entry a zero TTL, but each repository read passed its own TTL, which overrode the zeroed default, so reads were still served from memory for the full period. The switch now applies to every entry. Apps that relied on the documented behaviour get it without a code change; apps that left caching on see no difference.
+
 ## Changes in 3.5.0
 
 ### Breaking changes
