@@ -4,7 +4,10 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
-internal class SdkCache(private val defaultTtl: Duration = DEFAULT_TTL) {
+internal class SdkCache(
+    private val defaultTtl: Duration = DEFAULT_TTL,
+    private val isEnabled: Boolean = true,
+) {
 
     internal class Entry(val data: Any, val expiresAt: Long) {
         val isExpired: Boolean get() = System.currentTimeMillis() >= expiresAt
@@ -24,7 +27,7 @@ internal class SdkCache(private val defaultTtl: Duration = DEFAULT_TTL) {
 
     // region Writes
     fun set(key: String, value: Any, ttl: Duration? = null) {
-        val resolvedTtl = ttl ?: defaultTtl
+        val resolvedTtl = if (isEnabled) ttl ?: defaultTtl else Duration.ZERO
         store[key] = Entry(value, System.currentTimeMillis() + resolvedTtl.inWholeMilliseconds)
     }
 
