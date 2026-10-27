@@ -122,6 +122,7 @@ internal class OrdersRepositoryImpl(
         interval: Duration,
         timeout: Duration,
     ): OrderSettlement {
+        require(interval.isPositive()) { "interval must be positive" }
         val deadline = TimeSource.Monotonic.markNow() + timeout
         while (true) {
             val probe = within(budgetFor(deadline, interval)) {
@@ -157,7 +158,10 @@ internal class OrdersRepositoryImpl(
 
     private suspend fun <T : Any> within(budget: Duration, call: suspend () -> T): T? =
         runCatching { withTimeoutOrNull(budget) { call() } }
-            .onFailure { if (it is CancellationException) throw it }
+            .onFailure {
+                if (it is CancellationException) throw it
+                SdkLog.w("Order settlement poll failed: ${it::class.simpleName}")
+            }
             .getOrNull()
 
     override suspend fun getOrderInvoice(orderUuid: String): ByteArray =

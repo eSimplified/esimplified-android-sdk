@@ -10,6 +10,7 @@ import io.esimplified.sdk.network.SdkError
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 
 interface OrdersRepository {
@@ -69,10 +70,13 @@ interface OrdersRepository {
         interval: Duration = SETTLEMENT_INTERVAL,
         timeout: Duration = SETTLEMENT_TIMEOUT,
     ): OrderSettlement {
+        require(interval.isPositive()) { "interval must be positive" }
         val deadline = TimeSource.Monotonic.markNow() + timeout
         while (true) {
-            val result = getOrderDetailsResult(orderUuid, forceRefresh = true, cacheTTL = Duration.ZERO)
-            val order = result.takeUnless { it.didFail }?.value
+            val result = runCatching {
+                getOrderDetailsResult(orderUuid, forceRefresh = true, cacheTTL = Duration.ZERO)
+            }.onFailure { if (it is CancellationException) throw it }.getOrNull()
+            val order = result?.takeUnless { it.didFail }?.value
             if (order != null) {
                 if (order.isSettlementFailure) return OrderSettlement.Failed(order)
                 if (order.isFulfilled) return OrderSettlement.Fulfilled(order)

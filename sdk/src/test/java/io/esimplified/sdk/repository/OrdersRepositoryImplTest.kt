@@ -7,12 +7,16 @@ import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.SdkCache
 import io.esimplified.sdk.repository.impl.OrdersRepositoryImpl
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.SocketPolicy
 import okio.Buffer
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
@@ -28,6 +32,7 @@ import retrofit2.create
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 class OrdersRepositoryImplTest {
 
@@ -485,6 +490,35 @@ class OrdersRepositoryImplTest {
         enqueueJson(PENDING_PROBE_JSON)
 
         assertTrue(settle("uuid-1") is OrderSettlement.Failed)
+    }
+
+    @Test
+    fun `a hung probe is bounded by the settlement timeout and not the client read timeout`() = runTest {
+        mockWebServer.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
+        val started = TimeSource.Monotonic.markNow()
+
+        val result = settle("uuid-1", interval = 50.milliseconds, timeout = 200.milliseconds)
+
+        assertEquals(OrderSettlement.Pending, result)
+        assertTrue(started.elapsedNow() < 2.seconds)
+    }
+
+    @Test
+    fun `cancelling the caller during an in-flight probe propagates`() = runTest {
+        mockWebServer.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
+        val started = TimeSource.Monotonic.markNow()
+
+        val job = launch(Dispatchers.Default) {
+            repo().awaitSettlement("uuid-1", 50.milliseconds, 60.seconds)
+        }
+        withContext(Dispatchers.Default) {
+            delay(100.milliseconds)
+            job.cancel()
+            withTimeout(2.seconds) { job.join() }
+        }
+
+        assertTrue(job.isCancelled)
+        assertTrue(started.elapsedNow() < 2.seconds)
     }
     // endregion
 

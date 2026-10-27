@@ -5,10 +5,14 @@ import io.esimplified.sdk.model.OrderHistoryItem
 import io.esimplified.sdk.model.OrderSettlement
 import io.esimplified.sdk.model.OrdersPage
 import io.esimplified.sdk.network.SdkError
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -36,6 +40,33 @@ class OrdersRepositoryDefaultSettlementTest {
             forceRefresh: Boolean,
             cacheTTL: Duration,
         ): OrderDetail = throw UnsupportedOperationException()
+
+        override suspend fun getOrdersPageResult(
+            limit: Int,
+            offset: Int,
+            withLoyaltyPoints: Boolean,
+            forceRefresh: Boolean,
+            cacheTTL: Duration,
+        ): RepositoryResult<OrdersPage> = RepositoryResult(OrdersPage())
+
+        override suspend fun trackOrder(orderUuid: String) = Unit
+    }
+
+    private class DetailsOnlyOrders(private val onCall: (Int) -> OrderDetail) : OrdersRepository {
+        var calls = 0
+            private set
+
+        override suspend fun getOrderDetails(
+            orderUuid: String,
+            forceRefresh: Boolean,
+            cacheTTL: Duration,
+        ): OrderDetail = onCall(calls++)
+
+        override suspend fun getOrderHistory(
+            withLoyaltyPoints: Boolean,
+            forceRefresh: Boolean,
+            cacheTTL: Duration,
+        ): List<OrderHistoryItem> = emptyList()
 
         override suspend fun getOrdersPageResult(
             limit: Int,
@@ -110,6 +141,40 @@ class OrdersRepositoryDefaultSettlementTest {
 
         assertEquals(OrderSettlement.Pending, result)
         assertEquals(1, orders.calls)
+    }
+
+    @Test
+    fun `a read that throws is ignored and polling continues`() = runTest {
+        val orders = DetailsOnlyOrders { call ->
+            if (call == 0) throw RuntimeException("boom") else order("success", iccid = "8901")
+        }
+
+        val result = orders.awaitSettlement("uuid-1")
+
+        assertTrue(result is OrderSettlement.Fulfilled)
+        assertEquals(2, orders.calls)
+    }
+
+    @Test
+    fun `a read that throws cancellation propagates`() = runTest {
+        val orders = DetailsOnlyOrders { throw CancellationException("cancelled") }
+
+        assertThrows(CancellationException::class.java) {
+            runBlocking { orders.awaitSettlement("uuid-1") }
+        }
+        assertEquals(1, orders.calls)
+    }
+
+    @Test
+    fun `a zero interval is rejected`() = runTest {
+        val orders = ScriptedOrders(listOf(ok(order("pending"))))
+
+        try {
+            orders.awaitSettlement("uuid-1", interval = Duration.ZERO)
+            fail("expected IllegalArgumentException")
+        } catch (expected: IllegalArgumentException) {
+            assertEquals(0, orders.calls)
+        }
     }
 
     private fun ok(order: OrderDetail): RepositoryResult<OrderDetail?> = RepositoryResult(order)
