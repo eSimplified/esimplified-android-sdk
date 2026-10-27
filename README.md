@@ -22,7 +22,7 @@ What you get without writing any networking, token handling, or caching of your 
 | **Countries and destinations** | Browse and search the destination catalogue, resolve the customer's country from their IP | `CountryRepository` |
 | **Packages** | List data plans for a destination, list top-up plans for an eSIM the customer already owns, check stock before selling | `PackagesRepository` |
 | **Orders** | Order history, full order detail including the QR code, and conversion tracking after a purchase completes | `OrdersRepository` |
-| **Payments** | Create a Stripe payment intent or checkout session. You confirm it with Stripe's own Android SDK — this SDK does not handle card data | `PaymentsRepository` |
+| **Payments** | Create a Stripe payment intent or checkout session, or start a SmartPay hosted checkout. You confirm a Stripe payment with Stripe's own Android SDK and the customer pays SmartPay in a browser — this SDK does not handle card data | `PaymentsRepository` |
 | **eSIM provisioning and install** | List active and archived eSIMs, fetch one by ICCID, read usage and expiry per package, rename, archive, set primary, toggle auto top-up. Exposes the SM-DP+ address and activation code needed for a direct Android install | `EsimRepository` |
 | **Vouchers** | Redeem a voucher code | `VouchersRepository` |
 | **Promo codes** | Apply, read and remove a checkout promo code | `PromoCodeRepository` |
@@ -612,7 +612,7 @@ Order history, order details, invoices, and conversion tracking.
 
 ### PaymentsRepository
 
-Payment intent creation for Stripe/Google Pay checkout.
+Payment creation for Stripe/Google Pay checkout and SmartPay hosted checkout.
 
 | Method | Signature | Description |
 |---|---|---|
@@ -1132,14 +1132,14 @@ SmartPay is Bank Muscat's hosted card page. The customer pays in a browser, not 
 | Result | Meaning |
 |---|---|
 | `Fulfilled(order)` | The order has a non-empty `iccid` and its `payment_status` is `success` (its `order_status` is `success` when `payment_status` is absent or blank) |
-| `Failed(order)` | `payment_status` or `order_status` is `failed`, `cancelled`, `canceled`, `declined` or `expired`, compared trimmed and lowercased. `order` is `null` when the failed order cannot be decoded as a full `OrderDetail` |
+| `Failed(order)` | `payment_status` or `order_status` is `failed`, `cancelled`, `canceled`, `declined` or `expired`, compared trimmed and lowercased. `order` is `null` when the full order could not be read (decode failure, request failure or timeout) |
 | `Pending` | The outcome is unknown |
 
-`Pending` does not mean the customer did not pay. It means the SDK stopped without an answer: the timeout elapsed, every check failed, or the calling coroutine was cancelled. Show a "we are confirming your payment" state and let the customer check their orders later; do not tell them the payment failed.
+`Pending` does not mean the customer did not pay. It means the SDK stopped without an answer: the timeout elapsed or every check failed. Cancelling the calling coroutine cancels the wait as usual (`CancellationException`); no settlement is returned. Show a "we are confirming your payment" state and let the customer check their orders later; do not tell them the payment failed.
 
 Each request is bounded by the time left in the wait, and never by less than one `interval`, so a hung request cannot hold the call past the timeout. The SDK reads the full order, and caches it under `ORDER_DETAIL_TTL`, only once it is fulfilled, so a following `getOrderDetails(orderUuid)` costs no extra request.
 
-`OrderDetail.isFulfilled` and `OrderDetail.isSettlementFailure` apply the same rules to an order you already hold.
+`OrderDetail.isFulfilled` and `OrderDetail.isSettlementFailure` apply the same rules to an order you already hold. They are top-level extension properties in `io.esimplified.sdk.model`, so they need `import io.esimplified.sdk.model.isFulfilled` and `import io.esimplified.sdk.model.isSettlementFailure`.
 
 ### `PaymentRequest` and `OrderDetail`
 

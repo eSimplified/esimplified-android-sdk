@@ -2,7 +2,7 @@
 
 For client teams integrating the SDK into an Android app. Covers installation, configuration, every repository method available to you, and the full shape of every model the API returns.
 
-Documents `io.github.esimplified:android-sdk:3.6.0`, the version on Maven Central, with one
+Documents `io.github.esimplified:android-sdk:3.6.0`, the version this document describes, with one
 interface change that lands in the next release — `OrdersRepository.getOrderHistory` and
 `getOrderHistoryResult` each lost a redundant overload. The tables below show the new shape;
 [Changes since 2.0.0](README.md#changes-since-200) has the detail.
@@ -112,7 +112,7 @@ Gradle pins you to an exact version. `implementation("io.github.esimplified:andr
 | Something added | 2.1.0 → 2.2.0 | Nothing |
 | Something you call changed or went away | 2.1.0 → 3.0.0 | Update your code, then raise the version you depend on |
 
-Those numbers are illustrative. 2.0.0 is the version on Maven Central and the one this document describes.
+Those numbers are illustrative. 3.6.0 is the version this document describes.
 
 The convention follows our commit messages. A `fix:` commit is a patch, a `feat:` commit is a minor, and the major only moves for a change that breaks **callers** — a method you call renamed, removed, or given a new required parameter. Such commits carry a `!`, as in `refactor(orders)!:`.
 
@@ -727,7 +727,7 @@ Cached: `ORDERS_LIST_TTL` = 10 min, `ORDER_DETAIL_TTL` = 5 min. `SETTLEMENT_INTE
 
 `getOrderDetails` retries an order still in `pending` status up to 5 times, one second apart, before returning it.
 
-`awaitSettlement` has a default body that polls `getOrderDetailsResult` against a real-time deadline. A test fake that never settles will spin for the real timeout under `runTest`; override it in the fake or pass a short `timeout`. The shipped implementation checks a light status endpoint, reads the full order and caches it under `ORDER_DETAIL_TTL` only once it is fulfilled, and bounds each request by the time remaining, never below one `interval`.
+`awaitSettlement` has a default body that polls `getOrderDetailsResult` against a real-time deadline. A test fake that never settles will spin for the real timeout under `runTest`; override it in the fake or pass a short `timeout`. The shipped implementation reads the same `api/v2/customer/orders/{uuid}` endpoint decoded into a light status shape, reads the full order and caches it under `ORDER_DETAIL_TTL` only once it is fulfilled, and bounds each request by the time remaining, never below one `interval`.
 
 ---
 
@@ -1194,10 +1194,15 @@ Returned by `OrdersRepository.awaitSettlement`. A sealed class with three result
 | Result | Fields | Meaning |
 |--------|--------|---------|
 | `OrderSettlement.Fulfilled` | `order: OrderDetail` | Non-empty `iccid` and `payment_status` `success` (`order_status` `success` when `payment_status` is absent or blank) |
-| `OrderSettlement.Failed` | `order: OrderDetail?` | `payment_status` or `order_status` is `failed`, `cancelled`, `canceled`, `declined` or `expired`, trimmed and lowercased. `order` is `null` when the failed order cannot be decoded as a full `OrderDetail` |
-| `OrderSettlement.Pending` | — | The outcome is unknown: polling stopped at the timeout, every check failed, or the task was cancelled. It does not mean the customer did not pay |
+| `OrderSettlement.Failed` | `order: OrderDetail?` | `payment_status` or `order_status` is `failed`, `cancelled`, `canceled`, `declined` or `expired`, trimmed and lowercased. `order` is `null` when the full order could not be read (decode failure, request failure or timeout) |
+| `OrderSettlement.Pending` | — | The outcome is unknown: the timeout elapsed or every check failed. It does not mean the customer did not pay. Cancelling the calling coroutine cancels the wait as usual (`CancellationException`); no settlement is returned |
 
-`OrderDetail.isFulfilled` and `OrderDetail.isSettlementFailure` apply the same rules to an order you already hold.
+`OrderDetail.isFulfilled` and `OrderDetail.isSettlementFailure` apply the same rules to an order you already hold. They are top-level extension properties in `io.esimplified.sdk.model`, so they need two imports:
+
+```kotlin
+import io.esimplified.sdk.model.isFulfilled
+import io.esimplified.sdk.model.isSettlementFailure
+```
 
 ### PaymentResponse
 
