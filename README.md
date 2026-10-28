@@ -623,7 +623,7 @@ Payment intent creation for Stripe/Google Pay checkout, the customer's saved car
 |---|---|---|
 | `getPaymentIntent` | `suspend fun getPaymentIntent(request: PaymentRequest): PaymentResponse` | Create a payment intent for checkout |
 | `getPaymentMethods` | `suspend fun getPaymentMethods(discountCode: String? = null): List<SavedPaymentMethod>` | The customer's saved cards; with `discountCode`, only the cards eligible for that code |
-| `deletePaymentMethod` | `suspend fun deletePaymentMethod(paymentMethodId: String): DeletePaymentMethodResponse` | Remove a saved card; returns the backend's confirmation message. Any other status throws `SdkError.NetworkError` with that status and the backend's message |
+| `deletePaymentMethod` | `suspend fun deletePaymentMethod(paymentMethodId: String): DeletePaymentMethodResponse` | Remove a saved card; returns the backend's confirmation message (an empty `204` gives one with no message). Any other status throws `SdkError.NetworkError` with that status and the backend's message |
 | `createPaymentMethodSetupIntent` | `suspend fun createPaymentMethodSetupIntent(): PaymentMethodSetupIntent` | A Stripe SetupIntent for saving a new card without charging it |
 | `verifyPaymentMethod` | `suspend fun verifyPaymentMethod(paymentMethodId: String, discountCode: String): SavedPaymentMethod` | Check a saved card against a discount code; `400` when the card is not eligible, `404` when it is not the customer's |
 | `payWithStoredPaymentMethod` | `suspend fun payWithStoredPaymentMethod(paymentMethodId: String, transactionType: String, packageTypeId: Int, iccid: String? = null, discountCode: String? = null): PaymentResponse` | Charge a saved card with no Stripe sheet, optionally under a discount code |
@@ -1173,7 +1173,7 @@ Each request is bounded by the time left in the wait, and never by less than one
 
 ### `PaymentRequest` and `OrderDetail`
 
-`PaymentRequest.redirectUrl: String? = null` is added as the last parameter, serialised as `redirect_url` only when set, along with the `PaymentRequest.Method.SMARTPAY` constant (`"smartpay"`). `PaymentMethod.SMARTPAY` decodes the wire value `smartpay` and has `displayName` "SmartPay" and `shouldShowAmount = true`. `OrderDetail.paymentStatus: String? = null` reads `payment_status`.
+`PaymentRequest.redirectUrl: String? = null` is added after `storedPaymentMethod`, serialised as `redirect_url` only when set, along with the `PaymentRequest.Method.SMARTPAY` constant (`"smartpay"`). `PaymentMethod.SMARTPAY` decodes the wire value `smartpay` and has `displayName` "SmartPay" and `shouldShowAmount = true`. `OrderDetail.paymentStatus: String? = null` reads `payment_status`.
 
 ### `enableCaching = false` now disables the cache
 

@@ -736,7 +736,7 @@ Cached: `ORDERS_LIST_TTL` = 10 min, `ORDER_DETAIL_TTL` = 5 min. `SETTLEMENT_INTE
 |----------|-----------|---------|-------------|
 | `getPaymentIntent` | `request: PaymentRequest` | `PaymentResponse` | Create Stripe payment intent |
 | `getPaymentMethods` | `discountCode: String? = null` | `List<SavedPaymentMethod>` | The customer's saved cards, from `GET /customer/payment-methods/`. With `discountCode`, adds `discount_code` and returns only the cards eligible for that code; blank counts as absent. Empty when none |
-| `deletePaymentMethod` | `paymentMethodId: String` | `DeletePaymentMethodResponse` | `DELETE /customer/payment-methods/{id}/`. Returns the backend's confirmation (`detail`, `"Payment method removed."`); any other status throws `SdkError.NetworkError` with that status and the backend's message |
+| `deletePaymentMethod` | `paymentMethodId: String` | `DeletePaymentMethodResponse` | `DELETE /customer/payment-methods/{id}/`. Returns the backend's confirmation (`detail`, `"Payment method removed."`; an empty `204` gives one with no message); any other status throws `SdkError.NetworkError` with that status and the backend's message |
 | `createPaymentMethodSetupIntent` | — | `PaymentMethodSetupIntent` | `POST /customer/payment-methods/setup-intent/` with no body. A Stripe SetupIntent for collecting a new card without charging it |
 | `verifyPaymentMethod` | `paymentMethodId: String, discountCode: String` | `SavedPaymentMethod` | `POST /customer/payment-methods/verify/` with `payment_method_id` and `discount_code`. Returns the card when it is eligible. Throws `SdkError.NetworkError` with `statusCode` `400` and the backend's `detail` as `message` when the card is not eligible, and `404` when the card is not the customer's |
 | `payWithStoredPaymentMethod` | `paymentMethodId: String, transactionType: String, packageTypeId: Int, iccid: String? = null, discountCode: String? = null` | `PaymentResponse` | Charge a saved card for a purchase; no Stripe sheet. Sends `stored_payment_method` and no `auto_top_up` / `save_payment_method`; `discountCode` adds `discount_code`. `iccid` only with `PaymentRequest.Type.TOP_UP` |
@@ -764,8 +764,8 @@ PaymentRequest(
     loyaltyPointsToUse: Int? = null,
     couponId: String? = null,
     storedPaymentMethod: String? = null, // a saved card's paymentMethodId; serialised only when set
-    discountCode: String? = null,        // a partner discount code such as NAB30; serialised only when set
     redirectUrl: String? = null,         // where SmartPay returns the customer; serialised only when set
+    discountCode: String? = null,        // a partner discount code such as NAB30; serialised only when set
 )
 ```
 
@@ -1832,8 +1832,8 @@ The payload you build for `PaymentsRepository.getPaymentIntent`. Use the nested 
 | loyaltyPointsToUse | Int? | Mokafaa points to burn |
 | couponId | String? | Promo code to apply |
 | storedPaymentMethod | String? | A saved card's `paymentMethodId` to charge directly. Serialised only when set |
-| discountCode | String? | A partner discount code (`discount_code`) the stored-card charge is priced under. Serialised only when set |
 | redirectUrl | String? | Where SmartPay returns the customer (`redirect_url`); serialised only when set |
+| discountCode | String? | A partner discount code (`discount_code`) the stored-card charge is priced under. Serialised only when set |
 
 ### SavedPaymentMethod
 

@@ -264,6 +264,16 @@ class RepositoryIntegrationTest {
     }
 
     @Test
+    fun `PaymentsRepository deletePaymentMethod treats an empty 204 as a confirmation without a message`() = runTest {
+        mockWebServer.enqueue(MockResponse().setResponseCode(204))
+
+        val repo = PaymentsRepositoryImpl(apiService, sessionManager)
+        val response = repo.deletePaymentMethod("pm_1UGG")
+
+        assertEquals(null, response.detail)
+    }
+
+    @Test
     fun `PaymentsRepository deletePaymentMethod surfaces a rejection as a NetworkError`() = runTest {
         enqueueJson("""{"detail":"Payment method not found."}""", code = 404)
 

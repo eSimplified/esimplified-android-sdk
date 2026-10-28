@@ -60,12 +60,18 @@ internal class PaymentsRepositoryImpl(
             throw e.asNetworkError()
         }
 
-    override suspend fun deletePaymentMethod(paymentMethodId: String): DeletePaymentMethodResponse =
-        try {
-            apiService.deletePaymentMethod(paymentMethodId = paymentMethodId)
-        } catch (e: HttpException) {
-            throw e.asNetworkError()
+    override suspend fun deletePaymentMethod(paymentMethodId: String): DeletePaymentMethodResponse {
+        val response = apiService.deletePaymentMethod(paymentMethodId = paymentMethodId)
+        if (!response.isSuccessful) {
+            val errorBody = ApiErrorMessage.body(response.errorBody())
+            throw apiRejection(
+                ApiErrorMessage.parse(errorBody),
+                statusCode = response.code(),
+                apiCode = ApiErrorMessage.code(errorBody),
+            )
         }
+        return response.body() ?: DeletePaymentMethodResponse()
+    }
 
     override suspend fun createPaymentMethodSetupIntent(): PaymentMethodSetupIntent =
         try {

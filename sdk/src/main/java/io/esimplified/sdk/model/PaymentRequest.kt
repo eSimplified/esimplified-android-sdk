@@ -18,8 +18,8 @@ data class PaymentRequest(
     @SerialName("loyalty_points_to_use") val loyaltyPointsToUse: Int? = null,
     @SerialName("coupon_id") val couponId: String? = null,
     @SerialName("stored_payment_method") val storedPaymentMethod: String? = null,
-    @SerialName("discount_code") val discountCode: String? = null,
     @SerialName("redirect_url") val redirectUrl: String? = null,
+    @SerialName("discount_code") val discountCode: String? = null,
 ) {
 
     object Type {

@@ -151,7 +151,7 @@ internal interface ApiService {
     @Headers("Accept: application/json", "Content-Type: application/json")
     suspend fun deletePaymentMethod(
         @Path("payment_method_id") paymentMethodId: String,
-    ): DeletePaymentMethodResponse
+    ): Response<DeletePaymentMethodResponse>
 
     @POST("api/v2/customer/payment-methods/setup-intent/")
     @Headers("Accept: application/json", "Content-Type: application/json")
