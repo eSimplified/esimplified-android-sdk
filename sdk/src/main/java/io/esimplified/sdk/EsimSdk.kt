@@ -9,7 +9,6 @@ import io.esimplified.sdk.auth.SessionManager
 import io.esimplified.sdk.di.createSdkModule
 import io.esimplified.sdk.network.SdkCache
 import org.koin.core.module.Module
-import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 object EsimplifiedSdk {
@@ -46,9 +45,7 @@ object EsimplifiedSdk {
         _sessionManager = sessionManager ?: DefaultSessionManager(_storageProvider!!)
         SdkLog.delegate = config.logger
         SdkLog.isEnabled = config.enableLogging || context.applicationContext.isDebuggable()
-        _cache = SdkCache(
-            if (config.enableCaching) config.defaultCacheTtlSeconds.seconds else Duration.ZERO
-        )
+        _cache = SdkCache(config.defaultCacheTtlSeconds.seconds, isEnabled = config.enableCaching)
     }
 
     fun clearAllCaches() {

@@ -32,6 +32,9 @@ enum class PaymentMethod {
     @SerialName("pay_with_points")
     PAY_WITH_POINTS,
 
+    @SerialName("smartpay")
+    SMARTPAY,
+
     UNKNOWN;
 
     val displayName: String
@@ -43,12 +46,13 @@ enum class PaymentMethod {
             VOUCHER -> "Voucher"
             SPLIT_PAYMENT -> "Split Payment"
             PAY_WITH_POINTS -> "Pay with Points"
+            SMARTPAY -> "SmartPay"
             UNKNOWN -> "Payment"
         }
 
     val shouldShowAmount: Boolean
         get() = when (this) {
-            STRIPE_INTENT, STRIPE_CHECKOUT, AGENT_PAYMENT, SPLIT_PAYMENT, PAY_WITH_POINTS -> true
+            STRIPE_INTENT, STRIPE_CHECKOUT, AGENT_PAYMENT, SPLIT_PAYMENT, PAY_WITH_POINTS, SMARTPAY -> true
             COMPLIMENTARY, VOUCHER, UNKNOWN -> false
         }
 }
@@ -65,6 +69,7 @@ object PaymentMethodSerializer : KSerializer<PaymentMethod> {
             PaymentMethod.VOUCHER -> "voucher"
             PaymentMethod.SPLIT_PAYMENT -> "split_payment"
             PaymentMethod.PAY_WITH_POINTS -> "pay_with_points"
+            PaymentMethod.SMARTPAY -> "smartpay"
             PaymentMethod.UNKNOWN -> "unknown"
         }
         encoder.encodeString(string)
@@ -79,6 +84,7 @@ object PaymentMethodSerializer : KSerializer<PaymentMethod> {
             "voucher" -> PaymentMethod.VOUCHER
             "split_payment" -> PaymentMethod.SPLIT_PAYMENT
             "pay_with_points" -> PaymentMethod.PAY_WITH_POINTS
+            "smartpay" -> PaymentMethod.SMARTPAY
             else -> PaymentMethod.UNKNOWN
         }
     }

@@ -19,6 +19,7 @@ data class PaymentRequest(
     @SerialName("coupon_id") val couponId: String? = null,
     @SerialName("stored_payment_method") val storedPaymentMethod: String? = null,
     @SerialName("discount_code") val discountCode: String? = null,
+    @SerialName("redirect_url") val redirectUrl: String? = null,
 ) {
 
     object Type {
@@ -29,6 +30,7 @@ data class PaymentRequest(
     object Method {
         const val STRIPE_INTENT = "stripe_intent"
         const val STRIPE_CHECKOUT = "stripe_checkout"
+        const val SMARTPAY = "smartpay"
     }
 }
 

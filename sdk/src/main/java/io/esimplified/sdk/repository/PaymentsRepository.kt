@@ -34,4 +34,15 @@ interface PaymentsRepository {
     ): PaymentResponse =
         throw UnsupportedOperationException("payWithStoredPaymentMethod is not implemented")
     // endregion
+
+    // region SmartPay
+    suspend fun startSmartPayPayment(
+        transactionType: String,
+        packageTypeId: Int,
+        iccid: String? = null,
+        loyaltyPointsAmount: Double? = null,
+        redirectUrl: String,
+    ): PaymentResponse =
+        throw UnsupportedOperationException("startSmartPayPayment is not implemented")
+    // endregion
 }

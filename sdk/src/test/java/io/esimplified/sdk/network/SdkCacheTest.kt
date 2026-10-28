@@ -19,6 +19,17 @@ class SdkCacheTest {
     }
 
     @Test
+    fun `get returns null for every entry when caching is disabled, even with an explicit ttl`() {
+        val cache = SdkCache(isEnabled = false)
+        cache.set("orders_page1", "orders", ttl = 300.seconds)
+        cache.set("countries_", listOf("ZA"))
+
+        assertNull(cache.get<String>("orders_page1"))
+        assertNull(cache.get<List<String>>("countries_"))
+        assertEquals("orders", cache.getExpired<String>("orders_page1"))
+    }
+
+    @Test
     fun `get returns null for an unknown key`() {
         val cache = SdkCache()
 
