@@ -2,7 +2,7 @@
 
 For client teams integrating the SDK into an Android app. Covers installation, configuration, every repository method available to you, and the full shape of every model the API returns.
 
-Documents `io.github.esimplified:android-sdk:3.6.0`, the version this document describes. It includes one
+Documents `io.github.esimplified:android-sdk:3.5.0`, the version this document describes. It includes one
 interface change since 2.0 — `OrdersRepository.getOrderHistory` and
 `getOrderHistoryResult` each lost a redundant overload. The tables below show the new shape;
 [Changes since 2.0.0](README.md#changes-since-200) has the detail.
@@ -78,7 +78,7 @@ The SDK is published to Maven Central, which every Gradle project already resolv
 ```kotlin
 // build.gradle.kts (app)
 dependencies {
-    implementation("io.github.esimplified:android-sdk:3.6.0")
+    implementation("io.github.esimplified:android-sdk:3.5.0")
     implementation("io.insert-koin:koin-android:4.1.1")
 }
 
@@ -104,7 +104,7 @@ Without it Android refuses the socket and every call fails with a `SecurityExcep
 
 ## 3b. Which versions you will receive
 
-Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.6.0")` resolves to 3.6.0 and nothing else — there are no version ranges and no BOM in these instructions — so a new release never reaches your build until someone on your team edits that number. Nothing in this section can happen to you without that edit; it describes what you are choosing between when you make it.
+Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.5.0")` resolves to 3.5.0 and nothing else — there are no version ranges and no BOM in these instructions — so a new release never reaches your build until someone on your team edits that number. Nothing in this section can happen to you without that edit; it describes what you are choosing between when you make it.
 
 | What changed | Version goes | What you do |
 |---|---|---|
@@ -112,7 +112,7 @@ Gradle pins you to an exact version. `implementation("io.github.esimplified:andr
 | Something added | 2.1.0 → 2.2.0 | Nothing |
 | Something you call changed or went away | 2.1.0 → 3.0.0 | Update your code, then raise the version you depend on |
 
-Those numbers are illustrative. 3.6.0 is the version this document describes.
+Those numbers are illustrative. 3.5.0 is the version this document describes.
 
 The convention follows our commit messages. A `fix:` commit is a patch, a `feat:` commit is a minor, and the major only moves for a change that breaks **callers** — a method you call renamed, removed, or given a new required parameter. Such commits carry a `!`, as in `refactor(orders)!:`.
 
