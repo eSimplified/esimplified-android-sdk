@@ -1141,11 +1141,11 @@ The default `awaitSettlement` body polls `getOrderDetailsResult` against a real-
 
 ### Discounted stored-card charges
 
-`payWithStoredPaymentMethod(…, discountCode = "NAB30")` adds `discount_code` to the `/payments/` body it already sends; without it the body is byte-for-byte the 3.5.0 body. `PaymentRequest.discountCode: String? = null` is the field behind it, serialised only when set, so `getPaymentIntent` callers can send it too.
+`payWithStoredPaymentMethod(…, discountCode = "EXAMPLE10")` adds `discount_code` to the `/payments/` body it already sends; without it the body is byte-for-byte the 3.5.0 body. `PaymentRequest.discountCode: String? = null` is the field behind it, serialised only when set, so `getPaymentIntent` callers can send it too.
 
 ### Promo-coded package prices
 
-`getPackages(destination, promoCode = "NAB30")` and `getPackagesPage(destination, promoCode = "NAB30")` add `promo_code` to `GET /packages/` so the backend returns the prices under that code. A blank `promoCode` is treated as absent. Each code is cached under its own key, separate from the plain read, and `invalidateCache()` drops both.
+`getPackages(destination, promoCode = "EXAMPLE10")` and `getPackagesPage(destination, promoCode = "EXAMPLE10")` add `promo_code` to `GET /packages/` so the backend returns the prices under that code. A blank `promoCode` is treated as absent. Each code is cached under its own key, separate from the plain read, and `invalidateCache()` drops both.
 
 ### SmartPay hosted checkout
 

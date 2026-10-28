@@ -197,14 +197,14 @@ class RepositoryIntegrationTest {
         enqueueJson("""{"detail":"ok","data":{"order_id":"o10"}}""")
 
         val repo = PaymentsRepositoryImpl(apiService, sessionManager)
-        val response = repo.payWithStoredPaymentMethod("pm_1UGG", PaymentRequest.Type.BUY, 42, discountCode = "NAB30")
+        val response = repo.payWithStoredPaymentMethod("pm_1UGG", PaymentRequest.Type.BUY, 42, discountCode = "EXAMPLE10")
 
         assertEquals("o10", response.transaction?.orderId)
         val recorded = mockWebServer.takeRequest()
         assertEquals("POST", recorded.method)
         assertEquals("/api/v2/payments/", recorded.path)
         val body = Json.parseToJsonElement(recorded.body.readUtf8()).jsonObject
-        assertEquals("NAB30", body["discount_code"]?.jsonPrimitive?.content)
+        assertEquals("EXAMPLE10", body["discount_code"]?.jsonPrimitive?.content)
         assertEquals("pm_1UGG", body["stored_payment_method"]?.jsonPrimitive?.content)
         assertEquals("stripe_intent", body["payment_method"]?.jsonPrimitive?.content)
         assertFalse(body.containsKey("auto_top_up"))
@@ -224,18 +224,18 @@ class RepositoryIntegrationTest {
 
     @Test
     fun `PaymentsRepository getPaymentMethods with a discount code GETs only the eligible cards with the bearer token`() = runTest {
-        enqueueJson("""[{"payment_method_id":"pm_nab","card_brand":"visa","card_last4":"1111","card_exp_month":5,"card_exp_year":2030}]""")
+        enqueueJson("""[{"payment_method_id":"pm_partner","card_brand":"visa","card_last4":"1111","card_exp_month":5,"card_exp_year":2030}]""")
 
         val repo = PaymentsRepositoryImpl(apiService, sessionManager)
-        val methods = repo.getPaymentMethods(discountCode = "NAB30")
+        val methods = repo.getPaymentMethods(discountCode = "EXAMPLE10")
 
         assertEquals(
-            listOf(SavedPaymentMethod("pm_nab", "visa", "1111", cardExpMonth = 5, cardExpYear = 2030)),
+            listOf(SavedPaymentMethod("pm_partner", "visa", "1111", cardExpMonth = 5, cardExpYear = 2030)),
             methods,
         )
         val recorded = mockWebServer.takeRequest()
         assertEquals("GET", recorded.method)
-        assertEquals("/api/v2/customer/payment-methods/?discount_code=NAB30", recorded.path)
+        assertEquals("/api/v2/customer/payment-methods/?discount_code=EXAMPLE10", recorded.path)
         assertEquals("Bearer tok", recorded.getHeader("authorization"))
     }
 
@@ -303,28 +303,28 @@ class RepositoryIntegrationTest {
 
     @Test
     fun `PaymentsRepository verifyPaymentMethod POSTs the card and code and decodes the eligible card`() = runTest {
-        enqueueJson("""{"payment_method_id":"pm_nab","card_brand":"visa","card_last4":"1111","card_exp_month":5,"card_exp_year":2030}""")
+        enqueueJson("""{"payment_method_id":"pm_partner","card_brand":"visa","card_last4":"1111","card_exp_month":5,"card_exp_year":2030}""")
 
         val repo = PaymentsRepositoryImpl(apiService, sessionManager)
-        val card = repo.verifyPaymentMethod("pm_nab", "NAB30")
+        val card = repo.verifyPaymentMethod("pm_partner", "EXAMPLE10")
 
-        assertEquals(SavedPaymentMethod("pm_nab", "visa", "1111", cardExpMonth = 5, cardExpYear = 2030), card)
+        assertEquals(SavedPaymentMethod("pm_partner", "visa", "1111", cardExpMonth = 5, cardExpYear = 2030), card)
         val recorded = mockWebServer.takeRequest()
         assertEquals("POST", recorded.method)
         assertEquals("/api/v2/customer/payment-methods/verify/", recorded.path)
         assertEquals("Bearer tok", recorded.getHeader("authorization"))
-        assertEquals("""{"payment_method_id":"pm_nab","discount_code":"NAB30"}""", recorded.body.readUtf8())
+        assertEquals("""{"payment_method_id":"pm_partner","discount_code":"EXAMPLE10"}""", recorded.body.readUtf8())
     }
 
     @Test
     fun `PaymentsRepository verifyPaymentMethod surfaces an ineligible card as a 400 NetworkError with the backend detail`() = runTest {
-        enqueueJson("""{"detail":"This card is not eligible for the NAB offer."}""", code = 400)
+        enqueueJson("""{"detail":"This card is not eligible for this offer."}""", code = 400)
 
         val repo = PaymentsRepositoryImpl(apiService, sessionManager)
-        val error = runCatching { repo.verifyPaymentMethod("pm_other", "NAB30") }.exceptionOrNull() as SdkError.NetworkError
+        val error = runCatching { repo.verifyPaymentMethod("pm_other", "EXAMPLE10") }.exceptionOrNull() as SdkError.NetworkError
 
         assertEquals(400, error.statusCode)
-        assertEquals("This card is not eligible for the NAB offer.", error.message)
+        assertEquals("This card is not eligible for this offer.", error.message)
     }
 
     @Test
@@ -332,7 +332,7 @@ class RepositoryIntegrationTest {
         enqueueJson("""{"detail":"Payment method not found."}""", code = 404)
 
         val repo = PaymentsRepositoryImpl(apiService, sessionManager)
-        val error = runCatching { repo.verifyPaymentMethod("pm_missing", "NAB30") }.exceptionOrNull() as SdkError.NetworkError
+        val error = runCatching { repo.verifyPaymentMethod("pm_missing", "EXAMPLE10") }.exceptionOrNull() as SdkError.NetworkError
 
         assertEquals(404, error.statusCode)
         assertEquals("Payment method not found.", error.message)
@@ -453,12 +453,12 @@ class RepositoryIntegrationTest {
         enqueueJson("""{"count":0,"results":[]}""")
 
         val repo = PackagesRepositoryImpl(apiService, SdkCache())
-        repo.getPackages(Destination(code = "US", name = null, region = null, slug = "united-states"), promoCode = "NAB30")
+        repo.getPackages(Destination(code = "US", name = null, region = null, slug = "united-states"), promoCode = "EXAMPLE10")
 
         val recorded = mockWebServer.takeRequest()
         assertTrue(recorded.path!!.contains("/packages"))
         assertTrue(recorded.path!!.contains("country_name_slug=united-states"))
-        assertTrue(recorded.path!!.contains("promo_code=NAB30"))
+        assertTrue(recorded.path!!.contains("promo_code=EXAMPLE10"))
     }
 
     @Test
@@ -482,17 +482,17 @@ class RepositoryIntegrationTest {
         val destination = Destination(code = "US", name = null, region = null, slug = "united-states")
 
         val plainPage = repo.getPackagesPage(destination)
-        val promoPage = repo.getPackagesPage(destination, promoCode = "NAB30")
+        val promoPage = repo.getPackagesPage(destination, promoCode = "EXAMPLE10")
         repo.getPackages(destination)
-        repo.getPackages(destination, promoCode = "NAB30")
+        repo.getPackages(destination, promoCode = "EXAMPLE10")
 
         assertEquals(1, plainPage.totalCount)
         assertEquals(2, promoPage.totalCount)
         assertEquals(4, mockWebServer.requestCount)
 
-        val cachedPromoPage = repo.getPackagesPage(destination, promoCode = "NAB30")
+        val cachedPromoPage = repo.getPackagesPage(destination, promoCode = "EXAMPLE10")
         repo.invalidateCache()
-        val refreshedPromoPage = repo.getPackagesPage(destination, promoCode = "NAB30")
+        val refreshedPromoPage = repo.getPackagesPage(destination, promoCode = "EXAMPLE10")
 
         assertEquals(2, cachedPromoPage.totalCount)
         assertEquals(3, refreshedPromoPage.totalCount)
