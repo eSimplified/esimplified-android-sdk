@@ -5,6 +5,8 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -890,6 +892,15 @@ class ModelDecodingTest {
         assertFalse(detail.tracked)
     }
 
+    @Test
+    fun `order detail decodes payment_status and tolerates its absence`() {
+        val json = Json { ignoreUnknownKeys = true; explicitNulls = false; coerceInputValues = true }
+        val with = json.decodeFromString(OrderDetail.serializer(), orderDetailJson(paymentStatus = "\"success\""))
+        assertEquals("success", with.paymentStatus)
+        val without = json.decodeFromString(OrderDetail.serializer(), orderDetailJson())
+        assertNull(without.paymentStatus)
+    }
+
     // MARK: - Payment Request
 
     @Test
@@ -919,6 +930,17 @@ class ModelDecodingTest {
         )
         val encoded = json.encodeToString(PaymentRequest.serializer(), request)
         assertFalse(encoded.contains("coupon_id"))
+    }
+
+    @Test
+    fun `payment request serialises redirect_url only when set`() {
+        val json = Json { explicitNulls = false }
+        val base = PaymentRequest(type = "buy", customer = CustomerDetails(email = "u@e.com"), packageTypeId = 1, paymentMethod = "stripe_intent")
+        assertFalse(json.encodeToString(PaymentRequest.serializer(), base).contains("redirect_url"))
+        val withUrl = base.copy(paymentMethod = PaymentRequest.Method.SMARTPAY, redirectUrl = "https://osim-preview.vercel.app/order")
+        val encoded = json.parseToJsonElement(json.encodeToString(PaymentRequest.serializer(), withUrl)).jsonObject
+        assertEquals("https://osim-preview.vercel.app/order", encoded["redirect_url"]?.jsonPrimitive?.content)
+        assertEquals("smartpay", encoded["payment_method"]?.jsonPrimitive?.content)
     }
 
     // MARK: - Theme
@@ -1160,6 +1182,15 @@ class ModelDecodingTest {
     fun `OrderHistoryItem decodes a null payment_method as unknown`() {
         val item = productionJson.decodeFromString<OrderHistoryItem>(orderHistoryJson(paymentMethod = "null"))
         assertEquals(PaymentMethod.UNKNOWN, item.paymentMethod)
+    }
+
+    @Test
+    fun `smartpay payment method decodes and encodes as smartpay`() {
+        val json = Json { ignoreUnknownKeys = true }
+        assertEquals(PaymentMethod.SMARTPAY, json.decodeFromString(PaymentMethod.serializer(), "\"smartpay\""))
+        assertEquals("\"smartpay\"", json.encodeToString(PaymentMethod.serializer(), PaymentMethod.SMARTPAY))
+        assertEquals("SmartPay", PaymentMethod.SMARTPAY.displayName)
+        assertTrue(PaymentMethod.SMARTPAY.shouldShowAmount)
     }
 
     @Test
@@ -1713,6 +1744,7 @@ class ModelDecodingTest {
         finalPrice: String = "9.99",
         purchasePrice: String = "9.99",
         packagePlan: String? = null,
+        paymentStatus: String? = null,
     ): String = """
         {
             "customer_id": "u-1",
@@ -1733,6 +1765,7 @@ class ModelDecodingTest {
             "payment_method": $paymentMethod
             ${if (country == null) "" else ", \"country\": $country"}
             ${if (packagePlan == null) "" else ", \"package\": $packagePlan"}
+            ${if (paymentStatus == null) "" else ", \"payment_status\": $paymentStatus"}
         }
     """.trimIndent()
 

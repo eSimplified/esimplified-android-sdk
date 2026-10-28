@@ -10,7 +10,7 @@ Kotlin SDK for integrating the eSimplified eSIM platform into Android applicatio
 
 **Coordinates:** `io.github.esimplified:android-sdk:3.5.0`
 
-That is the version this README describes. It adds the customer's saved cards and a one-click top-up to `PaymentsRepository`; nothing a caller writes has to change to take it.
+That is the version this README describes. It adds SmartPay hosted checkout to `PaymentsRepository` and `awaitSettlement` to `OrdersRepository`; nothing a caller writes has to change to take it.
 
 ## What the SDK covers
 
@@ -22,7 +22,7 @@ What you get without writing any networking, token handling, or caching of your 
 | **Countries and destinations** | Browse and search the destination catalogue, resolve the customer's country from their IP | `CountryRepository` |
 | **Packages** | List data plans for a destination, list top-up plans for an eSIM the customer already owns, check stock before selling | `PackagesRepository` |
 | **Orders** | Order history, full order detail including the QR code, and conversion tracking after a purchase completes | `OrdersRepository` |
-| **Payments** | Create a Stripe payment intent or checkout session. You confirm it with Stripe's own Android SDK — this SDK does not handle card data | `PaymentsRepository` |
+| **Payments** | Create a Stripe payment intent or checkout session, or start a SmartPay hosted checkout. You confirm a Stripe payment with Stripe's own Android SDK and the customer pays SmartPay in a browser — this SDK does not handle card data | `PaymentsRepository` |
 | **eSIM provisioning and install** | List active and archived eSIMs, fetch one by ICCID, read usage and expiry per package, rename, archive, set primary, toggle auto top-up. Exposes the SM-DP+ address and activation code needed for a direct Android install | `EsimRepository` |
 | **Vouchers** | Redeem a voucher code | `VouchersRepository` |
 | **Promo codes** | Apply, read and remove a checkout promo code | `PromoCodeRepository` |
@@ -370,11 +370,12 @@ Field-by-field tables for all of these are in [SDK_API_REFERENCE.md](SDK_API_REF
 | `EsimProfileState` | Enum: ENABLED, DOWNLOADED, INSTALLED, DISABLED, DELETED, RELEASED, ERROR |
 | `OrderDetail` | Full order with pricing, eSIM profile, QR code, payment info, loyalty points |
 | `OrdersPage` | A page of order history plus its total count and a `hasMore` flag |
+| `OrderSettlement` | Sealed result of `awaitSettlement`: `Fulfilled(order)`, `Failed(order?)` or `Pending` |
 | `OrderHistoryItem` | Summary order for history lists |
 | `PurchaseCountry` | Country the purchase was made from (on `OrderHistoryItem`) |
 | `OrderInfo` | Order info with customer details and QR code |
 | `PaymentRequest` | Payment intent creation payload (package, customer, payment method, loyalty points) |
-| `PaymentMethod` | Enum: STRIPE_INTENT, STRIPE_CHECKOUT, AGENT_PAYMENT, COMPLIMENTARY, VOUCHER, SPLIT_PAYMENT, PAY_WITH_POINTS, UNKNOWN (with `displayName` and `shouldShowAmount`) |
+| `PaymentMethod` | Enum: STRIPE_INTENT, STRIPE_CHECKOUT, SMARTPAY, AGENT_PAYMENT, COMPLIMENTARY, VOUCHER, SPLIT_PAYMENT, PAY_WITH_POINTS, UNKNOWN (with `displayName` and `shouldShowAmount`) |
 | `CurrencyObject` | Currency with symbol and ISO code |
 | `QrCode` | QR code image (base64 + URL) |
 | `NotificationSettings` | Notification preference (type + enabled flag) |
@@ -602,6 +603,7 @@ Order history, order details, invoices, and conversion tracking.
 | `getOrderDetails` | `suspend fun getOrderDetails(orderUuid: String, forceRefresh: Boolean = false, cacheTTL: Duration = ORDER_DETAIL_TTL): OrderDetail` | Fetch full order details including eSIM profile and QR code |
 | `getOrdersPageResult` | `suspend fun getOrdersPageResult(limit: Int = ORDERS_PAGE_LIMIT, offset: Int = 0, withLoyaltyPoints: Boolean = false, forceRefresh: Boolean = false, cacheTTL: Duration = ORDERS_LIST_TTL): RepositoryResult<OrdersPage>` | Paged order read |
 | `getOrderInvoice` | `suspend fun getOrderInvoice(orderUuid: String): ByteArray` | Download the order's PDF invoice bytes |
+| `awaitSettlement` | `suspend fun awaitSettlement(orderUuid: String, interval: Duration = SETTLEMENT_INTERVAL, timeout: Duration = SETTLEMENT_TIMEOUT): OrderSettlement` | Poll until the order is fulfilled, has failed, or the wait runs out; for a redirect checkout such as SmartPay |
 | `trackOrder` | `suspend fun trackOrder(orderUuid: String)` | Mark an order's conversion as tracked (never throws) |
 | `invalidateCache` | `suspend fun invalidateCache()` | Drop this repository's cache entries |
 
@@ -611,11 +613,12 @@ Order history, order details, invoices, and conversion tracking.
 
 ### PaymentsRepository
 
-Payment intent creation for Stripe/Google Pay checkout.
+Payment creation for Stripe/Google Pay checkout and SmartPay hosted checkout.
 
 | Method | Signature | Description |
 |---|---|---|
 | `getPaymentIntent` | `suspend fun getPaymentIntent(request: PaymentRequest): PaymentResponse` | Create a payment intent for checkout |
+| `startSmartPayPayment` | `suspend fun startSmartPayPayment(transactionType: String, packageTypeId: Int, iccid: String? = null, loyaltyPointsAmount: Double? = null, redirectUrl: String): PaymentResponse` | Start a SmartPay (Bank Muscat) hosted checkout; open `transaction.uri` in a browser |
 
 ### PromoCodeRepository
 
@@ -1061,7 +1064,7 @@ To receive SDK lines deliberately, pass `logger` to `SdkConfig` — see [Logging
 
 ## Changes since 2.0.0
 
-`3.3.0` is the version on Maven Central. The changes below are on `main` and will ship in the next release; they are listed separately so nothing above misrepresents the published artifact.
+The changes below are listed separately from the sections above, which describe 2.0 and its migration; everything here is in 3.6.0.
 
 ### Breaking change: `getOrdersPageResult` no longer has a default implementation
 
@@ -1106,6 +1109,46 @@ suspend fun getOrderHistory(
 Every existing call still compiles — `getOrderHistory()`, `getOrderHistory(true)` and `getOrderHistory(withLoyaltyPoints = true)` all resolve to it. The JVM signature changed, so recompile against the new version rather than swapping the AAR under an already-built app. If you implement `OrdersRepository` yourself, delete the now-duplicate override.
 
 One behaviour change: the two forms used to occupy separate cache entries even though they sent the identical request, so `getOrderHistory()` and `getOrderHistory(withLoyaltyPoints = false)` each did their own network call. They now share one entry.
+
+## Changes in 3.6.0
+
+### Breaking changes
+
+`PaymentsRepository` gains `startSmartPayPayment(transactionType, packageTypeId, iccid, loyaltyPointsAmount, redirectUrl)` and `OrdersRepository` gains `awaitSettlement(orderUuid, interval, timeout)`. Both carry a default body, so an existing implementation or test fake keeps compiling. The `startSmartPayPayment` default throws `UnsupportedOperationException`; override it before calling it. Nothing a caller already writes changes.
+
+The default `awaitSettlement` body polls `getOrderDetailsResult` against a real-time deadline, not the coroutine test scheduler. A test fake that never settles will therefore spin for the real `SETTLEMENT_TIMEOUT` (120 s) under `runTest` before it returns `Pending`. Override `awaitSettlement` in the fake, or pass a short `timeout`.
+
+### SmartPay hosted checkout
+
+SmartPay is Bank Muscat's hosted card page. The customer pays in a browser, not in your app, so the flow has three steps:
+
+1. Call `startSmartPayPayment(transactionType, packageTypeId, iccid, loyaltyPointsAmount, redirectUrl)`. `transactionType` is `PaymentRequest.Type.BUY` or `TOP_UP`; `iccid` goes only with a top-up; `redirectUrl` is where SmartPay sends the customer back. It posts `/payments/` with `payment_method = "smartpay"`, the signed-in customer's email, `auto_top_up = false` and `redirect_url`, and returns the same `PaymentResponse` as `getPaymentIntent`, failing the same way.
+2. Open `transaction.uri` in a Custom Tab. It is the SmartPay payment page, not a Stripe client secret.
+3. SmartPay returns the customer to `https://<tenant host>/order/<n>?id=<uuid>`. Catch that link in your app, read `id` as the order UUID, and call `awaitSettlement(orderUuid)`.
+
+### `awaitSettlement`
+
+`awaitSettlement(orderUuid, interval = SETTLEMENT_INTERVAL, timeout = SETTLEMENT_TIMEOUT)` checks the order every `interval` (3 s) for up to `timeout` (120 s) and returns an `OrderSettlement`:
+
+| Result | Meaning |
+|---|---|
+| `Fulfilled(order)` | The order has a non-empty `iccid` and its `payment_status` is `success` (its `order_status` is `success` when `payment_status` is absent or blank) |
+| `Failed(order)` | `payment_status` or `order_status` is `failed`, `cancelled`, `canceled`, `declined` or `expired`, compared trimmed and lowercased. `order` is `null` when the full order could not be read (decode failure, request failure or timeout) |
+| `Pending` | The outcome is unknown |
+
+`Pending` does not mean the customer did not pay. It means the SDK stopped without an answer: the timeout elapsed or every check failed. Cancelling the calling coroutine cancels the wait as usual (`CancellationException`); no settlement is returned. Show a "we are confirming your payment" state and let the customer check their orders later; do not tell them the payment failed.
+
+Each request is bounded by the time left in the wait, and never by less than one `interval`, so a hung request cannot stall the call indefinitely. The call returns in about `timeout` plus two intervals at most: a probe started at the floor can be followed by a detail fetch at the floor. The SDK reads the full order, and caches it under `ORDER_DETAIL_TTL`, only once it is fulfilled, so a following `getOrderDetails(orderUuid)` costs no extra request while caching is on.
+
+`OrderDetail.isFulfilled` and `OrderDetail.isSettlementFailure` apply the same rules to an order you already hold. They are top-level extension properties in `io.esimplified.sdk.model`, so they need `import io.esimplified.sdk.model.isFulfilled` and `import io.esimplified.sdk.model.isSettlementFailure`.
+
+### `PaymentRequest` and `OrderDetail`
+
+`PaymentRequest.redirectUrl: String? = null` is added as the last parameter, serialised as `redirect_url` only when set, along with the `PaymentRequest.Method.SMARTPAY` constant (`"smartpay"`). `PaymentMethod.SMARTPAY` decodes the wire value `smartpay` and has `displayName` "SmartPay" and `shouldShowAmount = true`. `OrderDetail.paymentStatus: String? = null` reads `payment_status`.
+
+### `enableCaching = false` now disables the cache
+
+`SdkConfig(enableCaching = false)` was documented as giving every cache entry a zero TTL, but each repository read passed its own TTL, which overrode the zeroed default, so reads were still served from memory for the full period. The switch now applies to every entry. Apps that relied on the documented behaviour get it without a code change; apps that left caching on see no difference.
 
 ## Changes in 3.5.0
 

@@ -2,8 +2,8 @@
 
 For client teams integrating the SDK into an Android app. Covers installation, configuration, every repository method available to you, and the full shape of every model the API returns.
 
-Documents `io.github.esimplified:android-sdk:3.5.0`, the version on Maven Central, with one
-interface change that lands in the next release — `OrdersRepository.getOrderHistory` and
+Documents `io.github.esimplified:android-sdk:3.5.0`, the version this document describes. It includes one
+interface change since 2.0 — `OrdersRepository.getOrderHistory` and
 `getOrderHistoryResult` each lost a redundant overload. The tables below show the new shape;
 [Changes since 2.0.0](README.md#changes-since-200) has the detail.
 
@@ -112,7 +112,7 @@ Gradle pins you to an exact version. `implementation("io.github.esimplified:andr
 | Something added | 2.1.0 → 2.2.0 | Nothing |
 | Something you call changed or went away | 2.1.0 → 3.0.0 | Update your code, then raise the version you depend on |
 
-Those numbers are illustrative. 2.0.0 is the version on Maven Central and the one this document describes.
+Those numbers are illustrative. 3.5.0 is the version this document describes.
 
 The convention follows our commit messages. A `fix:` commit is a patch, a `feat:` commit is a minor, and the major only moves for a change that breaks **callers** — a method you call renamed, removed, or given a new required parameter. Such commits carry a `!`, as in `refactor(orders)!:`.
 
@@ -391,24 +391,23 @@ Build a `CustomerDetails` by hand instead if you are buying for a customer you d
 
 ### An order is not ready the instant it is paid
 
-Provisioning is asynchronous. Immediately after payment the order comes back with `orderStatus` `"pending"` and **no** `qrCode`, `smDpAddress`, `activationCode` or `esimProfile` — every one of those is nullable for exactly this reason. Poll `getOrderDetails(orderUuid, forceRefresh = true)` until `smDpAddress` and `activationCode` are both present, and give the wait a deadline:
+Provisioning is asynchronous. Immediately after payment the order comes back with `orderStatus` `"pending"` and **no** `qrCode`, `smDpAddress`, `activationCode` or `esimProfile` — every one of those is nullable for exactly this reason. Call `awaitSettlement(orderUuid)`, which polls every 3 seconds for up to 120 seconds and gives the wait a deadline (the call returns in about the timeout plus two intervals at most):
 
 ```kotlin
 suspend fun awaitProvisionedOrder(
     ordersRepo: OrdersRepository,
     orderUuid: String,
-    attempts: Int = 10,
-): OrderDetail? {
-    repeat(attempts) {
-        val order = ordersRepo.getOrderDetails(orderUuid = orderUuid, forceRefresh = true)
-        if (!order.smDpAddress.isNullOrBlank() && !order.activationCode.isNullOrBlank()) return order
-        delay(3_000)
+): OrderDetail? =
+    when (val settlement = ordersRepo.awaitSettlement(orderUuid)) {
+        is OrderSettlement.Fulfilled -> settlement.order
+        is OrderSettlement.Failed -> null
+        OrderSettlement.Pending -> null
     }
-    return null
-}
 ```
 
-If the deadline expires, tell the customer the order has not completed rather than sending them into an install that cannot succeed. Their payment is safe and the order completes server-side.
+On `Failed`, tell the customer the payment did not complete. On `Pending` the outcome is unknown, not unpaid: tell the customer you are still confirming rather than sending them into an install that cannot succeed. Their payment is safe and the order completes server-side.
+
+`Fulfilled` guarantees a non-empty `iccid` and a success status. It does not guarantee install credentials, so before starting an install check `settlement.order.smDpAddress` and `settlement.order.activationCode` for null and fall back to showing the order as ready without an install button when either is missing.
 
 ## 6c. Installing the eSIM
 
@@ -722,12 +721,15 @@ Leaving the parameter out lets the API decide by tenant; `false` states the choi
 | `getOrderDetails` | `orderUuid: String, forceRefresh: Boolean = false, cacheTTL: Duration = ORDER_DETAIL_TTL` | `OrderDetail` | Get detailed order info |
 | `getOrdersPageResult` | `limit: Int = ORDERS_PAGE_LIMIT, offset: Int = 0, withLoyaltyPoints: Boolean = false, forceRefresh: Boolean = false, cacheTTL: Duration = ORDERS_LIST_TTL` | `RepositoryResult<OrdersPage>` | Paged order read. `OrdersRepository.ORDERS_PAGE_LIMIT` is 100 |
 | `getOrderInvoice` | `orderUuid: String` | `ByteArray` | Download the order's PDF invoice bytes |
+| `awaitSettlement` | `orderUuid: String, interval: Duration = SETTLEMENT_INTERVAL, timeout: Duration = SETTLEMENT_TIMEOUT` | `OrderSettlement` | Poll every `interval` for up to `timeout` until the order is fulfilled, has failed, or the wait runs out. See [OrderSettlement](#ordersettlement) |
 | `trackOrder` | `orderUuid: String` | `Unit` | Mark the order's conversion as tracked (never throws) |
 | `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
 
-Cached: `ORDERS_LIST_TTL` = 10 min, `ORDER_DETAIL_TTL` = 5 min. `…Result` twins: `getOrderHistoryResult`, `getOrderDetailsResult`.
+Cached: `ORDERS_LIST_TTL` = 10 min, `ORDER_DETAIL_TTL` = 5 min. `SETTLEMENT_INTERVAL` = 3 s, `SETTLEMENT_TIMEOUT` = 120 s. `…Result` twins: `getOrderHistoryResult`, `getOrderDetailsResult`.
 
 `getOrderDetails` retries an order still in `pending` status up to 5 times, one second apart, before returning it.
+
+`awaitSettlement` has a default body that polls `getOrderDetailsResult` against a real-time deadline. A test fake that never settles will spin for the real timeout under `runTest`; override it in the fake or pass a short `timeout`. The shipped implementation reads the same `api/v2/customer/orders/{uuid}` endpoint decoded into a light status shape, reads the full order and caches it under `ORDER_DETAIL_TTL` only once it is fulfilled, and bounds each request by the time remaining, never below one `interval`, so the call returns in about `timeout` plus two intervals at most (a probe at the floor can be followed by a detail fetch at the floor).
 
 ---
 
@@ -738,6 +740,7 @@ Cached: `ORDERS_LIST_TTL` = 10 min, `ORDER_DETAIL_TTL` = 5 min. `…Result` twin
 | `getPaymentIntent` | `request: PaymentRequest` | `PaymentResponse` | Create Stripe payment intent |
 | `getPaymentMethods` | — | `List<SavedPaymentMethod>` | The customer's saved cards, from `GET /customer/payment-methods/`. Empty when none |
 | `payWithStoredPaymentMethod` | `paymentMethodId: String, transactionType: String, packageTypeId: Int, iccid: String? = null` | `PaymentResponse` | Charge a saved card for a purchase; no Stripe sheet. Sends `stored_payment_method` and no `auto_top_up` / `save_payment_method`. `iccid` only with `PaymentRequest.Type.TOP_UP` |
+| `startSmartPayPayment` | `transactionType: String, packageTypeId: Int, iccid: String? = null, loyaltyPointsAmount: Double? = null, redirectUrl: String` | `PaymentResponse` | Start a SmartPay (Bank Muscat) hosted checkout. Sends `payment_method = "smartpay"`, `auto_top_up = false` and `redirect_url`. Open `transaction.uri` in a Custom Tab, then call `OrdersRepository.awaitSettlement` with the order UUID from the return link `https://<tenant host>/order/<n>?id=<uuid>`. `iccid` only with `PaymentRequest.Type.TOP_UP` |
 
 **SavedPaymentMethod:** `paymentMethodId`, `cardBrand` (as the backend sends it, e.g. `"visa"`), `cardLast4`, `cardExpMonth: Int?`, `cardExpYear: Int?`.
 
@@ -757,6 +760,7 @@ PaymentRequest(
     loyaltyPointsToUse: Int? = null,
     couponId: String? = null,
     storedPaymentMethod: String? = null, // a saved card's paymentMethodId; serialised only when set
+    redirectUrl: String? = null,         // where SmartPay returns the customer; serialised only when set
 )
 ```
 
@@ -1167,6 +1171,7 @@ Every type the SDK returns or accepts, with its Kotlin properties and the JSON k
 | discountAmount | String | Discount applied, server text verbatim |
 | discountCode | String | Promo code used |
 | paymentMethod | PaymentMethod | How it was paid |
+| paymentStatus | String? | Payment status (`payment_status`); absent on orders that do not report one |
 | loyaltyPointsEarned | LoyaltyPointsDetail? | Kreds earned |
 | loyaltyPointsSpent | LoyaltyPointsDetail? | Kreds spent |
 | customerId | String | Customer the order belongs to (`customer_id`) |
@@ -1183,6 +1188,23 @@ Every type the SDK returns or accepts, with its Kotlin properties and the JSON k
 | priceValue | Double | `price` parsed |
 | finalPriceValue | Double | `finalPrice` parsed |
 | discountAmountValue | Double | `discountAmount` parsed |
+
+### OrderSettlement
+
+Returned by `OrdersRepository.awaitSettlement`. A sealed class with three results:
+
+| Result | Fields | Meaning |
+|--------|--------|---------|
+| `OrderSettlement.Fulfilled` | `order: OrderDetail` | Non-empty `iccid` and `payment_status` `success` (`order_status` `success` when `payment_status` is absent or blank) |
+| `OrderSettlement.Failed` | `order: OrderDetail?` | `payment_status` or `order_status` is `failed`, `cancelled`, `canceled`, `declined` or `expired`, trimmed and lowercased. `order` is `null` when the full order could not be read (decode failure, request failure or timeout) |
+| `OrderSettlement.Pending` | — | The outcome is unknown: the timeout elapsed or every check failed. It does not mean the customer did not pay. Cancelling the calling coroutine cancels the wait as usual (`CancellationException`); no settlement is returned |
+
+`OrderDetail.isFulfilled` and `OrderDetail.isSettlementFailure` apply the same rules to an order you already hold. They are top-level extension properties in `io.esimplified.sdk.model`, so they need two imports:
+
+```kotlin
+import io.esimplified.sdk.model.isFulfilled
+import io.esimplified.sdk.model.isSettlementFailure
+```
 
 ### PaymentResponse
 
@@ -1257,6 +1279,7 @@ Every type the SDK returns or accepts, with its Kotlin properties and the JSON k
 |-------|---------------|--------------------|
 | STRIPE_INTENT | Stripe | true |
 | STRIPE_CHECKOUT | Stripe | true |
+| SMARTPAY | SmartPay | true |
 | AGENT_PAYMENT | Agent Payment | true |
 | COMPLIMENTARY | Complimentary | false |
 | VOUCHER | Voucher | false |
@@ -1788,7 +1811,7 @@ A standalone order view. Public, but not returned by any repository method in 2.
 
 ### PaymentRequest
 
-The payload you build for `PaymentsRepository.getPaymentIntent`. Use the nested constants rather than raw strings: `PaymentRequest.Type.BUY` / `TOP_UP`, and `PaymentRequest.Method.STRIPE_INTENT` / `STRIPE_CHECKOUT`.
+The payload you build for `PaymentsRepository.getPaymentIntent`. Use the nested constants rather than raw strings: `PaymentRequest.Type.BUY` / `TOP_UP`, and `PaymentRequest.Method.STRIPE_INTENT` / `STRIPE_CHECKOUT` / `SMARTPAY`.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -1796,13 +1819,15 @@ The payload you build for `PaymentsRepository.getPaymentIntent`. Use the nested 
 | iccid | String? | Target eSIM for a top-up. Null for a new purchase |
 | customer | CustomerDetails | Purchasing customer. Required |
 | packageTypeId | Int | Package being bought. Required. Note `PackagePlan.packageTypeId` is a `Long` — narrow it |
-| paymentMethod | String | `stripe_intent` or `stripe_checkout`. Required |
+| paymentMethod | String | `stripe_intent`, `stripe_checkout` or `smartpay`. Required |
 | autoTopUp | Boolean | Enable automatic top-up on the resulting eSIM. Required |
 | savePaymentMethod | Boolean | Store the card for reuse. Required |
 | loyaltyPointsAmount | Double? | Kreds value to apply |
 | loyaltyProvider | String? | `kreds` or `mokafaa`. See `LoyaltyProvider` |
 | loyaltyPointsToUse | Int? | Mokafaa points to burn |
 | couponId | String? | Promo code to apply |
+| storedPaymentMethod | String? | A saved card's `paymentMethodId`; serialised only when set |
+| redirectUrl | String? | Where SmartPay returns the customer (`redirect_url`); serialised only when set |
 
 ### CheckoutCouponRequest
 

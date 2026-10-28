@@ -96,6 +96,7 @@ data class OrderDetail(
     @SerialName("points_spent") val loyaltyPointsSpent: LoyaltyPointsDetail? = null,
     @SerialName("sm_dp_address") val smDpAddress: String? = null,
     @SerialName("payment_method") val paymentMethod: PaymentMethod = PaymentMethod.UNKNOWN,
+    @SerialName("payment_status") val paymentStatus: String? = null,
     @SerialName("transaction_id") val transactionId: String? = null,
     @SerialName("conversion_tracked") val tracked: Boolean = false,
     @SerialName("package") val packageInfo: PackagePlan? = null

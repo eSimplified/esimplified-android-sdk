@@ -4,7 +4,9 @@ import io.esimplified.sdk.repository.OrdersRepository
 
 import io.esimplified.sdk.model.OrderHistoryItem
 import io.esimplified.sdk.model.OrderDetail
+import io.esimplified.sdk.model.OrderSettlement
 import io.esimplified.sdk.model.OrdersPage
+import io.esimplified.sdk.model.isFulfilled
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.SdkCache
 import io.esimplified.sdk.repository.RepositoryResult
@@ -15,7 +17,11 @@ import io.esimplified.sdk.repository.listOrThrow
 import io.esimplified.sdk.repository.valueOrThrow
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import io.esimplified.sdk.SdkLog
 
 internal class OrdersRepositoryImpl(
@@ -110,6 +116,53 @@ internal class OrdersRepositoryImpl(
             delay(PENDING_ORDER_RETRY_DELAY)
         }
     }
+
+    override suspend fun awaitSettlement(
+        orderUuid: String,
+        interval: Duration,
+        timeout: Duration,
+    ): OrderSettlement {
+        require(interval.isPositive()) { "interval must be positive" }
+        val deadline = TimeSource.Monotonic.markNow() + timeout
+        while (true) {
+            val probe = within(budgetFor(deadline, interval)) {
+                apiService.getOrderStatusProbe(orderUuid, true, true)
+            }
+            if (probe != null) {
+                if (probe.isSettlementFailure) {
+                    return OrderSettlement.Failed(fetchOrderOnce(orderUuid, deadline, interval))
+                }
+                if (probe.isFulfilled) {
+                    val order = fetchOrderOnce(orderUuid, deadline, interval)
+                    if (order != null && order.isFulfilled) {
+                        cache.set(orderKey(orderUuid), order, OrdersRepository.ORDER_DETAIL_TTL)
+                        return OrderSettlement.Fulfilled(order)
+                    }
+                }
+            }
+            if (deadline.hasPassedNow()) return OrderSettlement.Pending
+            delay(minOf(interval, -deadline.elapsedNow()))
+        }
+    }
+
+    private fun budgetFor(deadline: TimeMark, interval: Duration): Duration =
+        maxOf(-deadline.elapsedNow(), interval)
+
+    private suspend fun fetchOrderOnce(
+        orderUuid: String,
+        deadline: TimeMark,
+        interval: Duration,
+    ): OrderDetail? = within(budgetFor(deadline, interval)) {
+        apiService.getOrderDetails(orderUuid, true, true)
+    }
+
+    private suspend fun <T : Any> within(budget: Duration, call: suspend () -> T): T? =
+        runCatching { withTimeoutOrNull(budget) { call() } }
+            .onFailure {
+                if (it is CancellationException) throw it
+                SdkLog.w("Order settlement poll failed: ${it::class.simpleName}")
+            }
+            .getOrNull()
 
     override suspend fun getOrderInvoice(orderUuid: String): ByteArray =
         apiRead { apiService.getOrderInvoice(orderUuid).bytes() }

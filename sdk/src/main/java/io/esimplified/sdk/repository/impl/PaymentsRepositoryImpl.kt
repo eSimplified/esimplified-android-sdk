@@ -72,6 +72,25 @@ internal class PaymentsRepositoryImpl(
         )
     )
 
+    override suspend fun startSmartPayPayment(
+        transactionType: String,
+        packageTypeId: Int,
+        iccid: String?,
+        loyaltyPointsAmount: Double?,
+        redirectUrl: String,
+    ): PaymentResponse = getPaymentIntent(
+        PaymentRequest(
+            type = transactionType,
+            iccid = iccid,
+            customer = CustomerDetails(email = userEmail()),
+            packageTypeId = packageTypeId,
+            paymentMethod = PaymentRequest.Method.SMARTPAY,
+            autoTopUp = false,
+            loyaltyPointsAmount = loyaltyPointsAmount,
+            redirectUrl = redirectUrl,
+        )
+    )
+
     private fun userEmail(): String =
         (sessionManager.getAuthState() as? Auth.Authenticated)?.user?.email.orEmpty()
     // endregion

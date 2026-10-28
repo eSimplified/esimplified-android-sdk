@@ -181,6 +181,7 @@ class SerializableModelGuardTest {
         OrderDetail.serializer(),
         OrderHistoryItem.serializer(),
         OrderInfo.serializer(),
+        OrderStatusProbe.serializer(),
         OrdersPage.serializer(),
         PackageDetail.serializer(),
         PackagePlan.serializer(),
