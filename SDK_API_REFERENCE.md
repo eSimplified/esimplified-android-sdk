@@ -765,7 +765,7 @@ PaymentRequest(
     couponId: String? = null,
     storedPaymentMethod: String? = null, // a saved card's paymentMethodId; serialised only when set
     redirectUrl: String? = null,         // where SmartPay returns the customer; serialised only when set
-    discountCode: String? = null,        // a partner discount code such as NAB30; serialised only when set
+    discountCode: String? = null,        // a partner discount code such as EXAMPLE10; serialised only when set
 )
 ```
 
