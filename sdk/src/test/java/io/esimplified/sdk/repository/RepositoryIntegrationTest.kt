@@ -250,11 +250,12 @@ class RepositoryIntegrationTest {
     }
 
     @Test
-    fun `PaymentsRepository deletePaymentMethod DELETEs the card and succeeds on 204`() = runTest {
-        mockWebServer.enqueue(MockResponse().setResponseCode(204))
+    fun `PaymentsRepository deletePaymentMethod DELETEs the card and decodes the confirmation`() = runTest {
+        enqueueJson("""{"detail":"Payment method removed."}""")
 
         val repo = PaymentsRepositoryImpl(apiService, sessionManager)
-        repo.deletePaymentMethod("pm_1UGG")
+        val response = repo.deletePaymentMethod("pm_1UGG")
+        assertEquals("Payment method removed.", response.detail)
 
         val recorded = mockWebServer.takeRequest()
         assertEquals("DELETE", recorded.method)

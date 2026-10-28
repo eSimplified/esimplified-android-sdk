@@ -6,6 +6,7 @@ import io.esimplified.sdk.auth.Auth
 import io.esimplified.sdk.auth.SessionManager
 import io.esimplified.sdk.model.CustomerDetails
 import io.esimplified.sdk.model.PaymentMethodSetupIntent
+import io.esimplified.sdk.model.DeletePaymentMethodResponse
 import io.esimplified.sdk.model.PaymentRequest
 import io.esimplified.sdk.model.PaymentResponse
 import io.esimplified.sdk.model.SavedPaymentMethod
@@ -59,17 +60,12 @@ internal class PaymentsRepositoryImpl(
             throw e.asNetworkError()
         }
 
-    override suspend fun deletePaymentMethod(paymentMethodId: String) {
-        val response = apiService.deletePaymentMethod(paymentMethodId = paymentMethodId)
-        if (!response.isSuccessful) {
-            val errorBody = ApiErrorMessage.body(response.errorBody())
-            throw apiRejection(
-                ApiErrorMessage.parse(errorBody),
-                statusCode = response.code(),
-                apiCode = ApiErrorMessage.code(errorBody),
-            )
+    override suspend fun deletePaymentMethod(paymentMethodId: String): DeletePaymentMethodResponse =
+        try {
+            apiService.deletePaymentMethod(paymentMethodId = paymentMethodId)
+        } catch (e: HttpException) {
+            throw e.asNetworkError()
         }
-    }
 
     override suspend fun createPaymentMethodSetupIntent(): PaymentMethodSetupIntent =
         try {

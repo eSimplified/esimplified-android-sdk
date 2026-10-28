@@ -1,6 +1,7 @@
 package io.esimplified.sdk.repository
 
 import io.esimplified.sdk.model.PaymentMethodSetupIntent
+import io.esimplified.sdk.model.DeletePaymentMethodResponse
 import io.esimplified.sdk.model.PaymentRequest
 import io.esimplified.sdk.model.PaymentResponse
 import io.esimplified.sdk.model.SavedPaymentMethod
@@ -12,9 +13,8 @@ interface PaymentsRepository {
     suspend fun getPaymentMethods(discountCode: String? = null): List<SavedPaymentMethod> =
         throw UnsupportedOperationException("getPaymentMethods is not implemented")
 
-    suspend fun deletePaymentMethod(paymentMethodId: String) {
+    suspend fun deletePaymentMethod(paymentMethodId: String): DeletePaymentMethodResponse =
         throw UnsupportedOperationException("deletePaymentMethod is not implemented")
-    }
 
     suspend fun createPaymentMethodSetupIntent(): PaymentMethodSetupIntent =
         throw UnsupportedOperationException("createPaymentMethodSetupIntent is not implemented")

@@ -39,6 +39,7 @@ import io.esimplified.sdk.model.Country
 import io.esimplified.sdk.model.ContentDocument
 import io.esimplified.sdk.model.Customer
 import io.esimplified.sdk.model.DeleteProfileResponse
+import io.esimplified.sdk.model.DeletePaymentMethodResponse
 import io.esimplified.sdk.model.DestinationFaqResponse
 import io.esimplified.sdk.model.OrderDetail
 import io.esimplified.sdk.model.OrderInfo
@@ -150,7 +151,7 @@ internal interface ApiService {
     @Headers("Accept: application/json", "Content-Type: application/json")
     suspend fun deletePaymentMethod(
         @Path("payment_method_id") paymentMethodId: String,
-    ): Response<ResponseBody?>
+    ): DeletePaymentMethodResponse
 
     @POST("api/v2/customer/payment-methods/setup-intent/")
     @Headers("Accept: application/json", "Content-Type: application/json")

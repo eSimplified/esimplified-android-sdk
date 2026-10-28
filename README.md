@@ -378,6 +378,7 @@ Field-by-field tables for all of these are in [SDK_API_REFERENCE.md](SDK_API_REF
 | `SavedPaymentMethod` | A card the backend has on file (payment method id, brand, last four, expiry) |
 | `PaymentMethodSetupIntent` | Stripe SetupIntent for saving a new card (client secret, customer id, publishable key) |
 | `VerifyPaymentMethodRequest` | Card eligibility check payload (payment method id + discount code) |
+| `DeletePaymentMethodResponse` | Confirmation that a saved card was removed (detail message) |
 | `PaymentMethod` | Enum: STRIPE_INTENT, STRIPE_CHECKOUT, SMARTPAY, AGENT_PAYMENT, COMPLIMENTARY, VOUCHER, SPLIT_PAYMENT, PAY_WITH_POINTS, UNKNOWN (with `displayName` and `shouldShowAmount`) |
 | `CurrencyObject` | Currency with symbol and ISO code |
 | `QrCode` | QR code image (base64 + URL) |
@@ -622,7 +623,7 @@ Payment intent creation for Stripe/Google Pay checkout, the customer's saved car
 |---|---|---|
 | `getPaymentIntent` | `suspend fun getPaymentIntent(request: PaymentRequest): PaymentResponse` | Create a payment intent for checkout |
 | `getPaymentMethods` | `suspend fun getPaymentMethods(discountCode: String? = null): List<SavedPaymentMethod>` | The customer's saved cards; with `discountCode`, only the cards eligible for that code |
-| `deletePaymentMethod` | `suspend fun deletePaymentMethod(paymentMethodId: String)` | Remove a saved card. Returns on any `2xx` (the backend sends `204`); any other status throws `SdkError.NetworkError` with that status and the backend's message |
+| `deletePaymentMethod` | `suspend fun deletePaymentMethod(paymentMethodId: String): DeletePaymentMethodResponse` | Remove a saved card; returns the backend's confirmation message. Any other status throws `SdkError.NetworkError` with that status and the backend's message |
 | `createPaymentMethodSetupIntent` | `suspend fun createPaymentMethodSetupIntent(): PaymentMethodSetupIntent` | A Stripe SetupIntent for saving a new card without charging it |
 | `verifyPaymentMethod` | `suspend fun verifyPaymentMethod(paymentMethodId: String, discountCode: String): SavedPaymentMethod` | Check a saved card against a discount code; `400` when the card is not eligible, `404` when it is not the customer's |
 | `payWithStoredPaymentMethod` | `suspend fun payWithStoredPaymentMethod(paymentMethodId: String, transactionType: String, packageTypeId: Int, iccid: String? = null, discountCode: String? = null): PaymentResponse` | Charge a saved card with no Stripe sheet, optionally under a discount code |
@@ -1136,7 +1137,7 @@ The default `awaitSettlement` body polls `getOrderDetailsResult` against a real-
 
 ### Saving and removing cards
 
-`createPaymentMethodSetupIntent()` posts `/customer/payment-methods/setup-intent/` with no body and returns `PaymentMethodSetupIntent(clientSecret, customerId, publishableKey)` for Stripe's card-collection sheet. `clientSecret` is required: a response without `client_secret` fails to decode rather than handing Stripe an empty secret. `publishableKey` is null on a backend that does not send it. `deletePaymentMethod(paymentMethodId)` sends `DELETE /customer/payment-methods/{id}/` and returns on any `2xx` (the backend sends `204`); any other status throws `SdkError.NetworkError` with that status and the backend's message.
+`createPaymentMethodSetupIntent()` posts `/customer/payment-methods/setup-intent/` with no body and returns `PaymentMethodSetupIntent(clientSecret, customerId, publishableKey)` for Stripe's card-collection sheet. `clientSecret` is required: a response without `client_secret` fails to decode rather than handing Stripe an empty secret. `publishableKey` is null on a backend that does not send it. `deletePaymentMethod(paymentMethodId)` sends `DELETE /customer/payment-methods/{id}/` and returns `DeletePaymentMethodResponse(detail)`, the backend's confirmation (`"Payment method removed."`); any other status throws `SdkError.NetworkError` with that status and the backend's message.
 
 ### Discounted stored-card charges
 

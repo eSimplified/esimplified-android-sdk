@@ -189,6 +189,7 @@ class SerializableModelGuardTest {
         PackageDetail.serializer(),
         PackagePlan.serializer(),
         PaymentMethodSetupIntent.serializer(),
+        DeletePaymentMethodResponse.serializer(),
         PaymentRequest.serializer(),
         SavedPaymentMethod.serializer(),
         PaymentResponse.serializer(),
