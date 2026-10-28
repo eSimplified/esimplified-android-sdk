@@ -8,9 +8,9 @@
 
 Kotlin SDK for integrating the eSimplified eSIM platform into Android applications. Provides typed repository interfaces for authentication, eSIM management, package browsing, orders, payments, and more. All networking, authentication, and token management are handled internally -- consuming apps interact only with clean Kotlin interfaces.
 
-**Coordinates:** `io.github.esimplified:android-sdk:3.5.0`
+**Coordinates:** `io.github.esimplified:android-sdk:3.6.0`
 
-That is the version this README describes. It adds SmartPay hosted checkout to `PaymentsRepository` and `awaitSettlement` to `OrdersRepository`; nothing a caller writes has to change to take it.
+That is the version this README describes. It adds partner-offer card eligibility, card deletion, Stripe setup intents and discounted stored-card charges to `PaymentsRepository`, promo-coded package reads to `PackagesRepository`, SmartPay hosted checkout to `PaymentsRepository` and `awaitSettlement` to `OrdersRepository`; nothing a caller writes has to change to take it.
 
 ## What the SDK covers
 
@@ -78,7 +78,7 @@ The SDK is published to Maven Central. No extra repositories or authentication n
 ```kotlin
 // build.gradle.kts (app)
 dependencies {
-    implementation("io.github.esimplified:android-sdk:3.5.0")
+    implementation("io.github.esimplified:android-sdk:3.6.0")
 
     // Required. The SDK declares its own dependencies as `implementation`, so they
     // resolve at runtime but are NOT on your compile classpath. You call
@@ -105,7 +105,7 @@ Everything else the SDK needs — Retrofit, OkHttp, kotlinx.serialization, kotli
 
 ## Versioning
 
-The SDK follows semantic versioning, and Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.5.0")` resolves to 3.5.0 and nothing else — there are no version ranges and no BOM anywhere in these instructions, so no release reaches your build until someone edits that line. Nothing below can arrive unannounced; this section tells you what to expect when you do choose to raise the number.
+The SDK follows semantic versioning, and Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.6.0")` resolves to 3.6.0 and nothing else — there are no version ranges and no BOM anywhere in these instructions, so no release reaches your build until someone edits that line. Nothing below can arrive unannounced; this section tells you what to expect when you do choose to raise the number.
 
 | What changed | Version goes | What you do |
 |---|---|---|
@@ -113,7 +113,7 @@ The SDK follows semantic versioning, and Gradle pins you to an exact version. `i
 | Something added | 2.1.0 → 2.2.0 | Nothing |
 | Something you call changed or went away | 2.1.0 → 3.0.0 | Update your code, then raise the version you depend on |
 
-Those numbers are illustrative; 3.5.0 is the current release.
+Those numbers are illustrative; 3.6.0 is the current release.
 
 The convention maps straight onto our commit messages. A `fix:` commit is a patch, a `feat:` commit is a minor, and the major only moves for a change that breaks **callers** — a method you call renamed, removed, or given a new required parameter. Commits that break callers are marked with a `!`, as in `refactor(orders)!:`.
 
@@ -374,7 +374,11 @@ Field-by-field tables for all of these are in [SDK_API_REFERENCE.md](SDK_API_REF
 | `OrderHistoryItem` | Summary order for history lists |
 | `PurchaseCountry` | Country the purchase was made from (on `OrderHistoryItem`) |
 | `OrderInfo` | Order info with customer details and QR code |
-| `PaymentRequest` | Payment intent creation payload (package, customer, payment method, loyalty points) |
+| `PaymentRequest` | Payment intent creation payload (package, customer, payment method, loyalty points, stored card, discount code, redirect URL) |
+| `SavedPaymentMethod` | A card the backend has on file (payment method id, brand, last four, expiry) |
+| `PaymentMethodSetupIntent` | Stripe SetupIntent for saving a new card (client secret, customer id, publishable key) |
+| `VerifyPaymentMethodRequest` | Card eligibility check payload (payment method id + discount code) |
+| `DeletePaymentMethodResponse` | Confirmation that a saved card was removed (detail message) |
 | `PaymentMethod` | Enum: STRIPE_INTENT, STRIPE_CHECKOUT, SMARTPAY, AGENT_PAYMENT, COMPLIMENTARY, VOUCHER, SPLIT_PAYMENT, PAY_WITH_POINTS, UNKNOWN (with `displayName` and `shouldShowAmount`) |
 | `CurrencyObject` | Currency with symbol and ISO code |
 | `QrCode` | QR code image (base64 + URL) |
@@ -545,13 +549,13 @@ eSIM data package browsing and stock checks.
 
 | Method | Signature | Description |
 |---|---|---|
-| `getPackages` | `suspend fun getPackages(destination: Destination, forceRefresh: Boolean = false, cacheTTL: Duration = PACKAGES_TTL): List<PackagePlan>` | Fetch packages for a destination |
-| `getPackagesPage` | `suspend fun getPackagesPage(destination: Destination, forceRefresh: Boolean = false, cacheTTL: Duration = PACKAGES_TTL): PackagesPage` | Same read, but also returns the total count and any promo code the API attached to the page |
+| `getPackages` | `suspend fun getPackages(destination: Destination, forceRefresh: Boolean = false, cacheTTL: Duration = PACKAGES_TTL, promoCode: String? = null): List<PackagePlan>` | Fetch packages for a destination; `promoCode` asks for the prices under that code |
+| `getPackagesPage` | `suspend fun getPackagesPage(destination: Destination, forceRefresh: Boolean = false, cacheTTL: Duration = PACKAGES_TTL, promoCode: String? = null): PackagesPage` | Same read, but also returns the total count and any promo code the API attached to the page |
 | `getTopUpPackages` | `suspend fun getTopUpPackages(iccid: String, forceRefresh: Boolean = false, cacheTTL: Duration = PACKAGES_TTL): List<PackagePlan>` | Fetch top-up packages for an existing eSIM |
 | `checkStock` | `suspend fun checkStock(packageTypeId: Int, forceRefresh: Boolean = false, cacheTTL: Duration = PACKAGES_TTL): CheckStockResponse` | Check if a specific package is in stock |
 | `invalidateCache` | `suspend fun invalidateCache()` | Drop this repository's cache entries |
 
-`…Result` twins: `getPackagesResult`, `getPackagesPageResult`, `getTopUpPackagesResult`, `checkStockResult`. Default TTL: `PACKAGES_TTL` = 1 h.
+`…Result` twins: `getPackagesResult`, `getPackagesPageResult`, `getTopUpPackagesResult`, `checkStockResult`. Default TTL: `PACKAGES_TTL` = 1 h. A read with a `promoCode` is cached under its own key, so it never answers, or is answered by, the plain read.
 
 > `getPackageRating()` moved to [`StoreReviewRepository.fetchStoreReview()`](#storereviewrepository) in 2.0.
 
@@ -613,11 +617,16 @@ Order history, order details, invoices, and conversion tracking.
 
 ### PaymentsRepository
 
-Payment creation for Stripe/Google Pay checkout and SmartPay hosted checkout.
+Payment intent creation for Stripe/Google Pay checkout, the customer's saved cards, and SmartPay hosted checkout.
 
 | Method | Signature | Description |
 |---|---|---|
 | `getPaymentIntent` | `suspend fun getPaymentIntent(request: PaymentRequest): PaymentResponse` | Create a payment intent for checkout |
+| `getPaymentMethods` | `suspend fun getPaymentMethods(discountCode: String? = null): List<SavedPaymentMethod>` | The customer's saved cards; with `discountCode`, only the cards eligible for that code |
+| `deletePaymentMethod` | `suspend fun deletePaymentMethod(paymentMethodId: String): DeletePaymentMethodResponse` | Remove a saved card; returns the backend's confirmation message (an empty `204` gives one with no message). Any other status throws `SdkError.NetworkError` with that status and the backend's message |
+| `createPaymentMethodSetupIntent` | `suspend fun createPaymentMethodSetupIntent(): PaymentMethodSetupIntent` | A Stripe SetupIntent for saving a new card without charging it |
+| `verifyPaymentMethod` | `suspend fun verifyPaymentMethod(paymentMethodId: String, discountCode: String): SavedPaymentMethod` | Check a saved card against a discount code; `400` when the card is not eligible, `404` when it is not the customer's |
+| `payWithStoredPaymentMethod` | `suspend fun payWithStoredPaymentMethod(paymentMethodId: String, transactionType: String, packageTypeId: Int, iccid: String? = null, discountCode: String? = null): PaymentResponse` | Charge a saved card with no Stripe sheet, optionally under a discount code |
 | `startSmartPayPayment` | `suspend fun startSmartPayPayment(transactionType: String, packageTypeId: Int, iccid: String? = null, loyaltyPointsAmount: Double? = null, redirectUrl: String): PaymentResponse` | Start a SmartPay (Bank Muscat) hosted checkout; open `transaction.uri` in a browser |
 
 ### PromoCodeRepository
@@ -1114,9 +1123,29 @@ One behaviour change: the two forms used to occupy separate cache entries even t
 
 ### Breaking changes
 
-`PaymentsRepository` gains `startSmartPayPayment(transactionType, packageTypeId, iccid, loyaltyPointsAmount, redirectUrl)` and `OrdersRepository` gains `awaitSettlement(orderUuid, interval, timeout)`. Both carry a default body, so an existing implementation or test fake keeps compiling. The `startSmartPayPayment` default throws `UnsupportedOperationException`; override it before calling it. Nothing a caller already writes changes.
+`PaymentsRepository` gains three methods, `deletePaymentMethod(paymentMethodId)`, `createPaymentMethodSetupIntent()` and `verifyPaymentMethod(paymentMethodId, discountCode)`. Each carries a default body that throws `UnsupportedOperationException`, so an existing implementation or test fake keeps compiling; override them before calling them. `getPaymentMethods` and `payWithStoredPaymentMethod` each gain a trailing `discountCode: String? = null`, and `PackagesRepository.getPackages`, `getPackagesPage` and their `Result` twins each gain a trailing `promoCode: String? = null`; every existing call resolves as before, and an implementation of either interface must add the parameter to its override. Nothing a caller already writes changes.
+
+`PaymentsRepository` also gains `startSmartPayPayment(transactionType, packageTypeId, iccid, loyaltyPointsAmount, redirectUrl)` and `OrdersRepository` gains `awaitSettlement(orderUuid, interval, timeout)`. Both carry a default body, so an existing implementation or test fake keeps compiling. The `startSmartPayPayment` default throws `UnsupportedOperationException`; override it before calling it. Nothing a caller already writes changes.
 
 The default `awaitSettlement` body polls `getOrderDetailsResult` against a real-time deadline, not the coroutine test scheduler. A test fake that never settles will therefore spin for the real `SETTLEMENT_TIMEOUT` (120 s) under `runTest` before it returns `Pending`. Override `awaitSettlement` in the fake, or pass a short `timeout`.
+
+### Partner-offer card eligibility
+
+`getPaymentMethods(discountCode)` reads `GET /customer/payment-methods/?discount_code=…` and returns only the saved cards eligible for that code, in the same `SavedPaymentMethod` shape. Leaving `discountCode` out, or passing a blank one, sends no query and is the 3.5.0 call.
+
+`verifyPaymentMethod(paymentMethodId, discountCode)` posts `/customer/payment-methods/verify/` with `payment_method_id` and `discount_code` and returns the card when it is eligible. An ineligible card fails with `SdkError.NetworkError` whose `statusCode` is `400` and whose `message` is the backend's `detail`, written to be shown to the user; a card that is not attached to the customer fails with `statusCode` `404`.
+
+### Saving and removing cards
+
+`createPaymentMethodSetupIntent()` posts `/customer/payment-methods/setup-intent/` with no body and returns `PaymentMethodSetupIntent(clientSecret, customerId, publishableKey)` for Stripe's card-collection sheet. `clientSecret` is required: a response without `client_secret` fails to decode rather than handing Stripe an empty secret. `publishableKey` is null on a backend that does not send it. `deletePaymentMethod(paymentMethodId)` sends `DELETE /customer/payment-methods/{id}/` and returns `DeletePaymentMethodResponse(detail)`, the backend's confirmation (`"Payment method removed."`); any other status throws `SdkError.NetworkError` with that status and the backend's message.
+
+### Discounted stored-card charges
+
+`payWithStoredPaymentMethod(…, discountCode = "NAB30")` adds `discount_code` to the `/payments/` body it already sends; without it the body is byte-for-byte the 3.5.0 body. `PaymentRequest.discountCode: String? = null` is the field behind it, serialised only when set, so `getPaymentIntent` callers can send it too.
+
+### Promo-coded package prices
+
+`getPackages(destination, promoCode = "NAB30")` and `getPackagesPage(destination, promoCode = "NAB30")` add `promo_code` to `GET /packages/` so the backend returns the prices under that code. A blank `promoCode` is treated as absent. Each code is cached under its own key, separate from the plain read, and `invalidateCache()` drops both.
 
 ### SmartPay hosted checkout
 
@@ -1144,7 +1173,7 @@ Each request is bounded by the time left in the wait, and never by less than one
 
 ### `PaymentRequest` and `OrderDetail`
 
-`PaymentRequest.redirectUrl: String? = null` is added as the last parameter, serialised as `redirect_url` only when set, along with the `PaymentRequest.Method.SMARTPAY` constant (`"smartpay"`). `PaymentMethod.SMARTPAY` decodes the wire value `smartpay` and has `displayName` "SmartPay" and `shouldShowAmount = true`. `OrderDetail.paymentStatus: String? = null` reads `payment_status`.
+`PaymentRequest.redirectUrl: String? = null` is added after `storedPaymentMethod`, serialised as `redirect_url` only when set, along with the `PaymentRequest.Method.SMARTPAY` constant (`"smartpay"`). `PaymentMethod.SMARTPAY` decodes the wire value `smartpay` and has `displayName` "SmartPay" and `shouldShowAmount = true`. `OrderDetail.paymentStatus: String? = null` reads `payment_status`.
 
 ### `enableCaching = false` now disables the cache
 
@@ -1253,7 +1282,7 @@ The published coordinate is `io.github.esimplified:android-sdk:<version>`, and t
 
 ```kotlin
 mavenPublishing {
-    coordinates("io.github.esimplified", "android-sdk", "3.5.0")
+    coordinates("io.github.esimplified", "android-sdk", "3.6.0")
 }
 ```
 

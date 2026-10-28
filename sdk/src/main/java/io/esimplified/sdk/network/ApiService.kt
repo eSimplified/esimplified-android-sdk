@@ -12,9 +12,11 @@ import io.esimplified.sdk.model.CustomerForgetPassword
 import io.esimplified.sdk.model.CustomerForgetPasswordResponse
 import io.esimplified.sdk.model.NotificationSettings
 import io.esimplified.sdk.model.UpdateCustomerPreferencesRequest
+import io.esimplified.sdk.model.PaymentMethodSetupIntent
 import io.esimplified.sdk.model.PaymentRequest
 import io.esimplified.sdk.model.PaymentResponse
 import io.esimplified.sdk.model.SavedPaymentMethod
+import io.esimplified.sdk.model.VerifyPaymentMethodRequest
 import io.esimplified.sdk.model.ProfileResponse
 import io.esimplified.sdk.model.UserLocationResponse
 import io.esimplified.sdk.model.VerifyEmailRequest
@@ -37,6 +39,7 @@ import io.esimplified.sdk.model.Country
 import io.esimplified.sdk.model.ContentDocument
 import io.esimplified.sdk.model.Customer
 import io.esimplified.sdk.model.DeleteProfileResponse
+import io.esimplified.sdk.model.DeletePaymentMethodResponse
 import io.esimplified.sdk.model.DestinationFaqResponse
 import io.esimplified.sdk.model.OrderDetail
 import io.esimplified.sdk.model.OrderInfo
@@ -140,7 +143,23 @@ internal interface ApiService {
 
     @GET("api/v2/customer/payment-methods/")
     @Headers("Accept: application/json", "Content-Type: application/json")
-    suspend fun getPaymentMethods(): List<SavedPaymentMethod>
+    suspend fun getPaymentMethods(
+        @Query("discount_code") discountCode: String? = null,
+    ): List<SavedPaymentMethod>
+
+    @DELETE("api/v2/customer/payment-methods/{payment_method_id}/")
+    @Headers("Accept: application/json", "Content-Type: application/json")
+    suspend fun deletePaymentMethod(
+        @Path("payment_method_id") paymentMethodId: String,
+    ): Response<DeletePaymentMethodResponse>
+
+    @POST("api/v2/customer/payment-methods/setup-intent/")
+    @Headers("Accept: application/json", "Content-Type: application/json")
+    suspend fun createPaymentMethodSetupIntent(): PaymentMethodSetupIntent
+
+    @POST("api/v2/customer/payment-methods/verify/")
+    @Headers("Accept: application/json", "Content-Type: application/json")
+    suspend fun verifyPaymentMethod(@Body data: VerifyPaymentMethodRequest): SavedPaymentMethod
 
     @GET("api/v2/customer/promotions/promo_code/")
     @Headers("Accept: application/json", "Content-Type: application/json")
@@ -172,7 +191,8 @@ internal interface ApiService {
         @Query("country_code") code: String? = null,
         @Query("country_name") name: String? = null,
         @Query("country_name_slug") slug: String? = null,
-        @Query("reverse_order") reverseOrder: String = "true"
+        @Query("reverse_order") reverseOrder: String = "true",
+        @Query("promo_code") promoCode: String? = null,
     ): BaseResponse<List<PackagePlan>>
 
     @GET("api/v2/customer/esims/{iccid}/top-up/packages/")

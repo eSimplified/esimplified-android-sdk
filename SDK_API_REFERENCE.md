@@ -2,10 +2,7 @@
 
 For client teams integrating the SDK into an Android app. Covers installation, configuration, every repository method available to you, and the full shape of every model the API returns.
 
-Documents `io.github.esimplified:android-sdk:3.5.0`, the version this document describes. It includes one
-interface change since 2.0 — `OrdersRepository.getOrderHistory` and
-`getOrderHistoryResult` each lost a redundant overload. The tables below show the new shape;
-[Changes since 2.0.0](README.md#changes-since-200) has the detail.
+Documents `io.github.esimplified:android-sdk:3.6.0`, the version on Maven Central.
 
 For a shorter tour with worked examples, see [README.md](README.md). This document is the complete reference.
 
@@ -78,7 +75,7 @@ The SDK is published to Maven Central, which every Gradle project already resolv
 ```kotlin
 // build.gradle.kts (app)
 dependencies {
-    implementation("io.github.esimplified:android-sdk:3.5.0")
+    implementation("io.github.esimplified:android-sdk:3.6.0")
     implementation("io.insert-koin:koin-android:4.1.1")
 }
 
@@ -104,7 +101,7 @@ Without it Android refuses the socket and every call fails with a `SecurityExcep
 
 ## 3b. Which versions you will receive
 
-Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.5.0")` resolves to 3.5.0 and nothing else — there are no version ranges and no BOM in these instructions — so a new release never reaches your build until someone on your team edits that number. Nothing in this section can happen to you without that edit; it describes what you are choosing between when you make it.
+Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.6.0")` resolves to 3.6.0 and nothing else — there are no version ranges and no BOM in these instructions — so a new release never reaches your build until someone on your team edits that number. Nothing in this section can happen to you without that edit; it describes what you are choosing between when you make it.
 
 | What changed | Version goes | What you do |
 |---|---|---|
@@ -673,13 +670,13 @@ Cached: `getCountries`, `getCountriesBy`, `getPopularCountries` (`COUNTRIES_TTL`
 
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
-| `getPackages` | `destination: Destination, forceRefresh: Boolean = false, cacheTTL: Duration = PACKAGES_TTL` | `List<PackagePlan>` | Get eSIM packages for a destination |
-| `getPackagesPage` | `destination: Destination, forceRefresh: Boolean = false, cacheTTL: Duration = PACKAGES_TTL` | `PackagesPage` | Same read plus total count and the page's promo code |
+| `getPackages` | `destination: Destination, forceRefresh: Boolean = false, cacheTTL: Duration = PACKAGES_TTL, promoCode: String? = null` | `List<PackagePlan>` | Get eSIM packages for a destination. `promoCode` sends `promo_code` so the API prices them under that code; blank counts as absent |
+| `getPackagesPage` | `destination: Destination, forceRefresh: Boolean = false, cacheTTL: Duration = PACKAGES_TTL, promoCode: String? = null` | `PackagesPage` | Same read plus total count and the page's promo code |
 | `getTopUpPackages` | `iccid: String, forceRefresh: Boolean = false, cacheTTL: Duration = PACKAGES_TTL` | `List<PackagePlan>` | Get top-up packages for an existing eSIM |
 | `checkStock` | `packageTypeId: Int, forceRefresh: Boolean = false, cacheTTL: Duration = PACKAGES_TTL` | `CheckStockResponse` | Check package availability |
 | `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
 
-All cached (`PACKAGES_TTL` = 1 h). `…Result` twins: `getPackagesResult`, `getPackagesPageResult`, `getTopUpPackagesResult`, `checkStockResult`.
+All cached (`PACKAGES_TTL` = 1 h). `…Result` twins: `getPackagesResult`, `getPackagesPageResult`, `getTopUpPackagesResult`, `checkStockResult`. A read with a `promoCode` has its own cache entry, separate from the plain read for the same destination.
 
 `getPackageRating()` moved to `StoreReviewRepository.fetchStoreReview()` in 2.0.
 
@@ -738,11 +735,18 @@ Cached: `ORDERS_LIST_TTL` = 10 min, `ORDER_DETAIL_TTL` = 5 min. `SETTLEMENT_INTE
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
 | `getPaymentIntent` | `request: PaymentRequest` | `PaymentResponse` | Create Stripe payment intent |
-| `getPaymentMethods` | — | `List<SavedPaymentMethod>` | The customer's saved cards, from `GET /customer/payment-methods/`. Empty when none |
-| `payWithStoredPaymentMethod` | `paymentMethodId: String, transactionType: String, packageTypeId: Int, iccid: String? = null` | `PaymentResponse` | Charge a saved card for a purchase; no Stripe sheet. Sends `stored_payment_method` and no `auto_top_up` / `save_payment_method`. `iccid` only with `PaymentRequest.Type.TOP_UP` |
+| `getPaymentMethods` | `discountCode: String? = null` | `List<SavedPaymentMethod>` | The customer's saved cards, from `GET /customer/payment-methods/`. With `discountCode`, adds `discount_code` and returns only the cards eligible for that code; blank counts as absent. Empty when none |
+| `deletePaymentMethod` | `paymentMethodId: String` | `DeletePaymentMethodResponse` | `DELETE /customer/payment-methods/{id}/`. Returns the backend's confirmation (`detail`, `"Payment method removed."`; an empty `204` gives one with no message); any other status throws `SdkError.NetworkError` with that status and the backend's message |
+| `createPaymentMethodSetupIntent` | — | `PaymentMethodSetupIntent` | `POST /customer/payment-methods/setup-intent/` with no body. A Stripe SetupIntent for collecting a new card without charging it |
+| `verifyPaymentMethod` | `paymentMethodId: String, discountCode: String` | `SavedPaymentMethod` | `POST /customer/payment-methods/verify/` with `payment_method_id` and `discount_code`. Returns the card when it is eligible. Throws `SdkError.NetworkError` with `statusCode` `400` and the backend's `detail` as `message` when the card is not eligible, and `404` when the card is not the customer's |
+| `payWithStoredPaymentMethod` | `paymentMethodId: String, transactionType: String, packageTypeId: Int, iccid: String? = null, discountCode: String? = null` | `PaymentResponse` | Charge a saved card for a purchase; no Stripe sheet. Sends `stored_payment_method` and no `auto_top_up` / `save_payment_method`; `discountCode` adds `discount_code`. `iccid` only with `PaymentRequest.Type.TOP_UP` |
 | `startSmartPayPayment` | `transactionType: String, packageTypeId: Int, iccid: String? = null, loyaltyPointsAmount: Double? = null, redirectUrl: String` | `PaymentResponse` | Start a SmartPay (Bank Muscat) hosted checkout. Sends `payment_method = "smartpay"`, `auto_top_up = false` and `redirect_url`. Open `transaction.uri` in a Custom Tab, then call `OrdersRepository.awaitSettlement` with the order UUID from the return link `https://<tenant host>/order/<n>?id=<uuid>`. `iccid` only with `PaymentRequest.Type.TOP_UP` |
 
 **SavedPaymentMethod:** `paymentMethodId`, `cardBrand` (as the backend sends it, e.g. `"visa"`), `cardLast4`, `cardExpMonth: Int?`, `cardExpYear: Int?`.
+
+**PaymentMethodSetupIntent:** `clientSecret` (`client_secret`, for Stripe's card sheet; required, so a response without it fails to decode), `customerId: String?` (`customer_id`), `publishableKey: String?` (`publishable_key`, null on a backend that does not send it).
+
+**VerifyPaymentMethodRequest:** `paymentMethodId` (`payment_method_id`), `discountCode` (`discount_code`). Built internally by `verifyPaymentMethod` — you pass the two strings.
 
 **PaymentRequest:**
 
@@ -761,6 +765,7 @@ PaymentRequest(
     couponId: String? = null,
     storedPaymentMethod: String? = null, // a saved card's paymentMethodId; serialised only when set
     redirectUrl: String? = null,         // where SmartPay returns the customer; serialised only when set
+    discountCode: String? = null,        // a partner discount code such as NAB30; serialised only when set
 )
 ```
 
@@ -1820,14 +1825,54 @@ The payload you build for `PaymentsRepository.getPaymentIntent`. Use the nested 
 | customer | CustomerDetails | Purchasing customer. Required |
 | packageTypeId | Int | Package being bought. Required. Note `PackagePlan.packageTypeId` is a `Long` — narrow it |
 | paymentMethod | String | `stripe_intent`, `stripe_checkout` or `smartpay`. Required |
-| autoTopUp | Boolean | Enable automatic top-up on the resulting eSIM. Required |
-| savePaymentMethod | Boolean | Store the card for reuse. Required |
+| autoTopUp | Boolean? | Enable automatic top-up on the resulting eSIM. Serialised only when set |
+| savePaymentMethod | Boolean? | Store the card for reuse. Serialised only when set |
 | loyaltyPointsAmount | Double? | Kreds value to apply |
 | loyaltyProvider | String? | `kreds` or `mokafaa`. See `LoyaltyProvider` |
 | loyaltyPointsToUse | Int? | Mokafaa points to burn |
 | couponId | String? | Promo code to apply |
-| storedPaymentMethod | String? | A saved card's `paymentMethodId`; serialised only when set |
+| storedPaymentMethod | String? | A saved card's `paymentMethodId` to charge directly. Serialised only when set |
 | redirectUrl | String? | Where SmartPay returns the customer (`redirect_url`); serialised only when set |
+| discountCode | String? | A partner discount code (`discount_code`) the stored-card charge is priced under. Serialised only when set |
+
+### SavedPaymentMethod
+
+A card the backend has on file for the customer. Returned by `PaymentsRepository.getPaymentMethods` and `verifyPaymentMethod`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| paymentMethodId | String | Stripe payment method id (`payment_method_id`). Pass it to `payWithStoredPaymentMethod`, `verifyPaymentMethod` and `deletePaymentMethod` |
+| cardBrand | String | Card brand as the backend sends it (`card_brand`), e.g. `"visa"` |
+| cardLast4 | String | Last four digits of the card number (`card_last4`) |
+| cardExpMonth | Int? | Expiry month (`card_exp_month`), 1–12. Null when the backend does not send it |
+| cardExpYear | Int? | Four-digit expiry year (`card_exp_year`). Null when the backend does not send it |
+
+### PaymentMethodSetupIntent
+
+A Stripe SetupIntent for collecting a new card without charging it. Returned by `PaymentsRepository.createPaymentMethodSetupIntent`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| clientSecret | String | SetupIntent client secret (`client_secret`) for Stripe's card sheet. Required: a response without it fails to decode |
+| customerId | String? | Stripe customer id (`customer_id`) |
+| publishableKey | String? | Stripe publishable key (`publishable_key`). Null on a backend that does not send it |
+
+### DeletePaymentMethodResponse
+
+The backend's confirmation that a saved card was removed. Returned by `PaymentsRepository.deletePaymentMethod`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| detail | String? | Confirmation message (`detail`), e.g. `"Payment method removed."` |
+
+### VerifyPaymentMethodRequest
+
+Card eligibility payload. Built internally by `PaymentsRepository.verifyPaymentMethod` — you pass the two strings.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| paymentMethodId | String | The saved card's `paymentMethodId` (`payment_method_id`). Required |
+| discountCode | String | The partner discount code to check the card against (`discount_code`). Required |
 
 ### CheckoutCouponRequest
 

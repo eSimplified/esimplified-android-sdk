@@ -45,6 +45,8 @@ class SerializableModelGuardTest {
         "PhoneOtpSendRequest.phone_number",
         "PhoneOtpVerifyRequest.code",
         "VerifyEmailRequest.email",
+        "VerifyPaymentMethodRequest.discount_code",
+        "VerifyPaymentMethodRequest.payment_method_id",
         "VoucherRedeemRequest.voucher_code",
     )
 
@@ -126,6 +128,7 @@ class SerializableModelGuardTest {
         "KredsQuoteResponse.pricing",
         "MokafaaOtpInitiateResponse.expires_at",
         "MokafaaOtpInitiateResponse.session_id",
+        "PaymentMethodSetupIntent.client_secret",
     )
 
     private val accepted: Set<String> =
@@ -185,6 +188,8 @@ class SerializableModelGuardTest {
         OrdersPage.serializer(),
         PackageDetail.serializer(),
         PackagePlan.serializer(),
+        PaymentMethodSetupIntent.serializer(),
+        DeletePaymentMethodResponse.serializer(),
         PaymentRequest.serializer(),
         SavedPaymentMethod.serializer(),
         PaymentResponse.serializer(),
@@ -204,6 +209,7 @@ class SerializableModelGuardTest {
         UserLocationResponse.serializer(),
         VerifyEmailRequest.serializer(),
         VerifyEmailResponse.serializer(),
+        VerifyPaymentMethodRequest.serializer(),
         VisaRewardsIframeResponse.serializer(),
         VisaRewardsResponse.serializer(),
         VoucherRedeemRequest.serializer(),

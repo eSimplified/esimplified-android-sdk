@@ -12,6 +12,7 @@ import io.esimplified.sdk.repository.RepositoryResult
 import io.esimplified.sdk.repository.cachedListResult
 import io.esimplified.sdk.repository.cachedResult
 import io.esimplified.sdk.repository.listOrThrow
+import io.esimplified.sdk.repository.orNullIfBlank
 import io.esimplified.sdk.repository.valueOrThrow
 import kotlin.time.Duration
 
@@ -25,41 +26,51 @@ internal class PackagesRepositoryImpl(
         destination: Destination,
         forceRefresh: Boolean,
         cacheTTL: Duration,
-    ): List<PackagePlan> = getPackagesResult(destination, forceRefresh, cacheTTL).listOrThrow()
+        promoCode: String?,
+    ): List<PackagePlan> = getPackagesResult(destination, forceRefresh, cacheTTL, promoCode).listOrThrow()
 
     override suspend fun getPackagesResult(
         destination: Destination,
         forceRefresh: Boolean,
         cacheTTL: Duration,
-    ): RepositoryResult<List<PackagePlan>> =
-        cache.cachedListResult(packagesKey(destination), forceRefresh, cacheTTL) {
+        promoCode: String?,
+    ): RepositoryResult<List<PackagePlan>> {
+        val appliedPromoCode = promoCode.orNullIfBlank()
+        return cache.cachedListResult(packagesKey(destination, appliedPromoCode), forceRefresh, cacheTTL) {
             apiService.getPackageListBy(
                 code = destination.code,
                 name = destination.name,
-                slug = destination.slug
+                slug = destination.slug,
+                promoCode = appliedPromoCode,
             ).results
         }
+    }
 
     override suspend fun getPackagesPage(
         destination: Destination,
         forceRefresh: Boolean,
         cacheTTL: Duration,
-    ): PackagesPage = getPackagesPageResult(destination, forceRefresh, cacheTTL).value ?: PackagesPage()
+        promoCode: String?,
+    ): PackagesPage =
+        getPackagesPageResult(destination, forceRefresh, cacheTTL, promoCode).value ?: PackagesPage()
 
     override suspend fun getPackagesPageResult(
         destination: Destination,
         forceRefresh: Boolean,
         cacheTTL: Duration,
+        promoCode: String?,
     ): RepositoryResult<PackagesPage> {
+        val appliedPromoCode = promoCode.orNullIfBlank()
         val result = cache.cachedResult<PackagesPage>(
-            packagesPageKey(destination),
+            packagesPageKey(destination, appliedPromoCode),
             forceRefresh,
             cacheTTL,
         ) {
             val response = apiService.getPackageListBy(
                 code = destination.code,
                 name = destination.name,
-                slug = destination.slug
+                slug = destination.slug,
+                promoCode = appliedPromoCode,
             )
             PackagesPage(
                 packages = response.results,
@@ -113,11 +124,16 @@ internal class PackagesRepositoryImpl(
         cache.removeWithPrefix(CHECK_STOCK_KEY_PREFIX)
     }
 
-    private fun packagesKey(destination: Destination): String =
-        "$PACKAGES_KEY_PREFIX${destination.code}_${destination.name}_${destination.slug}"
+    private fun packagesKey(destination: Destination, promoCode: String?): String =
+        "$PACKAGES_KEY_PREFIX${destination.code}_${destination.name}_${destination.slug}" +
+            promoKeySuffix(promoCode)
 
-    private fun packagesPageKey(destination: Destination): String =
-        "${PACKAGES_KEY_PREFIX}page_${destination.code}_${destination.name}_${destination.slug}"
+    private fun packagesPageKey(destination: Destination, promoCode: String?): String =
+        "${PACKAGES_KEY_PREFIX}page_${destination.code}_${destination.name}_${destination.slug}" +
+            promoKeySuffix(promoCode)
+
+    private fun promoKeySuffix(promoCode: String?): String =
+        promoCode?.let { "|promo=$it" }.orEmpty()
 
     private fun topUpPackagesKey(iccid: String): String = "${PACKAGES_KEY_PREFIX}topup_$iccid"
 

@@ -5,6 +5,7 @@ import io.esimplified.sdk.repository.InvalidRefreshTokenException
 import io.esimplified.sdk.repository.apiRead
 import io.esimplified.sdk.repository.apiRejection
 import io.esimplified.sdk.repository.asNetworkError
+import io.esimplified.sdk.repository.orNullIfBlank
 
 import io.esimplified.sdk.model.ChangePasswordResponse
 import io.esimplified.sdk.model.CustomerChangePassword
@@ -404,9 +405,9 @@ internal class AuthRepositoryImpl(
                 CustomerDetails(
                     firstName = firstName,
                     lastName = lastName,
-                    phoneNumber = phoneNumber?.takeIf { it.isNotBlank() },
+                    phoneNumber = phoneNumber.orNullIfBlank(),
                     newEmail = email?.takeIf { it != userEmail },
-                    password = password?.takeIf { it.isNotBlank() },
+                    password = password.orNullIfBlank(),
                 )
             )
 
@@ -468,9 +469,9 @@ internal class AuthRepositoryImpl(
                 CustomerDetails(
                     firstName = firstName,
                     lastName = lastName,
-                    phoneNumber = phoneNumber?.takeIf { it.isNotBlank() },
+                    phoneNumber = phoneNumber.orNullIfBlank(),
                     newEmail = if (userEmail == email) null else email,
-                    password = password.takeIf { it.isNotBlank() },
+                    password = password.orNullIfBlank(),
                 )
             )
 
@@ -491,7 +492,7 @@ internal class AuthRepositoryImpl(
                             firstName = firstName,
                             lastName = lastName,
                             fullName = fullName,
-                            phoneNumber = phoneNumber?.takeIf { it.isNotBlank() } ?: snapshot.user.phoneNumber,
+                            phoneNumber = phoneNumber.orNullIfBlank() ?: snapshot.user.phoneNumber,
                         )
                     )
                 )

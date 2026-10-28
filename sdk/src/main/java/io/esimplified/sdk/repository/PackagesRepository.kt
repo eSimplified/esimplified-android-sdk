@@ -14,6 +14,7 @@ interface PackagesRepository {
         destination: Destination,
         forceRefresh: Boolean = false,
         cacheTTL: Duration = PACKAGES_TTL,
+        promoCode: String? = null,
     ): List<PackagePlan>
 
     suspend fun getTopUpPackages(
@@ -26,6 +27,7 @@ interface PackagesRepository {
         destination: Destination,
         forceRefresh: Boolean = false,
         cacheTTL: Duration = PACKAGES_TTL,
+        promoCode: String? = null,
     ): PackagesPage
 
     suspend fun checkStock(
@@ -41,8 +43,9 @@ interface PackagesRepository {
         destination: Destination,
         forceRefresh: Boolean = false,
         cacheTTL: Duration = PACKAGES_TTL,
+        promoCode: String? = null,
     ): RepositoryResult<List<PackagePlan>> =
-        RepositoryResult(getPackages(destination, forceRefresh, cacheTTL))
+        RepositoryResult(getPackages(destination, forceRefresh, cacheTTL, promoCode))
 
     suspend fun getTopUpPackagesResult(
         iccid: String,
@@ -55,8 +58,9 @@ interface PackagesRepository {
         destination: Destination,
         forceRefresh: Boolean = false,
         cacheTTL: Duration = PACKAGES_TTL,
+        promoCode: String? = null,
     ): RepositoryResult<PackagesPage> =
-        RepositoryResult(getPackagesPage(destination, forceRefresh, cacheTTL))
+        RepositoryResult(getPackagesPage(destination, forceRefresh, cacheTTL, promoCode))
 
     suspend fun checkStockResult(
         packageTypeId: Int,
