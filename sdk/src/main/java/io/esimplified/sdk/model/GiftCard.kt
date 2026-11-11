@@ -1,5 +1,7 @@
 package io.esimplified.sdk.model
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -35,6 +37,7 @@ data class GiftCardPreviewResponse(
 
 // region Redeem
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class GiftCardRedeemRequest(
     @SerialName("pin")
@@ -47,6 +50,7 @@ data class GiftCardRedeemRequest(
     val email: String? = null,
     @SerialName("marketing_opt_in")
     val marketingOptIn: Boolean? = null,
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS)
     @SerialName("acquisition_source")
     val acquisitionSource: String? = DEFAULT_ACQUISITION_SOURCE
 ) {
