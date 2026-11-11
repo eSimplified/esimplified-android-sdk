@@ -8,7 +8,7 @@
 
 Kotlin SDK for integrating the eSimplified eSIM platform into Android applications. Provides typed repository interfaces for authentication, eSIM management, package browsing, orders, payments, and more. All networking, authentication, and token management are handled internally -- consuming apps interact only with clean Kotlin interfaces.
 
-**Coordinates:** `io.github.esimplified:android-sdk:3.6.0`
+**Coordinates:** `io.github.esimplified:android-sdk:3.7.0`
 
 That is the version this README describes. It adds partner-offer card eligibility, card deletion, Stripe setup intents and discounted stored-card charges to `PaymentsRepository`, promo-coded package reads to `PackagesRepository`, SmartPay hosted checkout to `PaymentsRepository` and `awaitSettlement` to `OrdersRepository`; nothing a caller writes has to change to take it.
 
@@ -24,7 +24,7 @@ What you get without writing any networking, token handling, or caching of your 
 | **Orders** | Order history, full order detail including the QR code, and conversion tracking after a purchase completes | `OrdersRepository` |
 | **Payments** | Create a Stripe payment intent or checkout session, or start a SmartPay hosted checkout. You confirm a Stripe payment with Stripe's own Android SDK and the customer pays SmartPay in a browser — this SDK does not handle card data | `PaymentsRepository` |
 | **eSIM provisioning and install** | List active and archived eSIMs, fetch one by ICCID, read usage and expiry per package, rename, archive, set primary, toggle auto top-up. Exposes the SM-DP+ address and activation code needed for a direct Android install | `EsimRepository` |
-| **Vouchers** | Redeem a voucher code | `VouchersRepository` |
+| **Vouchers** | Redeem a voucher code or an InComm gift-card PIN | `VouchersRepository` |
 | **Promo codes** | Apply, read and remove a checkout promo code | `PromoCodeRepository` |
 | **Loyalty (Kreds)** | Read the points balance and quote a package price with points applied | `LoyaltyRepository` |
 | **Mokafaa** | SMS OTP enrollment and checkout burn against the Mokafaa points programme | `LoyaltyRepository` |
@@ -78,7 +78,7 @@ The SDK is published to Maven Central. No extra repositories or authentication n
 ```kotlin
 // build.gradle.kts (app)
 dependencies {
-    implementation("io.github.esimplified:android-sdk:3.6.0")
+    implementation("io.github.esimplified:android-sdk:3.7.0")
 
     // Required. The SDK declares its own dependencies as `implementation`, so they
     // resolve at runtime but are NOT on your compile classpath. You call
@@ -105,7 +105,7 @@ Everything else the SDK needs — Retrofit, OkHttp, kotlinx.serialization, kotli
 
 ## Versioning
 
-The SDK follows semantic versioning, and Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.6.0")` resolves to 3.6.0 and nothing else — there are no version ranges and no BOM anywhere in these instructions, so no release reaches your build until someone edits that line. Nothing below can arrive unannounced; this section tells you what to expect when you do choose to raise the number.
+The SDK follows semantic versioning, and Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.7.0")` resolves to 3.7.0 and nothing else — there are no version ranges and no BOM anywhere in these instructions, so no release reaches your build until someone edits that line. Nothing below can arrive unannounced; this section tells you what to expect when you do choose to raise the number.
 
 | What changed | Version goes | What you do |
 |---|---|---|
@@ -113,7 +113,7 @@ The SDK follows semantic versioning, and Gradle pins you to an exact version. `i
 | Something added | 2.1.0 → 2.2.0 | Nothing |
 | Something you call changed or went away | 2.1.0 → 3.0.0 | Update your code, then raise the version you depend on |
 
-Those numbers are illustrative; 3.6.0 is the current release.
+Those numbers are illustrative; 3.7.0 is the current release.
 
 The convention maps straight onto our commit messages. A `fix:` commit is a patch, a `feat:` commit is a minor, and the major only moves for a change that breaks **callers** — a method you call renamed, removed, or given a new required parameter. Commits that break callers are marked with a `!`, as in `refactor(orders)!:`.
 
@@ -397,6 +397,8 @@ Field-by-field tables for all of these are in [SDK_API_REFERENCE.md](SDK_API_REF
 | `VisaRewardsResponse` | Visa rewards eligibility, status, and reward details |
 | `VoucherRedeemRequest` | Voucher code redemption request |
 | `VoucherRedeemResponse` | Voucher redemption result (success flag + redirect URL) |
+| `GiftCardPreviewRequest` / `GiftCardPreviewResponse` / `GiftCardPackage` | Gift-card PIN preview: the request and the package the PIN unlocks |
+| `GiftCardRedeemRequest` / `GiftCardRedeemResponse` | Gift-card redemption: the claim body and its 200 (redeemed, order) or 201 (awaiting email verification) result |
 | `VerifyEmailRequest` | Email verification payload (email + link token or emailed code) |
 | `PhoneOtpSendRequest` / `PhoneOtpSendResponse` | Phone verification: send a code by SMS or WhatsApp |
 | `PhoneOtpVerifyRequest` / `PhoneOtpVerifyResponse` | Phone verification: verify the code |
@@ -758,11 +760,13 @@ Phone number verification with a 6-digit code.
 
 ### VouchersRepository
 
-Voucher code redemption.
+Voucher code and InComm gift-card redemption.
 
 | Method | Signature | Description |
 |---|---|---|
 | `redeemVoucher` | `suspend fun redeemVoucher(code: String): Result<VoucherRedeemResponse>` | Redeem a voucher code |
+| `previewGiftCard` | `suspend fun previewGiftCard(pin: String): Result<GiftCardPreviewResponse>` | Show the package a gift-card PIN unlocks, without spending the card |
+| `redeemGiftCard` | `suspend fun redeemGiftCard(request: GiftCardRedeemRequest): Result<GiftCardRedeemResponse>` | Redeem a gift-card PIN; 200 for a verified customer, 201 when the email still needs verifying |
 
 ## Errors and exceptions
 
@@ -1073,7 +1077,7 @@ To receive SDK lines deliberately, pass `logger` to `SdkConfig` — see [Logging
 
 ## Changes since 2.0.0
 
-The changes below are listed separately from the sections above, which describe 2.0 and its migration; everything here is in 3.6.0.
+The changes below are listed separately from the sections above, which describe 2.0 and its migration; everything here is in 3.7.0.
 
 ### Breaking change: `getOrdersPageResult` no longer has a default implementation
 
@@ -1118,6 +1122,31 @@ suspend fun getOrderHistory(
 Every existing call still compiles — `getOrderHistory()`, `getOrderHistory(true)` and `getOrderHistory(withLoyaltyPoints = true)` all resolve to it. The JVM signature changed, so recompile against the new version rather than swapping the AAR under an already-built app. If you implement `OrdersRepository` yourself, delete the now-duplicate override.
 
 One behaviour change: the two forms used to occupy separate cache entries even though they sent the identical request, so `getOrderHistory()` and `getOrderHistory(withLoyaltyPoints = false)` each did their own network call. They now share one entry.
+
+## Changes in 3.7.0
+
+### Breaking changes
+
+`VouchersRepository` gains `previewGiftCard(pin)` and `redeemGiftCard(request)`. Each carries a default body that throws `UnsupportedOperationException`, so an existing implementation or test fake keeps compiling; override them before calling them. Nothing a caller already writes changes.
+
+### InComm gift cards
+
+A gift card is a retail card with a scratch-off PIN tied to one eSIM plan. Two calls, both on `VouchersRepository`, both returning `Result`:
+
+`previewGiftCard(pin)` posts `/customer/promotions/gift-card/preview/` with `{"pin": …}` and returns `GiftCardPreviewResponse(giftCardPackage)`, the `GiftCardPackage` the PIN unlocks: `packageTypeId`, `name`, `country` (an ISO code such as `"FR"`), `data` (`"3 GB"`) and `validityDays`. It is read-only and repeatable, so call it to show the customer what they are about to claim.
+
+`redeemGiftCard(request)` posts `/customer/promotions/gift-card/redeem/` and spends the card. A signed-in customer sends `GiftCardRedeemRequest(pin)` and nothing else; a guest also sends `firstName`, `lastName`, `email` and `marketingOptIn`. `acquisitionSource` defaults to `"gift-card"`. The `GiftCardRedeemResponse` is one of two shapes:
+
+| Status | Shape | Read it as |
+|---|---|---|
+| 200 | `redeemed = true`, `orderUUID`, `giftCardPackage`, `redirectUrl` | `isRedeemed`: the order exists and the eSIM is on its way; navigate by `orderUUID` (`redirectUrl` is a storefront path, not for the app) |
+| 201 | `success = true`, `message`, `email`, `orderUUID` | `awaitsEmailVerification`: the card is redeemed and the order exists, but the eSIM is delivered after the emailed code is verified through `AuthRepository.verifyEmail` |
+
+Both calls use the Bearer token when a customer is signed in and the client's Basic credentials otherwise, like every other public endpoint, and carry `Accept-Language` and `Accept-Currency` as usual: the first drives the confirmation email, the second sets a new customer's currency.
+
+A rejected card fails with `SdkError.NetworkError` whose `message` is the backend's translated `detail` and whose `apiCode` is one of the new `ApiErrorCode` values: `GIFT_CARD_PIN_REQUIRED`, `GIFT_CARD_INVALID`, `GIFT_CARD_ALREADY_REDEEMED`, `GIFT_CARD_NOT_ACTIVE`, `GIFT_CARD_UNUSABLE` and `GIFT_CARD_PRODUCT_NOT_FOUND` are InComm's verdict on the card (400); `GIFT_CARD_NOT_AVAILABLE` (404) means the tenant has no gift cards; `GIFT_CARD_IN_PROGRESS` (409) and `GIFT_CARD_UNAVAILABLE` (503) mean try again shortly.
+
+The PIN is redacted from SDK log lines like a voucher code.
 
 ## Changes in 3.6.0
 
@@ -1282,7 +1311,7 @@ The published coordinate is `io.github.esimplified:android-sdk:<version>`, and t
 
 ```kotlin
 mavenPublishing {
-    coordinates("io.github.esimplified", "android-sdk", "3.6.0")
+    coordinates("io.github.esimplified", "android-sdk", "3.7.0")
 }
 ```
 

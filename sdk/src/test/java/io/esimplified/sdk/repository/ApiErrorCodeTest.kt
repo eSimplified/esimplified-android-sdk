@@ -1,6 +1,7 @@
 package io.esimplified.sdk.repository
 
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
+import io.esimplified.sdk.model.GiftCardRedeemRequest
 import io.esimplified.sdk.network.ApiErrorCode
 import io.esimplified.sdk.network.ApiService
 import io.esimplified.sdk.network.SdkError
@@ -72,6 +73,22 @@ class ApiErrorCodeTest {
         val failure = VouchersRepositoryImpl(apiService).redeemVoucher("ABC").exceptionOrNull() as SdkError.NetworkError
 
         assertTrue(failure.hasApiCode(ApiErrorCode.PHONE_VERIFICATION_REQUIRED))
+    }
+
+    @Test
+    fun `a 400 verdict on a gift card carries its code and detail`() = runTest {
+        mockWebServer.enqueue(
+            MockResponse().setResponseCode(400)
+                .setBody("""{"detail":"This gift card has already been redeemed.","code":"gift_card_already_redeemed"}""")
+        )
+
+        val failure = VouchersRepositoryImpl(apiService)
+            .redeemGiftCard(GiftCardRedeemRequest(pin = "1234567890123456"))
+            .exceptionOrNull() as SdkError.NetworkError
+
+        assertEquals(400, failure.statusCode)
+        assertTrue(failure.hasApiCode(ApiErrorCode.GIFT_CARD_ALREADY_REDEEMED))
+        assertEquals("This gift card has already been redeemed.", failure.message)
     }
 
     @Test

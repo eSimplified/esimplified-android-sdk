@@ -31,6 +31,7 @@ import kotlinx.serialization.json.boolean
 import io.esimplified.sdk.model.SavedPaymentMethod
 import io.esimplified.sdk.model.PaymentRequest
 import io.esimplified.sdk.model.CustomerDetails
+import io.esimplified.sdk.model.GiftCardRedeemRequest
 import io.esimplified.sdk.network.SdkError
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -39,6 +40,7 @@ import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -603,6 +605,75 @@ class RepositoryIntegrationTest {
 
         val recorded = mockWebServer.takeRequest()
         assertTrue(recorded.path!!.contains("voucher"))
+    }
+
+    @Test
+    fun `VouchersRepository previewGiftCard posts the PIN to the preview endpoint and decodes the package`() = runTest {
+        enqueueJson("""{"package":{"package_type_id":990268,"name":"Australia 3 GB 10 Days","country":"AU","data":"3 GB","validity_days":10}}""")
+
+        val response = VouchersRepositoryImpl(apiService).previewGiftCard("1234567890123456")
+        assertTrue(response.isSuccess)
+        val plan = response.getOrNull()!!.giftCardPackage
+        assertEquals(990268, plan.packageTypeId)
+        assertEquals("Australia 3 GB 10 Days", plan.name)
+        assertEquals("AU", plan.country)
+        assertEquals("3 GB", plan.data)
+        assertEquals(10, plan.validityDays)
+
+        val recorded = mockWebServer.takeRequest()
+        assertEquals("POST", recorded.method)
+        assertTrue(recorded.path!!.contains("/customer/promotions/gift-card/preview/"))
+        val sent = Json.parseToJsonElement(recorded.body.readUtf8()).jsonObject
+        assertEquals("1234567890123456", sent["pin"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `VouchersRepository redeemGiftCard sends only the PIN and source with the Bearer token and decodes the 200`() = runTest {
+        enqueueJson("""{"redeemed":true,"order_uuid":"7d1e","package":{"package_type_id":990268,"name":"Australia 3 GB 10 Days"},"redirect_url":"order/1001?id=7d1e"}""")
+
+        val response = VouchersRepositoryImpl(apiService).redeemGiftCard(GiftCardRedeemRequest(pin = "1234567890123456"))
+        assertTrue(response.isSuccess)
+        val body = response.getOrNull()!!
+        assertTrue(body.isRedeemed)
+        assertFalse(body.awaitsEmailVerification)
+        assertEquals("7d1e", body.orderUUID)
+        assertEquals(990268, body.giftCardPackage?.packageTypeId)
+
+        val recorded = mockWebServer.takeRequest()
+        assertTrue(recorded.path!!.contains("/customer/promotions/gift-card/redeem/"))
+        assertEquals("Bearer tok", recorded.getHeader("authorization"))
+        val sent = Json.parseToJsonElement(recorded.body.readUtf8()).jsonObject
+        assertEquals("1234567890123456", sent["pin"]!!.jsonPrimitive.content)
+        assertEquals("gift-card", sent["acquisition_source"]!!.jsonPrimitive.content)
+        assertNull(sent["email"])
+        assertNull(sent["first_name"])
+    }
+
+    @Test
+    fun `VouchersRepository redeemGiftCard as a guest sends Basic credentials and decodes the 201`() = runTest {
+        sessionManager.save(Auth.Unauthenticated)
+        enqueueJson("""{"success":true,"message":"Check your email","customer_id":42,"email":"new@example.com","order_uuid":"9a2c"}""", code = 201)
+
+        val request = GiftCardRedeemRequest(
+            pin = "6543210987654321",
+            firstName = "Ada",
+            lastName = "Lovelace",
+            email = "new@example.com",
+            marketingOptIn = true,
+        )
+        val response = VouchersRepositoryImpl(apiService).redeemGiftCard(request)
+        assertTrue(response.isSuccess)
+        val body = response.getOrNull()!!
+        assertFalse(body.isRedeemed)
+        assertTrue(body.awaitsEmailVerification)
+        assertEquals("new@example.com", body.email)
+        assertEquals("9a2c", body.orderUUID)
+
+        val recorded = mockWebServer.takeRequest()
+        assertTrue(recorded.getHeader("authorization")!!.startsWith("Basic "))
+        val sent = Json.parseToJsonElement(recorded.body.readUtf8()).jsonObject
+        assertEquals("Ada", sent["first_name"]!!.jsonPrimitive.content)
+        assertEquals(true, sent["marketing_opt_in"]!!.jsonPrimitive.boolean)
     }
 
     // MARK: - VisaRewardsRepository

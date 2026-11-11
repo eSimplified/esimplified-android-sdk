@@ -51,6 +51,10 @@ import io.esimplified.sdk.model.VisaRewardsIframeResponse
 import io.esimplified.sdk.model.VisaRewardsResponse
 import io.esimplified.sdk.model.VoucherRedeemRequest
 import io.esimplified.sdk.model.VoucherRedeemResponse
+import io.esimplified.sdk.model.GiftCardPreviewRequest
+import io.esimplified.sdk.model.GiftCardPreviewResponse
+import io.esimplified.sdk.model.GiftCardRedeemRequest
+import io.esimplified.sdk.model.GiftCardRedeemResponse
 import io.esimplified.sdk.network.BaseResponse
 import okhttp3.ResponseBody
 import retrofit2.Response
@@ -347,6 +351,14 @@ internal interface ApiService {
     @POST("api/v2/customer/promotions/voucher/")
     @Headers("Accept: application/json", "Content-Type: application/json")
     suspend fun redeemVoucher(@Body data: VoucherRedeemRequest): VoucherRedeemResponse
+
+    @POST("api/v2/customer/promotions/gift-card/preview/")
+    @Headers("Accept: application/json", "Content-Type: application/json")
+    suspend fun previewGiftCard(@Body data: GiftCardPreviewRequest): GiftCardPreviewResponse
+
+    @POST("api/v2/customer/promotions/gift-card/redeem/")
+    @Headers("Accept: application/json", "Content-Type: application/json")
+    suspend fun redeemGiftCard(@Body data: GiftCardRedeemRequest): GiftCardRedeemResponse
 
     @POST("api/v2/payments/quote/")
     @Headers("Accept: application/json", "Content-Type: application/json")

@@ -40,4 +40,13 @@ enum class ApiErrorCode(val value: String) {
     PROVIDER_ERROR("provider_error"),
     PHONE_VERIFICATION_REQUIRED("phone_verification_required"),
     EMAIL_NOT_VERIFIED("email_not_verified"),
+    GIFT_CARD_PIN_REQUIRED("gift_card_pin_required"),
+    GIFT_CARD_INVALID("gift_card_invalid"),
+    GIFT_CARD_ALREADY_REDEEMED("gift_card_already_redeemed"),
+    GIFT_CARD_NOT_ACTIVE("gift_card_not_active"),
+    GIFT_CARD_UNUSABLE("gift_card_unusable"),
+    GIFT_CARD_PRODUCT_NOT_FOUND("gift_card_product_not_found"),
+    GIFT_CARD_NOT_AVAILABLE("gift_card_not_available"),
+    GIFT_CARD_IN_PROGRESS("gift_card_in_progress"),
+    GIFT_CARD_UNAVAILABLE("gift_card_unavailable"),
 }

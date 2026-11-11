@@ -210,6 +210,45 @@ class ModelDecodingTest {
     }
 
     @Test
+    fun `GiftCardPreviewResponse decodes the unlocked package`() {
+        val payload = """{"package":{"package_type_id":990282,"name":"France 3 GB 30 Days","country":"FR","data":"3 GB","validity_days":30}}"""
+        val r = json.decodeFromString<GiftCardPreviewResponse>(payload)
+        assertEquals(990282, r.giftCardPackage.packageTypeId)
+        assertEquals("France 3 GB 30 Days", r.giftCardPackage.name)
+        assertEquals("FR", r.giftCardPackage.country)
+        assertEquals("3 GB", r.giftCardPackage.data)
+        assertEquals(30, r.giftCardPackage.validityDays)
+    }
+
+    @Test
+    fun `GiftCardRedeemResponse 200 is redeemed with an order`() {
+        val payload = """{"redeemed":true,"order_uuid":"abc","package":{"package_type_id":1,"name":"X"},"redirect_url":"order/7?id=abc"}"""
+        val r = json.decodeFromString<GiftCardRedeemResponse>(payload)
+        assertTrue(r.isRedeemed)
+        assertFalse(r.awaitsEmailVerification)
+        assertEquals("abc", r.orderUUID)
+        assertEquals("order/7?id=abc", r.redirectUrl)
+        assertEquals(1, r.giftCardPackage?.packageTypeId)
+    }
+
+    @Test
+    fun `GiftCardRedeemResponse 201 awaits email verification`() {
+        val payload = """{"success":true,"message":"m","customer_id":5,"email":"e@x.io","order_uuid":"abc"}"""
+        val r = json.decodeFromString<GiftCardRedeemResponse>(payload)
+        assertFalse(r.isRedeemed)
+        assertTrue(r.awaitsEmailVerification)
+        assertEquals("e@x.io", r.email)
+        assertEquals("abc", r.orderUUID)
+        assertNull(r.giftCardPackage)
+    }
+
+    @Test
+    fun `GiftCardRedeemRequest serialises a signed-in claim as pin and source only`() {
+        val encoded = json.encodeToString(GiftCardRedeemRequest.serializer(), GiftCardRedeemRequest(pin = "1234567890123456"))
+        assertEquals("""{"pin":"1234567890123456","acquisition_source":"gift-card"}""", encoded)
+    }
+
+    @Test
     fun `VisaRewardsResponse decodes eligibility and reward data`() {
         val payload = """
             {

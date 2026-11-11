@@ -32,6 +32,8 @@ class SerializableModelGuardTest {
     /** Serialized outbound only -- the SDK builds these, the API never sends them back. */
     private val outboundRequests = setOf(
         "CustomerChangePassword.new_password",
+        "GiftCardPreviewRequest.pin",
+        "GiftCardRedeemRequest.pin",
         "KredsQuoteRequest.package_type_id",
         "MokafaaOtpInitiateRequest.platform",
         "MokafaaOtpInitiateRequest.purpose",
@@ -111,6 +113,7 @@ class SerializableModelGuardTest {
     /** Identity and routing keys. A blank one would silently mis-address a request or a cache entry. */
     private val identifiers = setOf(
         "Customer.customer_id",
+        "GiftCardPackage.package_type_id",
         "OrderDetail.customer_id",
         "OrderDetail.order_number",
         "OrderDetail.package_type_id",
@@ -124,6 +127,7 @@ class SerializableModelGuardTest {
     /** The payload itself, or a token the flow cannot continue without. */
     private val structural = setOf(
         "BaseResponse.results",
+        "GiftCardPreviewResponse.package",
         "KredsQuotePricing.order_currency",
         "KredsQuoteResponse.pricing",
         "MokafaaOtpInitiateResponse.expires_at",
@@ -163,6 +167,11 @@ class SerializableModelGuardTest {
         EsimProfile.serializer(),
         GetTokenIntrospectResponse.serializer(),
         GetTokenResponse.serializer(),
+        GiftCardPackage.serializer(),
+        GiftCardPreviewRequest.serializer(),
+        GiftCardPreviewResponse.serializer(),
+        GiftCardRedeemRequest.serializer(),
+        GiftCardRedeemResponse.serializer(),
         IframeRequest.serializer(),
         KredsLoyaltyBalanceResponse.serializer(),
         KredsQuoteRequest.serializer(),
