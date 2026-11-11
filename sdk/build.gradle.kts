@@ -46,7 +46,7 @@ dependencies {
 }
 
 mavenPublishing {
-    coordinates("io.github.esimplified", "android-sdk", "3.6.0")
+    coordinates("io.github.esimplified", "android-sdk", "3.7.0")
 
     pom {
         name.set("eSIMplified Android SDK")

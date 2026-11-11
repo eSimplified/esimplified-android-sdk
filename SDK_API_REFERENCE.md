@@ -2,7 +2,7 @@
 
 For client teams integrating the SDK into an Android app. Covers installation, configuration, every repository method available to you, and the full shape of every model the API returns.
 
-Documents `io.github.esimplified:android-sdk:3.6.0`, the version on Maven Central.
+Documents `io.github.esimplified:android-sdk:3.7.0`, the version on Maven Central.
 
 For a shorter tour with worked examples, see [README.md](README.md). This document is the complete reference.
 
@@ -75,7 +75,7 @@ The SDK is published to Maven Central, which every Gradle project already resolv
 ```kotlin
 // build.gradle.kts (app)
 dependencies {
-    implementation("io.github.esimplified:android-sdk:3.6.0")
+    implementation("io.github.esimplified:android-sdk:3.7.0")
     implementation("io.insert-koin:koin-android:4.1.1")
 }
 
@@ -101,7 +101,7 @@ Without it Android refuses the socket and every call fails with a `SecurityExcep
 
 ## 3b. Which versions you will receive
 
-Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.6.0")` resolves to 3.6.0 and nothing else — there are no version ranges and no BOM in these instructions — so a new release never reaches your build until someone on your team edits that number. Nothing in this section can happen to you without that edit; it describes what you are choosing between when you make it.
+Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.7.0")` resolves to 3.7.0 and nothing else — there are no version ranges and no BOM in these instructions — so a new release never reaches your build until someone on your team edits that number. Nothing in this section can happen to you without that edit; it describes what you are choosing between when you make it.
 
 | What changed | Version goes | What you do |
 |---|---|---|
@@ -501,6 +501,15 @@ if (result.isStale && result.isOffline) showOfflineBanner()
 | `PROVIDER_ERROR` | `provider_error` | Phone verification: the SMS or WhatsApp provider failed |
 | `PHONE_VERIFICATION_REQUIRED` | `phone_verification_required` | Any guarded customer call: verify the phone, then retry |
 | `EMAIL_NOT_VERIFIED` | `email_not_verified` | Login: the email address was never verified; a fresh code has been emailed |
+| `GIFT_CARD_PIN_REQUIRED` | `gift_card_pin_required` | Gift card: the body had no PIN (400) |
+| `GIFT_CARD_INVALID` | `gift_card_invalid` | Gift card: InComm does not recognise the PIN (400) |
+| `GIFT_CARD_ALREADY_REDEEMED` | `gift_card_already_redeemed` | Gift card: the card has been spent (400) |
+| `GIFT_CARD_NOT_ACTIVE` | `gift_card_not_active` | Gift card: the card was never activated at the till (400) |
+| `GIFT_CARD_UNUSABLE` | `gift_card_unusable` | Gift card: InComm refuses the card for another reason (400) |
+| `GIFT_CARD_PRODUCT_NOT_FOUND` | `gift_card_product_not_found` | Gift card: the card maps to no package on this tenant (400) |
+| `GIFT_CARD_NOT_AVAILABLE` | `gift_card_not_available` | Gift card: the tenant has no gift cards (404) |
+| `GIFT_CARD_IN_PROGRESS` | `gift_card_in_progress` | Gift card: a redemption of this PIN is already running, try again shortly (409) |
+| `GIFT_CARD_UNAVAILABLE` | `gift_card_unavailable` | Gift card: InComm is unreachable, try again shortly (503) |
 
 On a rejected login the token endpoint's OAuth `error` (`invalid_grant`, `email_not_verified`) is carried as `apiCode` when the body has no `code`. `SdkError.isEmailNotVerified` is true for `email_not_verified`, and for `invalid_grant` whose description contains "not verified" (case-insensitive) — the backend sends that today and re-emails the verification code; a plain wrong password (`invalid_grant`, "Invalid credentials") is false.
 
@@ -515,7 +524,7 @@ The SDK's other public exception types, all thrown rather than returned:
 | `PaymentApiException(httpCode: Int, type: String?, message: String?)` | `io.esimplified.sdk.network` | `PaymentsRepository.getPaymentIntent` | Payment rejected. `type` is `PaymentApiException.TYPE_VALIDATION_ERROR` for a bad request |
 | `SecureStorageInitException(cause: Throwable)` | `io.esimplified.sdk.auth` | `EsimplifiedSdk.initialize()`, via the default storage provider | `EncryptedSharedPreferences` could not be initialised. The SDK refuses to fall back to plaintext — sign the customer out and re-prompt |
 
-`VouchersRepository.redeemVoucher` is the one method that returns Kotlin's own `Result<T>` instead; its failure is an `SdkError` like any other.
+`VouchersRepository`'s methods (`redeemVoucher`, `previewGiftCard`, `redeemGiftCard`) return Kotlin's own `Result<T>` instead; a failure is an `SdkError` like any other.
 
 Every API rejection a repository raises is an `SdkError.NetworkError` whose `message` is the backend's error text, parsed out of the response body and carried verbatim. Every other `SdkError` means the SDK itself failed and its message belongs in your logs, not on screen. Branch on the type rather than on the message:
 
@@ -903,6 +912,8 @@ Customer-token calls. Both throw an `SdkError.NetworkError` carrying the API's `
 | Function | Parameters | Returns | Description |
 |----------|-----------|---------|-------------|
 | `redeemVoucher` | `code: String` | `Result<VoucherRedeemResponse>` | Redeem a voucher code |
+| `previewGiftCard` | `pin: String` | `Result<GiftCardPreviewResponse>` | Show the package a gift-card PIN unlocks, without spending the card. Read-only and repeatable |
+| `redeemGiftCard` | `request: GiftCardRedeemRequest` | `Result<GiftCardRedeemResponse>` | Redeem a gift-card PIN. A signed-in customer sends only the `pin`; a guest also sends name, email and `marketingOptIn`. The result is `isRedeemed` (200, order created) or `awaitsEmailVerification` (201, order created, eSIM delivered after `AuthRepository.verifyEmail`). A 400 is InComm's verdict and carries a `gift_card_*` code; 404 means the tenant has no gift cards; 409 and 503 mean try again shortly |
 
 ---
 
@@ -1367,6 +1378,43 @@ Decoding is total: any wire value the enum does not recognise becomes `UNKNOWN` 
 | redeemed | Boolean | Success flag |
 | redirectUrl | String? | Redirect URL after redeem |
 | orderUUID | String? | Extracted order ID (computed) |
+
+### GiftCardPackage
+
+The package a gift-card PIN unlocks. Returned inside `GiftCardPreviewResponse` and, on a 200, `GiftCardRedeemResponse`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| packageTypeId | Int | Package type id (`package_type_id`) |
+| name | String | Package name, e.g. "France 3 GB 30 Days"; empty when the API omits it |
+| country | String? | ISO country code the plan covers, e.g. "FR" |
+| data | String? | Data allowance as text, e.g. "3 GB" |
+| validityDays | Int? | Validity in days (`validity_days`) |
+
+### GiftCardPreviewResponse
+
+Returned by `VouchersRepository.previewGiftCard`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| giftCardPackage | GiftCardPackage | The package the PIN unlocks (`package` on the wire) |
+
+### GiftCardRedeemResponse
+
+Returned by `VouchersRepository.redeemGiftCard`. A 200 fills the first group, a 201 the second; the computed flags tell them apart.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| redeemed | Boolean? | `true` on a 200 |
+| orderUUID | String? | The order created by the redemption (`order_uuid`), on both statuses |
+| giftCardPackage | GiftCardPackage? | The package redeemed (`package`), on a 200 |
+| redirectUrl | String? | Storefront path such as `order/1001?id=<uuid>` (`redirect_url`), on a 200; navigate by `orderUUID` instead |
+| success | Boolean? | `true` on a 201 |
+| message | String? | The backend's explanation, on a 201 |
+| email | String? | The address the verification code went to, on a 201 |
+| **Computed properties** | — | Derived in Kotlin from the fields above; not part of the JSON |
+| isRedeemed | Boolean | `redeemed == true` |
+| awaitsEmailVerification | Boolean | Not redeemed and `success == true`: the order exists, the eSIM follows email verification |
 
 ### RatingApiResponse
 
@@ -2069,6 +2117,27 @@ Built internally by `VouchersRepository.redeemVoucher` — you pass the code as 
 | Field | Type | Description |
 |-------|------|-------------|
 | voucherCode | String | The voucher code |
+
+### GiftCardPreviewRequest
+
+Built internally by `VouchersRepository.previewGiftCard` — you pass the PIN as a `String`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| pin | String | The gift-card PIN |
+
+### GiftCardRedeemRequest
+
+Passed to `VouchersRepository.redeemGiftCard`. A signed-in customer sets only `pin`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| pin | String | The gift-card PIN |
+| firstName | String? | Guest only (`first_name`) |
+| lastName | String? | Guest only (`last_name`) |
+| email | String? | Guest only; the order and verification code go here |
+| marketingOptIn | Boolean? | Guest only (`marketing_opt_in`) |
+| acquisitionSource | String? | Defaults to `"gift-card"` (`acquisition_source`) |
 
 ### ThemeImage
 

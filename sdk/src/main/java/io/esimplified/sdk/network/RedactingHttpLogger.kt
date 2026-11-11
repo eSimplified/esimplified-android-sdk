@@ -149,6 +149,7 @@ internal class RedactingHttpLogger : Interceptor {
             "msisdn",
             "voucher_code",
             "promo_code",
+            "pin",
         )
 
         val jsonParser = Json {
