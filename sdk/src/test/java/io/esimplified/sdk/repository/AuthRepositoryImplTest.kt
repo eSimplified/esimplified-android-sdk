@@ -511,6 +511,73 @@ class AuthRepositoryImplTest {
         assertEquals("Kieran", savedUser.firstName)
     }
 
+    // region Google sign-in
+    @Test
+    fun `signInWithGoogleResponse reports a newly created account and saves the session`() = runTest {
+        enqueueGoogleSignIn(newUser = true)
+
+        val response = googleSignInResponse()
+
+        assertEquals(true, response.newUser)
+        assertEquals("user-123", response.user?.id)
+        assertEquals("google-access-token", sessionManager.getAccessToken())
+    }
+
+    @Test
+    fun `signInWithGoogleResponse leaves newUser null for an existing account`() = runTest {
+        enqueueGoogleSignIn(newUser = null)
+
+        assertEquals(null, googleSignInResponse().newUser)
+    }
+
+    @Test
+    fun `signInWithGoogle still returns the customer and saves the session`() = runTest {
+        enqueueGoogleSignIn(newUser = true)
+
+        val customer = authRepository.signInWithGoogle(
+            email = "test@example.com",
+            firstName = "Test",
+            lastName = "User",
+            fullName = "Test User",
+            phoneNumber = "",
+            providerAccountId = "google-account",
+            idToken = "google-id-token",
+        )
+
+        assertEquals("user-123", customer.id)
+        assertEquals("google-access-token", sessionManager.getAccessToken())
+    }
+
+    private suspend fun googleSignInResponse() = authRepository.signInWithGoogleResponse(
+        email = "test@example.com",
+        firstName = "Test",
+        lastName = "User",
+        fullName = "Test User",
+        phoneNumber = "",
+        providerAccountId = "google-account",
+        idToken = "google-id-token",
+    )
+
+    private fun enqueueGoogleSignIn(newUser: Boolean?) {
+        val newUserField = newUser?.let { """"new_user": $it,""" }.orEmpty()
+        mockWebServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """
+                    {
+                        $newUserField
+                        "access_token": "google-access-token",
+                        "refresh_token": "google-refresh-token",
+                        "expires_in": 3600,
+                        "user": { "customer_id": "user-123", "email": "test@example.com" }
+                    }
+                    """.trimIndent()
+                )
+        )
+    }
+    // endregion
+
     // region Logout
     @Test
     fun `logout clears the cached eSIM list so the next customer is not served the previous one's`() = runTest {

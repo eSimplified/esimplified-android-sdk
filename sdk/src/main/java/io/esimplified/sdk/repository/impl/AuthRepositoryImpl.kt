@@ -147,7 +147,25 @@ internal class AuthRepositoryImpl(
         phoneNumber: String,
         providerAccountId: String,
         idToken: String
-    ): Customer {
+    ): Customer = signInWithGoogleResponse(
+        email = email,
+        firstName = firstName,
+        lastName = lastName,
+        fullName = fullName,
+        phoneNumber = phoneNumber,
+        providerAccountId = providerAccountId,
+        idToken = idToken,
+    ).user ?: throw apiRejection(null, GOOGLE_SIGN_IN_FAILED_MESSAGE)
+
+    override suspend fun signInWithGoogleResponse(
+        email: String,
+        firstName: String,
+        lastName: String,
+        fullName: String,
+        phoneNumber: String,
+        providerAccountId: String,
+        idToken: String
+    ): GetTokenResponse {
         try {
             val response = apiService.getSignInWith(
                 email = email,
@@ -177,7 +195,7 @@ internal class AuthRepositoryImpl(
             )
             sessionManager.save(auth)
 
-            return user
+            return response
         } catch (e: HttpException) {
             throw e.asNetworkError(GOOGLE_SIGN_IN_FAILED_MESSAGE)
         }

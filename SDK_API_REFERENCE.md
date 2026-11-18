@@ -2,7 +2,7 @@
 
 For client teams integrating the SDK into an Android app. Covers installation, configuration, every repository method available to you, and the full shape of every model the API returns.
 
-Documents `io.github.esimplified:android-sdk:3.7.0`, the version on Maven Central.
+Documents `io.github.esimplified:android-sdk:3.8.0`, the version on Maven Central.
 
 For a shorter tour with worked examples, see [README.md](README.md). This document is the complete reference.
 
@@ -75,7 +75,7 @@ The SDK is published to Maven Central, which every Gradle project already resolv
 ```kotlin
 // build.gradle.kts (app)
 dependencies {
-    implementation("io.github.esimplified:android-sdk:3.7.0")
+    implementation("io.github.esimplified:android-sdk:3.8.0")
     implementation("io.insert-koin:koin-android:4.1.1")
 }
 
@@ -101,7 +101,7 @@ Without it Android refuses the socket and every call fails with a `SecurityExcep
 
 ## 3b. Which versions you will receive
 
-Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.7.0")` resolves to 3.7.0 and nothing else — there are no version ranges and no BOM in these instructions — so a new release never reaches your build until someone on your team edits that number. Nothing in this section can happen to you without that edit; it describes what you are choosing between when you make it.
+Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.8.0")` resolves to 3.8.0 and nothing else — there are no version ranges and no BOM in these instructions — so a new release never reaches your build until someone on your team edits that number. Nothing in this section can happen to you without that edit; it describes what you are choosing between when you make it.
 
 | What changed | Version goes | What you do |
 |---|---|---|
@@ -572,6 +572,7 @@ One row per `…Result` method in the SDK. They take the same arguments as the m
 | `FaqAndSupportRepository` | `fetchTermsResult` | `fetchTerms` | `RepositoryResult<ContentDocument?>` |
 | `FaqAndSupportRepository` | `fetchPrivacyResult` | `fetchPrivacy` | `RepositoryResult<ContentDocument?>` |
 | `FaqAndSupportRepository` | `fetchFaqsResult` | `fetchFaqs` | `RepositoryResult<ContentDocument?>` |
+| `LocalizationRepository` | `fetchLocalizationResult` | `fetchLocalization` | `RepositoryResult<Localization>` |
 | `LoyaltyRepository` | `getLoyaltyBalanceResult` | `getLoyaltyBalance` | `RepositoryResult<KredsLoyaltyBalanceResponse?>` |
 | `MarketingRepository` | `fetchPromosResult` | `fetchPromos` | `RepositoryResult<List<Promo>>` |
 | `OrdersRepository` | `getOrderHistoryResult` | `getOrderHistory` | `RepositoryResult<List<OrderHistoryItem>>` |
@@ -635,6 +636,7 @@ inside a `@Composable` (that one needs `koin-androidx-compose`).
 | `login` | `email: String, password: String` | `Customer` | Email/password login |
 | `loginWithRefreshToken` | `refreshToken: String` | `Customer` | Login using stored refresh token |
 | `signInWithGoogle` | `email: String, firstName: String, lastName: String, fullName: String, phoneNumber: String, providerAccountId: String, idToken: String` | `Customer` | Google OAuth sign-in |
+| `signInWithGoogleResponse` | `email: String, firstName: String, lastName: String, fullName: String, phoneNumber: String, providerAccountId: String, idToken: String` | `GetTokenResponse` | The same sign-in, returning the whole response; `newUser` is `true` when it created the account |
 | `register` | `email: String, password: String, firstName: String, lastName: String, phoneNumber: String, marketingConsent: Boolean?, referredBy: String? = null, loyaltyElection: String? = null` | `ProfileResponse` | Create new account |
 
 #### Password Management
@@ -872,6 +874,22 @@ A promo whose fields the API omits or nulls still decodes: every field but `slug
 nullable, and those two fall back to an empty string. One incomplete promo therefore never empties the
 carousel. When the network read fails and an expired entry is cached, the previous carousel comes back
 flagged `isStale`; with nothing cached you get an empty list and the failure on the `…Result` twin.
+
+---
+
+### LocalizationRepository
+
+| Function | Parameters | Returns | Description |
+|----------|-----------|---------|-------------|
+| `fetchLocalization` | `include: LocalizationInclude? = null, forceRefresh: Boolean = false, cacheTTL: Duration = LOCALIZATION_TTL` | `Localization` | The tenant's supported currencies and languages; pass `include` to fetch one list only |
+| `invalidateCache` | — | `Unit` | Drop this repository's cached entries |
+
+Cached (`LOCALIZATION_TTL` = 1 h), one entry per `include`. `…Result` twin: `fetchLocalizationResult`.
+
+The endpoint is public, so it works before sign-in. A list that was not requested comes back empty
+and its default `null`. When the network read fails and an expired entry is cached, the previous
+lists come back flagged `isStale`; with nothing cached you get an empty `Localization` and the
+failure on the `…Result` twin.
 
 ---
 
@@ -1465,6 +1483,37 @@ Returned by `VouchersRepository.redeemGiftCard`. A 200 fills the first group, a 
 | gallery | List\<String\>? | Gallery image URLs |
 | countryCode | String? | Country code the theme belongs to |
 
+### Localization
+
+| Field | Type | Description |
+|-------|------|-------------|
+| defaultCurrency | String? | The tenant's default currency code; `null` when currencies were not requested |
+| currencies | List\<SupportedCurrency\> | Supported currencies; empty when not requested |
+| defaultLanguage | String? | The tenant's default language code; `null` when languages were not requested |
+| languages | List\<SupportedLanguage\> | Supported languages; empty when not requested |
+
+### LocalizationInclude (Enum)
+
+| Value | Sent as | Meaning |
+|-------|---------|---------|
+| CURRENCIES | `currencies` | Fetch the currency list only |
+| LANGUAGES | `languages` | Fetch the language list only |
+
+### SupportedCurrency
+
+| Field | Type | Description |
+|-------|------|-------------|
+| code | String | ISO 4217 code, e.g. `USD` |
+| name | String? | Display name |
+| symbol | String? | Currency symbol |
+
+### SupportedLanguage
+
+| Field | Type | Description |
+|-------|------|-------------|
+| code | String | Language code, e.g. `en` |
+| name | String? | Display name |
+
 ### OrdersPage
 
 | Field | Type | Description |
@@ -1649,7 +1698,7 @@ A phone-number country code. Standalone helper — no repository returns it. Par
 
 ## 10c. Token models
 
-These describe the OAuth2 exchange the SDK performs for you. Token handling is internal; you will not normally construct or receive these.
+These describe the OAuth2 exchange the SDK performs for you. Token handling is internal; the one place you receive a `GetTokenResponse` is `AuthRepository.signInWithGoogleResponse`.
 
 ### GetTokenResponse
 
@@ -1664,6 +1713,7 @@ These describe the OAuth2 exchange the SDK performs for you. Token handling is i
 | error | String? | Error code, when the exchange failed |
 | detail | String? | Backend detail message |
 | description | String? | Human-readable error (`error_description`) |
+| newUser | Boolean? | `true` when a provider sign-in created the account (`new_user`); absent otherwise |
 
 ### GetTokenIntrospectResponse
 

@@ -6,6 +6,7 @@ import io.esimplified.sdk.model.ProfileResponse
 import io.esimplified.sdk.model.VerifyEmailResponse
 import io.esimplified.sdk.model.Customer
 import io.esimplified.sdk.model.DeleteProfileResponse
+import io.esimplified.sdk.model.GetTokenResponse
 
 interface AuthRepository {
 
@@ -21,6 +22,18 @@ interface AuthRepository {
         providerAccountId: String,
         idToken: String
     ): Customer
+
+    suspend fun signInWithGoogleResponse(
+        email: String,
+        firstName: String,
+        lastName: String,
+        fullName: String,
+        phoneNumber: String,
+        providerAccountId: String,
+        idToken: String
+    ): GetTokenResponse {
+        throw UnsupportedOperationException("signInWithGoogleResponse is not implemented")
+    }
     // endregion
 
     // region Registration

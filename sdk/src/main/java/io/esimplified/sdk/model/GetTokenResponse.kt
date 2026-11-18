@@ -23,6 +23,8 @@ data class GetTokenResponse(
     val detail: String? = null,
     @SerialName("error_description")
     val description: String? = null,
+    @SerialName("new_user")
+    val newUser: Boolean? = null,
 )
 
 @Serializable
