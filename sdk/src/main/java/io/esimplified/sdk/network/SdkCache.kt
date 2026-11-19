@@ -14,6 +14,11 @@ internal class SdkCache(
     }
 
     internal val store = ConcurrentHashMap<String, Entry>()
+    private val lock = Any()
+    private var invalidations = 0L
+
+    val invalidationCount: Long
+        get() = synchronized(lock) { invalidations }
 
     // region Reads
     inline fun <reified T : Any> get(key: String): T? {
@@ -31,17 +36,32 @@ internal class SdkCache(
         store[key] = Entry(value, System.currentTimeMillis() + resolvedTtl.inWholeMilliseconds)
     }
 
+    fun setUnlessInvalidatedSince(invalidationCount: Long, key: String, value: Any, ttl: Duration? = null) {
+        synchronized(lock) {
+            if (invalidations == invalidationCount) set(key, value, ttl)
+        }
+    }
+
     fun remove(key: String) {
-        store.remove(key)
+        synchronized(lock) {
+            invalidations++
+            store.remove(key)
+        }
     }
 
     fun removeWithPrefix(prefix: String) {
-        val keysToRemove = store.keys.filter { it.startsWith(prefix) }
-        keysToRemove.forEach { store.remove(it) }
+        synchronized(lock) {
+            invalidations++
+            val keysToRemove = store.keys.filter { it.startsWith(prefix) }
+            keysToRemove.forEach { store.remove(it) }
+        }
     }
 
     fun clear() {
-        store.clear()
+        synchronized(lock) {
+            invalidations++
+            store.clear()
+        }
     }
     // endregion
 

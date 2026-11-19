@@ -19,9 +19,10 @@ internal suspend inline fun <reified T : Any> SdkCache.cachedResult(
         val fresh = get<T>(key)
         if (fresh != null) return RepositoryResult(fresh)
     }
+    val startedAt = invalidationCount
     return try {
         val fetched = fetch()
-        set(key, fetched, ttl)
+        setUnlessInvalidatedSince(startedAt, key, fetched, ttl)
         RepositoryResult(fetched)
     } catch (cancellation: CancellationException) {
         throw cancellation
