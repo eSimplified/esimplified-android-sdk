@@ -26,6 +26,7 @@ import io.esimplified.sdk.model.GetTokenResponse
 import io.esimplified.sdk.model.IframeRequest
 import io.esimplified.sdk.model.OrderHistoryItem
 import io.esimplified.sdk.model.KredsLoyaltyBalanceResponse
+import io.esimplified.sdk.model.Localization
 import io.esimplified.sdk.model.MarketingPromos
 import io.esimplified.sdk.model.MokafaaOtpInitiateRequest
 import io.esimplified.sdk.model.MokafaaOtpInitiateResponse
@@ -331,6 +332,10 @@ internal interface ApiService {
     @GET("api/v2/marketing/")
     @Headers("Accept: application/json", "Content-Type: application/json")
     suspend fun getMarketingPromos(): MarketingPromos
+
+    @GET("api/v2/localization/")
+    @Headers("Accept: application/json", "Content-Type: application/json")
+    suspend fun getLocalization(@Query("include") include: String? = null): Localization
 
     @GET("api/v2/theme/")
     @Headers("Accept: application/json", "Content-Type: application/json")

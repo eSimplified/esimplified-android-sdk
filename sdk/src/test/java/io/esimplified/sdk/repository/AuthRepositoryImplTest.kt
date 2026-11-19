@@ -511,6 +511,108 @@ class AuthRepositoryImplTest {
         assertEquals("Kieran", savedUser.firstName)
     }
 
+    // region Google sign-in
+    @Test
+    fun `signInWithGoogleResponse reports a newly created account and saves the session`() = runTest {
+        enqueueGoogleSignIn(newUser = true)
+
+        val response = googleSignInResponse()
+
+        assertEquals(true, response.newUser)
+        assertEquals("user-123", response.user?.id)
+        assertEquals("google-access-token", sessionManager.getAccessToken())
+    }
+
+    @Test
+    fun `signInWithGoogleResponse leaves newUser null for an existing account`() = runTest {
+        enqueueGoogleSignIn(newUser = null)
+
+        assertEquals(null, googleSignInResponse().newUser)
+    }
+
+    @Test
+    fun `the sign-in response never prints its tokens`() = runTest {
+        enqueueGoogleSignIn(newUser = true)
+
+        val printed = googleSignInResponse().toString()
+
+        assertFalse(printed.contains("google-access-token"))
+        assertFalse(printed.contains("google-refresh-token"))
+        assertTrue(printed.contains("newUser=true"))
+    }
+
+    @Test
+    fun `signInWithGoogle still returns the customer and saves the session`() = runTest {
+        enqueueGoogleSignIn(newUser = true)
+
+        val customer = authRepository.signInWithGoogle(
+            email = "test@example.com",
+            firstName = "Test",
+            lastName = "User",
+            fullName = "Test User",
+            phoneNumber = "",
+            providerAccountId = "google-account",
+            idToken = "google-id-token",
+        )
+
+        assertEquals("user-123", customer.id)
+        assertEquals("google-access-token", sessionManager.getAccessToken())
+    }
+
+    @Test
+    fun `a Google sign-in the backend refuses fails with its status and saves no session`() = runTest {
+        mockWebServer.enqueue(
+            MockResponse().setResponseCode(400)
+                .setBody("""{"error":"invalid_grant","error_description":"Google token is not valid."}""")
+        )
+
+        val failure = runCatching { googleSignInResponse() }.exceptionOrNull() as SdkError.NetworkError
+
+        assertEquals(400, failure.statusCode)
+        assertFalse(sessionManager.isAuthenticated())
+    }
+
+    @Test
+    fun `a Google sign-in answer with no access token fails and saves no session`() = runTest {
+        mockWebServer.enqueue(
+            MockResponse().setResponseCode(200)
+                .setBody("""{"user": { "customer_id": "user-123", "email": "test@example.com" }}""")
+        )
+
+        assertTrue(runCatching { googleSignInResponse() }.exceptionOrNull() is SdkError.NetworkError)
+        assertFalse(sessionManager.isAuthenticated())
+    }
+
+    private suspend fun googleSignInResponse() = authRepository.signInWithGoogleResponse(
+        email = "test@example.com",
+        firstName = "Test",
+        lastName = "User",
+        fullName = "Test User",
+        phoneNumber = "",
+        providerAccountId = "google-account",
+        idToken = "google-id-token",
+    )
+
+    private fun enqueueGoogleSignIn(newUser: Boolean?) {
+        val newUserField = newUser?.let { """"new_user": $it,""" }.orEmpty()
+        mockWebServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """
+                    {
+                        $newUserField
+                        "access_token": "google-access-token",
+                        "refresh_token": "google-refresh-token",
+                        "expires_in": 3600,
+                        "user": { "customer_id": "user-123", "email": "test@example.com" }
+                    }
+                    """.trimIndent()
+                )
+        )
+    }
+    // endregion
+
     // region Logout
     @Test
     fun `logout clears the cached eSIM list so the next customer is not served the previous one's`() = runTest {

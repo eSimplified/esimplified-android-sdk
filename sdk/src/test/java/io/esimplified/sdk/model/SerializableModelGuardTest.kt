@@ -176,6 +176,7 @@ class SerializableModelGuardTest {
         KredsLoyaltyBalanceResponse.serializer(),
         KredsQuoteRequest.serializer(),
         KredsQuoteResponse.serializer(),
+        Localization.serializer(),
         LoyaltyPointsDetail.serializer(),
         MarketingPromos.serializer(),
         LoyaltyPointsOriginal.serializer(),

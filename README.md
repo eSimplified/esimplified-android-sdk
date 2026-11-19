@@ -8,9 +8,9 @@
 
 Kotlin SDK for integrating the eSimplified eSIM platform into Android applications. Provides typed repository interfaces for authentication, eSIM management, package browsing, orders, payments, and more. All networking, authentication, and token management are handled internally -- consuming apps interact only with clean Kotlin interfaces.
 
-**Coordinates:** `io.github.esimplified:android-sdk:3.7.0`
+**Coordinates:** `io.github.esimplified:android-sdk:3.8.0`
 
-That is the version this README describes. It adds partner-offer card eligibility, card deletion, Stripe setup intents and discounted stored-card charges to `PaymentsRepository`, promo-coded package reads to `PackagesRepository`, SmartPay hosted checkout to `PaymentsRepository` and `awaitSettlement` to `OrdersRepository`; nothing a caller writes has to change to take it.
+That is the version this README describes. It adds `LocalizationRepository` for the tenant's supported currencies and languages, and `signInWithGoogleResponse` on `AuthRepository`, which says whether a Google sign-in created the account; nothing a caller writes has to change to take it.
 
 ## What the SDK covers
 
@@ -31,6 +31,7 @@ What you get without writing any networking, token handling, or caching of your 
 | **Visa rewards** | Eligibility iframe, token verification, and reward activation | `VisaRewardsRepository` |
 | **Notifications** | Read and update the customer's per-channel notification preferences. Delivery itself is your app's job | `NotificationRepository` |
 | **FAQ and support** | Destination FAQs, plus terms, privacy and general FAQs as structured documents | `FaqAndSupportRepository` |
+| **Localization** | The currencies and languages the tenant supports, so those lists change without an app release | `LocalizationRepository` |
 | **Themes** | Per-page and per-destination imagery and accent colours served by the API, so branding changes without an app release | `ThemeRepository` |
 | **Store reviews** | Aggregate store rating, review list and per-star statistics | `StoreReviewRepository` |
 | **Local UI flags** | Small persisted booleans for eSIM-support prompts | `UserRepository` |
@@ -78,7 +79,7 @@ The SDK is published to Maven Central. No extra repositories or authentication n
 ```kotlin
 // build.gradle.kts (app)
 dependencies {
-    implementation("io.github.esimplified:android-sdk:3.7.0")
+    implementation("io.github.esimplified:android-sdk:3.8.0")
 
     // Required. The SDK declares its own dependencies as `implementation`, so they
     // resolve at runtime but are NOT on your compile classpath. You call
@@ -105,7 +106,7 @@ Everything else the SDK needs — Retrofit, OkHttp, kotlinx.serialization, kotli
 
 ## Versioning
 
-The SDK follows semantic versioning, and Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.7.0")` resolves to 3.7.0 and nothing else — there are no version ranges and no BOM anywhere in these instructions, so no release reaches your build until someone edits that line. Nothing below can arrive unannounced; this section tells you what to expect when you do choose to raise the number.
+The SDK follows semantic versioning, and Gradle pins you to an exact version. `implementation("io.github.esimplified:android-sdk:3.8.0")` resolves to 3.8.0 and nothing else — there are no version ranges and no BOM anywhere in these instructions, so no release reaches your build until someone edits that line. Nothing below can arrive unannounced; this section tells you what to expect when you do choose to raise the number.
 
 | What changed | Version goes | What you do |
 |---|---|---|
@@ -113,7 +114,7 @@ The SDK follows semantic versioning, and Gradle pins you to an exact version. `i
 | Something added | 2.1.0 → 2.2.0 | Nothing |
 | Something you call changed or went away | 2.1.0 → 3.0.0 | Update your code, then raise the version you depend on |
 
-Those numbers are illustrative; 3.7.0 is the current release.
+Those numbers are illustrative; 3.8.0 is the current release.
 
 The convention maps straight onto our commit messages. A `fix:` commit is a patch, a `feat:` commit is a minor, and the major only moves for a change that breaks **callers** — a method you call renamed, removed, or given a new required parameter. Commits that break callers are marked with a `!`, as in `refactor(orders)!:`.
 
@@ -299,6 +300,7 @@ sdk/src/main/java/io/esimplified/sdk/
 |   |-- CountryRepository.kt
 |   |-- EsimRepository.kt
 |   |-- FaqAndSupportRepository.kt
+|   |-- LocalizationRepository.kt
 |   |-- LoyaltyRepository.kt
 |   |-- NotificationRepository.kt
 |   |-- OrdersRepository.kt
@@ -403,7 +405,9 @@ Field-by-field tables for all of these are in [SDK_API_REFERENCE.md](SDK_API_REF
 | `PhoneOtpSendRequest` / `PhoneOtpSendResponse` | Phone verification: send a code by SMS or WhatsApp |
 | `PhoneOtpVerifyRequest` / `PhoneOtpVerifyResponse` | Phone verification: verify the code |
 | `DeleteProfileResponse` | Account deletion result |
-| `GetTokenResponse` | OAuth token response (access token, refresh token, expiry) |
+| `GetTokenResponse` | OAuth token response (access token, refresh token, expiry, customer, and `newUser` when the sign-in created the account) |
+| `Localization` / `SupportedCurrency` / `SupportedLanguage` | The tenant's supported currencies and languages with their defaults |
+| `LocalizationInclude` | Enum: CURRENCIES, LANGUAGES |
 | `ProfileResponse` | Registration/profile-update response (customer fields) |
 | `VerifyEmailResponse` | Email verification result |
 | `ChangePasswordResponse` | Password change/reset result |
@@ -515,6 +519,7 @@ Authentication, registration, password management, profile operations, and sessi
 | `login` | `suspend fun login(email: String, password: String): Customer` | Authenticate with email/password, persist session |
 | `loginWithRefreshToken` | `suspend fun loginWithRefreshToken(refreshToken: String): Customer` | Re-authenticate using a stored refresh token |
 | `signInWithGoogle` | `suspend fun signInWithGoogle(email, firstName, lastName, fullName, phoneNumber, providerAccountId, idToken): Customer` | Authenticate via Google Sign-In |
+| `signInWithGoogleResponse` | `suspend fun signInWithGoogleResponse(email, firstName, lastName, fullName, phoneNumber, providerAccountId, idToken): GetTokenResponse` | The same sign-in, returning the whole response: `user` plus `newUser`, which is `true` when this sign-in created the account |
 | `register` | `suspend fun register(email, password, firstName, lastName, phoneNumber, marketingConsent, referredBy?, loyaltyElection?): ProfileResponse` | Create a new customer account (optionally electing a loyalty provider) |
 | `forgotPassword` | `suspend fun forgotPassword(email: String): CustomerForgetPasswordResponse` | Request a password reset email |
 | `changePassword` | `suspend fun changePassword(currentPassword: String, newPassword: String): ChangePasswordResponse` | Change password for authenticated user |
@@ -658,6 +663,17 @@ Loyalty program balance, quotes, and Mokafaa OTP flows (enrollment and checkout 
 Default TTL: `KREDS_BALANCE_TTL` = 1 h. `getLoyaltyBalanceResult` is the underlying call and `getLoyaltyBalance` unwraps it, so the two never disagree about what was fetched — only about how a failure reaches you. `value` is nullable because it is `null` when nothing was ever cached and the refresh failed; that is the case in which `getLoyaltyBalance` throws.
 
 Mokafaa methods throw `LoyaltyApiException(httpCode, message)` on HTTP errors — `message` is the backend error verbatim, `httpCode` lets callers branch on 400/401/503.
+
+### LocalizationRepository
+
+The currencies and languages the tenant supports, served by the API.
+
+| Method | Signature | Description |
+|---|---|---|
+| `fetchLocalization` | `suspend fun fetchLocalization(include: LocalizationInclude? = null, forceRefresh: Boolean = false, cacheTTL: Duration = LOCALIZATION_TTL): Localization` | Supported currencies and languages. Pass `include` to fetch one list only |
+| `invalidateCache` | `suspend fun invalidateCache()` | Drop this repository's cache entries |
+
+`…Result` twin: `fetchLocalizationResult`. Default TTL: `LOCALIZATION_TTL` = 1 h.
 
 ### ThemeRepository
 
@@ -1077,7 +1093,7 @@ To receive SDK lines deliberately, pass `logger` to `SdkConfig` — see [Logging
 
 ## Changes since 2.0.0
 
-The changes below are listed separately from the sections above, which describe 2.0 and its migration; everything here is in 3.7.0.
+The changes below are listed separately from the sections above, which describe 2.0 and its migration; everything here is in 3.8.0.
 
 ### Breaking change: `getOrdersPageResult` no longer has a default implementation
 
@@ -1122,6 +1138,30 @@ suspend fun getOrderHistory(
 Every existing call still compiles — `getOrderHistory()`, `getOrderHistory(true)` and `getOrderHistory(withLoyaltyPoints = true)` all resolve to it. The JVM signature changed, so recompile against the new version rather than swapping the AAR under an already-built app. If you implement `OrdersRepository` yourself, delete the now-duplicate override.
 
 One behaviour change: the two forms used to occupy separate cache entries even though they sent the identical request, so `getOrderHistory()` and `getOrderHistory(withLoyaltyPoints = false)` each did their own network call. They now share one entry.
+
+## Changes in 3.8.0
+
+### Breaking changes
+
+`AuthRepository` gains `signInWithGoogleResponse(…)`. It carries a default body that throws `UnsupportedOperationException`, so an existing implementation or test fake keeps compiling; override it before calling it. `signInWithGoogle` is unchanged. Nothing a caller already writes changes.
+
+### A read that started before an invalidation no longer caches its result
+
+A cached read that was still waiting on the network when its repository's cache was invalidated, by `invalidateCache()`, `EsimplifiedSdk.clearAllCaches()` or `logout()`, used to store its answer when it arrived. That could put the previous customer's list back after a logout, or the old currency's prices back after a currency change. The read still returns its answer to its caller; it just no longer writes it to the cache. Invalidating one repository does not affect reads in flight on another. `ThemeRepository` reads are not covered: a theme is the same for every customer. Nothing you call changes.
+
+### Tokens are no longer printed by `toString()`
+
+`GetTokenResponse.toString()` and `Auth.Authenticated.toString()` leave out the access and refresh tokens, so printing either object does not show them. The properties themselves are unchanged.
+
+### `LocalizationRepository`
+
+`fetchLocalization(include)` reads `GET api/v2/localization/` and returns `Localization(defaultCurrency, currencies, defaultLanguage, languages)`. `include` is `LocalizationInclude.CURRENCIES` or `LocalizationInclude.LANGUAGES` to fetch one list, or left out for both; a list that was not requested comes back empty and its default `null`. Each `SupportedCurrency` carries `code`, `name` and `symbol`; each `SupportedLanguage` carries `code` and `name`.
+
+The endpoint is public, so it works before sign-in. The read is cached for `LOCALIZATION_TTL` (1 h), one entry per `include`, and `fetchLocalizationResult` serves the last list flagged `isStale` when the refresh fails. With nothing cached and a failed read, `fetchLocalization` returns an empty `Localization` and does not throw; use `fetchLocalizationResult` to see the failure. `defaultCurrency` is an empty string when the tenant has none set.
+
+### `signInWithGoogleResponse` and `GetTokenResponse.newUser`
+
+The backend marks a provider sign-in that created the account with `new_user: true`. `GetTokenResponse` now carries it as `newUser: Boolean?`, and `signInWithGoogleResponse` returns that whole response where `signInWithGoogle` returns only the `Customer`. Both save the session the same way; use the new one when the app needs to tell a sign-up from a sign-in.
 
 ## Changes in 3.7.0
 
@@ -1311,7 +1351,7 @@ The published coordinate is `io.github.esimplified:android-sdk:<version>`, and t
 
 ```kotlin
 mavenPublishing {
-    coordinates("io.github.esimplified", "android-sdk", "3.7.0")
+    coordinates("io.github.esimplified", "android-sdk", "3.8.0")
 }
 ```
 

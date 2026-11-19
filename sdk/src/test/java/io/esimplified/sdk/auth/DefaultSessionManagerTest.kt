@@ -211,4 +211,13 @@ class DefaultSessionManagerTest {
         assertEquals("Jane", state.user.firstName)
         assertEquals("Smith", state.user.lastName)
     }
+
+    @Test
+    fun `an authenticated session never prints its tokens`() {
+        val printed = createTestAuth(accessToken = "secret-access", refreshToken = "secret-refresh").toString()
+
+        assertFalse(printed.contains("secret-access"))
+        assertFalse(printed.contains("secret-refresh"))
+        assertTrue(printed.contains("user-123"))
+    }
 }

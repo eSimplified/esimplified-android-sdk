@@ -13,5 +13,7 @@ sealed interface Auth {
     ) : Auth {
         val isExpired: Boolean
             get() = LocalDateTime.now().plusMinutes(5).isAfter(expires)
+
+        override fun toString(): String = "Authenticated(user=$user, expires=$expires)"
     }
 }
