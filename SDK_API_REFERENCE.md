@@ -1487,7 +1487,7 @@ Returned by `VouchersRepository.redeemGiftCard`. A 200 fills the first group, a 
 
 | Field | Type | Description |
 |-------|------|-------------|
-| defaultCurrency | String? | The tenant's default currency code; `null` when currencies were not requested |
+| defaultCurrency | String? | The tenant's default currency code, empty when the tenant has none set; `null` when currencies were not requested |
 | currencies | List\<SupportedCurrency\> | Supported currencies; empty when not requested |
 | defaultLanguage | String? | The tenant's default language code; `null` when languages were not requested |
 | languages | List\<SupportedLanguage\> | Supported languages; empty when not requested |

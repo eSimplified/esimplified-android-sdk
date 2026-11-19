@@ -42,6 +42,33 @@ class CachedReadInvalidationTest {
     }
 
     @Test
+    fun `removing the key itself also stops the earlier read from putting it back`() = runTest {
+        val slowResponse = CompletableDeferred<String>()
+        val slowRead = async { cache.cachedResult<String>(KEY, forceRefresh = false, ttl = TTL) { slowResponse.await() } }
+        testScheduler.runCurrent()
+
+        cache.remove(KEY)
+        slowResponse.complete("USD")
+        slowRead.await()
+
+        assertNull(cache.get<String>(KEY))
+    }
+
+    @Test
+    fun `invalidating another repository's entries leaves the read cached`() = runTest {
+        val slowResponse = CompletableDeferred<String>()
+        val slowRead = async { cache.cachedResult<String>(KEY, forceRefresh = false, ttl = TTL) { slowResponse.await() } }
+        testScheduler.runCurrent()
+
+        cache.remove("order_1234")
+        cache.removeWithPrefix("esims_")
+        slowResponse.complete("USD")
+        slowRead.await()
+
+        assertEquals("USD", cache.get<String>(KEY))
+    }
+
+    @Test
     fun `a read with no invalidation in between is cached as before`() = runTest {
         cache.cachedResult<String>(KEY, forceRefresh = false, ttl = TTL) { "USD" }
 

@@ -4,6 +4,8 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
+internal fun String.cacheKeyFamily(): String = substringBefore('_') + "_"
+
 internal class SdkCache(
     private val defaultTtl: Duration = DEFAULT_TTL,
     private val isEnabled: Boolean = true,
@@ -15,10 +17,8 @@ internal class SdkCache(
 
     internal val store = ConcurrentHashMap<String, Entry>()
     private val lock = Any()
-    private var invalidations = 0L
-
-    val invalidationCount: Long
-        get() = synchronized(lock) { invalidations }
+    private var clears = 0L
+    private val familyInvalidations = mutableMapOf<String, Long>()
 
     // region Reads
     inline fun <reified T : Any> get(key: String): T? {
@@ -36,22 +36,22 @@ internal class SdkCache(
         store[key] = Entry(value, System.currentTimeMillis() + resolvedTtl.inWholeMilliseconds)
     }
 
-    fun setUnlessInvalidatedSince(invalidationCount: Long, key: String, value: Any, ttl: Duration? = null) {
+    fun setUnlessInvalidatedSince(startedAt: Long, key: String, value: Any, ttl: Duration? = null) {
         synchronized(lock) {
-            if (invalidations == invalidationCount) set(key, value, ttl)
+            if (invalidationCount(key) == startedAt) set(key, value, ttl)
         }
     }
 
     fun remove(key: String) {
         synchronized(lock) {
-            invalidations++
+            markInvalidated(key)
             store.remove(key)
         }
     }
 
     fun removeWithPrefix(prefix: String) {
         synchronized(lock) {
-            invalidations++
+            markInvalidated(prefix)
             val keysToRemove = store.keys.filter { it.startsWith(prefix) }
             keysToRemove.forEach { store.remove(it) }
         }
@@ -59,9 +59,20 @@ internal class SdkCache(
 
     fun clear() {
         synchronized(lock) {
-            invalidations++
+            clears++
             store.clear()
         }
+    }
+    // endregion
+
+    // region Invalidations
+    fun invalidationCount(key: String): Long = synchronized(lock) {
+        clears + (familyInvalidations[key.cacheKeyFamily()] ?: 0L)
+    }
+
+    private fun markInvalidated(keyOrPrefix: String) {
+        val family = keyOrPrefix.cacheKeyFamily()
+        familyInvalidations[family] = (familyInvalidations[family] ?: 0L) + 1
     }
     // endregion
 

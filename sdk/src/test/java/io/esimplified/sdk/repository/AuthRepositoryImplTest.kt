@@ -559,6 +559,30 @@ class AuthRepositoryImplTest {
         assertEquals("google-access-token", sessionManager.getAccessToken())
     }
 
+    @Test
+    fun `a Google sign-in the backend refuses fails with its status and saves no session`() = runTest {
+        mockWebServer.enqueue(
+            MockResponse().setResponseCode(400)
+                .setBody("""{"error":"invalid_grant","error_description":"Google token is not valid."}""")
+        )
+
+        val failure = runCatching { googleSignInResponse() }.exceptionOrNull() as SdkError.NetworkError
+
+        assertEquals(400, failure.statusCode)
+        assertFalse(sessionManager.isAuthenticated())
+    }
+
+    @Test
+    fun `a Google sign-in answer with no access token fails and saves no session`() = runTest {
+        mockWebServer.enqueue(
+            MockResponse().setResponseCode(200)
+                .setBody("""{"user": { "customer_id": "user-123", "email": "test@example.com" }}""")
+        )
+
+        assertTrue(runCatching { googleSignInResponse() }.exceptionOrNull() is SdkError.NetworkError)
+        assertFalse(sessionManager.isAuthenticated())
+    }
+
     private suspend fun googleSignInResponse() = authRepository.signInWithGoogleResponse(
         email = "test@example.com",
         firstName = "Test",

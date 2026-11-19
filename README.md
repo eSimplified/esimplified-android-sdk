@@ -10,7 +10,7 @@ Kotlin SDK for integrating the eSimplified eSIM platform into Android applicatio
 
 **Coordinates:** `io.github.esimplified:android-sdk:3.8.0`
 
-That is the version this README describes. It adds partner-offer card eligibility, card deletion, Stripe setup intents and discounted stored-card charges to `PaymentsRepository`, promo-coded package reads to `PackagesRepository`, SmartPay hosted checkout to `PaymentsRepository` and `awaitSettlement` to `OrdersRepository`; nothing a caller writes has to change to take it.
+That is the version this README describes. It adds `LocalizationRepository` for the tenant's supported currencies and languages, and `signInWithGoogleResponse` on `AuthRepository`, which says whether a Google sign-in created the account; nothing a caller writes has to change to take it.
 
 ## What the SDK covers
 
@@ -1147,17 +1147,17 @@ One behaviour change: the two forms used to occupy separate cache entries even t
 
 ### A read that started before an invalidation no longer caches its result
 
-A cached read that was still waiting on the network when its cache was invalidated, by `invalidateCache()`, `EsimplifiedSdk.clearAllCaches()` or `logout()`, used to store its answer when it arrived. That could put the previous customer's list back after a logout, or the old currency's prices back after a currency change. The read still returns its answer to its caller; it just no longer writes it to the cache. Nothing you call changes.
+A cached read that was still waiting on the network when its repository's cache was invalidated, by `invalidateCache()`, `EsimplifiedSdk.clearAllCaches()` or `logout()`, used to store its answer when it arrived. That could put the previous customer's list back after a logout, or the old currency's prices back after a currency change. The read still returns its answer to its caller; it just no longer writes it to the cache. Invalidating one repository does not affect reads in flight on another. `ThemeRepository` reads are not covered: a theme is the same for every customer. Nothing you call changes.
 
 ### Tokens are no longer printed by `toString()`
 
-`GetTokenResponse.toString()` and `Auth.Authenticated.toString()` leave out the access and refresh tokens, so logging either object cannot leak them. The properties themselves are unchanged.
+`GetTokenResponse.toString()` and `Auth.Authenticated.toString()` leave out the access and refresh tokens, so printing either object does not show them. The properties themselves are unchanged.
 
 ### `LocalizationRepository`
 
 `fetchLocalization(include)` reads `GET api/v2/localization/` and returns `Localization(defaultCurrency, currencies, defaultLanguage, languages)`. `include` is `LocalizationInclude.CURRENCIES` or `LocalizationInclude.LANGUAGES` to fetch one list, or left out for both; a list that was not requested comes back empty and its default `null`. Each `SupportedCurrency` carries `code`, `name` and `symbol`; each `SupportedLanguage` carries `code` and `name`.
 
-The endpoint is public, so it works before sign-in. The read is cached for `LOCALIZATION_TTL` (1 h), one entry per `include`, and `fetchLocalizationResult` serves the last list flagged `isStale` when the refresh fails.
+The endpoint is public, so it works before sign-in. The read is cached for `LOCALIZATION_TTL` (1 h), one entry per `include`, and `fetchLocalizationResult` serves the last list flagged `isStale` when the refresh fails. With nothing cached and a failed read, `fetchLocalization` returns an empty `Localization` and does not throw; use `fetchLocalizationResult` to see the failure. `defaultCurrency` is an empty string when the tenant has none set.
 
 ### `signInWithGoogleResponse` and `GetTokenResponse.newUser`
 

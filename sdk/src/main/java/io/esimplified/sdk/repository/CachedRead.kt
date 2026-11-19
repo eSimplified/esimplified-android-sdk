@@ -1,12 +1,11 @@
 package io.esimplified.sdk.repository
 
 import io.esimplified.sdk.network.SdkCache
+import io.esimplified.sdk.network.cacheKeyFamily
 import io.esimplified.sdk.network.SdkError
 import kotlinx.coroutines.CancellationException
 import io.esimplified.sdk.SdkLog
 import kotlin.time.Duration
-
-internal fun String.cacheKeyFamily(): String = substringBefore('_') + "_"
 
 // region Cached reads
 internal suspend inline fun <reified T : Any> SdkCache.cachedResult(
@@ -19,7 +18,7 @@ internal suspend inline fun <reified T : Any> SdkCache.cachedResult(
         val fresh = get<T>(key)
         if (fresh != null) return RepositoryResult(fresh)
     }
-    val startedAt = invalidationCount
+    val startedAt = invalidationCount(key)
     return try {
         val fetched = fetch()
         setUnlessInvalidatedSince(startedAt, key, fetched, ttl)
