@@ -531,6 +531,17 @@ class AuthRepositoryImplTest {
     }
 
     @Test
+    fun `the sign-in response never prints its tokens`() = runTest {
+        enqueueGoogleSignIn(newUser = true)
+
+        val printed = googleSignInResponse().toString()
+
+        assertFalse(printed.contains("google-access-token"))
+        assertFalse(printed.contains("google-refresh-token"))
+        assertTrue(printed.contains("newUser=true"))
+    }
+
+    @Test
     fun `signInWithGoogle still returns the customer and saves the session`() = runTest {
         enqueueGoogleSignIn(newUser = true)
 

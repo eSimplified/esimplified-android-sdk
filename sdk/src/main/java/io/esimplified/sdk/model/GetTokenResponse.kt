@@ -25,7 +25,11 @@ data class GetTokenResponse(
     val description: String? = null,
     @SerialName("new_user")
     val newUser: Boolean? = null,
-)
+) {
+    override fun toString(): String =
+        "GetTokenResponse(expiresIn=$expiresIn, tokenType=$tokenType, scope=$scope, user=$user, error=$error, " +
+            "detail=$detail, description=$description, newUser=$newUser)"
+}
 
 @Serializable
 data class GetTokenIntrospectResponse(

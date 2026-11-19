@@ -1145,6 +1145,14 @@ One behaviour change: the two forms used to occupy separate cache entries even t
 
 `AuthRepository` gains `signInWithGoogleResponse(…)`. It carries a default body that throws `UnsupportedOperationException`, so an existing implementation or test fake keeps compiling; override it before calling it. `signInWithGoogle` is unchanged. Nothing a caller already writes changes.
 
+### A read that started before an invalidation no longer caches its result
+
+A cached read that was still waiting on the network when its cache was invalidated, by `invalidateCache()`, `EsimplifiedSdk.clearAllCaches()` or `logout()`, used to store its answer when it arrived. That could put the previous customer's list back after a logout, or the old currency's prices back after a currency change. The read still returns its answer to its caller; it just no longer writes it to the cache. Nothing you call changes.
+
+### Tokens are no longer printed by `toString()`
+
+`GetTokenResponse.toString()` and `Auth.Authenticated.toString()` leave out the access and refresh tokens, so logging either object cannot leak them. The properties themselves are unchanged.
+
 ### `LocalizationRepository`
 
 `fetchLocalization(include)` reads `GET api/v2/localization/` and returns `Localization(defaultCurrency, currencies, defaultLanguage, languages)`. `include` is `LocalizationInclude.CURRENCIES` or `LocalizationInclude.LANGUAGES` to fetch one list, or left out for both; a list that was not requested comes back empty and its default `null`. Each `SupportedCurrency` carries `code`, `name` and `symbol`; each `SupportedLanguage` carries `code` and `name`.
