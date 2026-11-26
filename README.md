@@ -1095,10 +1095,6 @@ To receive SDK lines deliberately, pass `logger` to `SdkConfig` — see [Logging
 
 The changes below are listed separately from the sections above, which describe 2.0 and its migration; everything here is in 3.8.1.
 
-### 3.8.1: `forgotPassword` no longer fails on a successful reply
-
-The backend answers a reset request with HTTP 200 and a `detail` line such as "If your email is registered, a password reset link will be sent." `forgotPassword` treated any `detail` as a rejection and threw `SdkError.NetworkError`, so apps showed an error although the email had been sent. It now returns the response for every 2xx reply; the message is on `CustomerForgetPasswordResponse.detail`. Rejections still arrive as `SdkError.NetworkError` with the HTTP status. No calling code changes.
-
 ### Breaking change: `getOrdersPageResult` no longer has a default implementation
 
 `OrdersRepository.getOrdersPageResult` carried a default body so that adding it did not break existing implementations. That default ignored `limit` and `offset`: it called the unpaged `getOrderHistoryResult` and then reported `totalCount` as the size of whatever came back and `hasMore` as permanently `false`.
@@ -1142,6 +1138,10 @@ suspend fun getOrderHistory(
 Every existing call still compiles — `getOrderHistory()`, `getOrderHistory(true)` and `getOrderHistory(withLoyaltyPoints = true)` all resolve to it. The JVM signature changed, so recompile against the new version rather than swapping the AAR under an already-built app. If you implement `OrdersRepository` yourself, delete the now-duplicate override.
 
 One behaviour change: the two forms used to occupy separate cache entries even though they sent the identical request, so `getOrderHistory()` and `getOrderHistory(withLoyaltyPoints = false)` each did their own network call. They now share one entry.
+
+## Changes in 3.8.1
+
+**`forgotPassword` no longer fails on a successful reply.** The backend answers a reset request with HTTP 200 and a `detail` line such as "If your email is registered, a password reset link will be sent." `forgotPassword` treated any `detail` as a rejection and threw `SdkError.NetworkError`, so apps showed an error although the email had been sent. It now returns the response for every 2xx reply; the message is on `CustomerForgetPasswordResponse.detail`. Rejections still arrive as `SdkError.NetworkError` with the HTTP status. No calling code changes.
 
 ## Changes in 3.8.0
 
