@@ -242,13 +242,7 @@ internal class AuthRepositoryImpl(
     // region Password Management
     override suspend fun forgotPassword(email: String): CustomerForgetPasswordResponse {
         try {
-            val response = apiService.forgetPassword(CustomerForgetPassword(email = email))
-
-            if (!response.detail.isNullOrEmpty()) {
-                throw apiRejection(response.detail)
-            }
-
-            return response
+            return apiService.forgetPassword(CustomerForgetPassword(email = email))
         } catch (e: HttpException) {
             throw e.asNetworkError()
         }

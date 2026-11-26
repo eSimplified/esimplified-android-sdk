@@ -721,6 +721,32 @@ class AuthRepositoryImplTest {
         assertTrue(lines.any { it.contains("401") })
         assertFalse(lines.any { it.contains("private@example.com") })
     }
+
+    @Test
+    fun `forgotPassword succeeds when the backend confirms with a message`() = runTest {
+        val confirmation = "If your email is registered, a password reset link will be sent. Please check your email."
+        mockWebServer.enqueue(
+            MockResponse().setResponseCode(200)
+                .setBody("""{"customer_id":null,"email":"test@example.com","detail":"$confirmation"}""")
+        )
+
+        val response = authRepository.forgotPassword("test@example.com")
+
+        assertEquals("test@example.com", response.email)
+        assertEquals(confirmation, response.detail)
+    }
+
+    @Test
+    fun `forgotPassword fails when the backend rejects the request`() = runTest {
+        mockWebServer.enqueue(
+            MockResponse().setResponseCode(400).setBody("""{"detail":"Enter a valid email address."}""")
+        )
+
+        val failure = runCatching { authRepository.forgotPassword("not-an-email") }.exceptionOrNull()
+
+        assertTrue(failure is SdkError.NetworkError)
+        assertEquals(400, (failure as SdkError.NetworkError).statusCode)
+    }
     // endregion
 
 }
